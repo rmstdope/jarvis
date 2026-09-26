@@ -98,5 +98,6 @@ is working with:
 
 `bun test` runs 124 tests (two-clone git sync, every pipeline pass, parsers, routes, the LLM providers and
 embedders over mocked HTTP, the CLI as a real subprocess, a fake ACP agent); `bun run test:coverage` reports
-line coverage (about 92 %).
+line coverage (about 92 %). CI is change-aware: `bun run ci:plan` prints what a set of changed files would
+run (docs-only changes run nothing); `main` requires the `ci-status` check to pass before anything merges.
 `bun run typecheck` covers the core, web and extension trees. CI runs on Linux, macOS and Windows.

@@ -10,7 +10,8 @@
     "web:build": "bun run scripts/build-web.ts",
     "web": "bun run scripts/build-web.ts && bun run src/cli.ts serve",
     "extension:build": "bun run scripts/build-extension.ts",
-    "test:coverage": "bun test --coverage"
+    "test:coverage": "bun test --coverage",
+    "ci:plan": "bun run scripts/ci-plan.ts"
   },
   "dependencies": {
     "@opendocsg/pdf2md": "0.3.2",

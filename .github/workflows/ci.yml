@@ -1,15 +1,110 @@
 name: ci
+
 on:
   push:
     branches: [main]
   pull_request:
+  workflow_dispatch:
+    inputs:
+      full:
+        description: run everything regardless of what changed
+        type: boolean
+        default: true
+  schedule:
+    - cron: "17 3 * * 1" # weekly full run as a safety net for the change-aware selection
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
+  # 1. Decide what this change needs. Docs-only changes plan nothing; global files plan everything;
+  #    otherwise only the tests whose import graph reaches a changed file (scripts/ci-plan.ts).
+  plan:
+    runs-on: ubuntu-latest
+    outputs:
+      plan: ${{ steps.plan.outputs.plan }}
+      docs_only: ${{ steps.plan.outputs.docs_only }}
+      tests: ${{ steps.plan.outputs.tests }}
+      typecheck_core: ${{ steps.plan.outputs.typecheck_core }}
+      typecheck_web: ${{ steps.plan.outputs.typecheck_web }}
+      typecheck_extension: ${{ steps.plan.outputs.typecheck_extension }}
+      build_web: ${{ steps.plan.outputs.build_web }}
+      build_extension: ${{ steps.plan.outputs.build_extension }}
+      swift: ${{ steps.plan.outputs.swift }}
+      full: ${{ steps.plan.outputs.full }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.2
+      - id: plan
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "${{ github.event_name }}" = "schedule" ] || { [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ inputs.full }}" = "true" ]; }; then
+            bun run scripts/ci-plan.ts --full > plan.json
+          else
+            if [ "${{ github.event_name }}" = "pull_request" ]; then
+              base="${{ github.event.pull_request.base.sha }}"
+            else
+              base="${{ github.event.before }}"
+              # first push of a branch, or a force-push: fall back to the parent commit
+              git cat-file -e "$base" 2>/dev/null || base="$(git rev-parse HEAD~1 2>/dev/null || echo "")"
+            fi
+            if [ -z "$base" ] || [ "$base" = "0000000000000000000000000000000000000000" ]; then
+              bun run scripts/ci-plan.ts --full > plan.json
+            else
+              git diff --name-only "$base" "${{ github.sha }}" | bun run scripts/ci-plan.ts > plan.json
+            fi
+          fi
+          cat plan.json
+          echo "plan=$(jq -c . plan.json)" >> "$GITHUB_OUTPUT"
+          echo "docs_only=$(jq -r .docsOnly plan.json)" >> "$GITHUB_OUTPUT"
+          echo "full=$(jq -r .full plan.json)" >> "$GITHUB_OUTPUT"
+          echo "tests=$(jq -c .tests plan.json)" >> "$GITHUB_OUTPUT"
+          echo "typecheck_core=$(jq -r .typecheck.core plan.json)" >> "$GITHUB_OUTPUT"
+          echo "typecheck_web=$(jq -r .typecheck.web plan.json)" >> "$GITHUB_OUTPUT"
+          echo "typecheck_extension=$(jq -r .typecheck.extension plan.json)" >> "$GITHUB_OUTPUT"
+          echo "build_web=$(jq -r .buildWeb plan.json)" >> "$GITHUB_OUTPUT"
+          echo "build_extension=$(jq -r .buildExtension plan.json)" >> "$GITHUB_OUTPUT"
+          echo "swift=$(jq -r .swift plan.json)" >> "$GITHUB_OUTPUT"
+
+  # 2. Typecheck and build only the trees that changed.
+  check:
+    needs: plan
+    if: needs.plan.outputs.docs_only != 'true' && (needs.plan.outputs.typecheck_core == 'true' || needs.plan.outputs.typecheck_web == 'true' || needs.plan.outputs.typecheck_extension == 'true')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.2
+      - run: bun install --frozen-lockfile
+      - if: needs.plan.outputs.typecheck_core == 'true'
+        run: bunx tsc --noEmit
+      - if: needs.plan.outputs.typecheck_web == 'true'
+        run: bunx tsc --noEmit -p web/tsconfig.json
+      - if: needs.plan.outputs.typecheck_extension == 'true'
+        run: bunx tsc --noEmit -p extension/tsconfig.json
+      - if: needs.plan.outputs.build_web == 'true'
+        run: bun run web:build
+      - if: needs.plan.outputs.build_extension == 'true'
+        run: bun run extension:build
+      - run: bun audit --audit-level=high
+        continue-on-error: true
+
+  # 3. Run the selected tests. The full suite runs on all three platforms; a partial selection on Linux only.
   test:
-    runs-on: ${{ matrix.os }}
+    needs: plan
+    if: needs.plan.outputs.docs_only != 'true' && needs.plan.outputs.tests != '[]'
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
+        os: ${{ needs.plan.outputs.full == 'true' && fromJSON('["ubuntu-latest","macos-latest","windows-latest"]') || fromJSON('["ubuntu-latest"]') }}
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
@@ -18,14 +113,44 @@ jobs:
       - if: runner.os == 'macOS'
         run: brew install sqlite
       - run: bun install --frozen-lockfile
-      - run: bun run typecheck
-      - run: bun run web:build
-      - run: bun run extension:build
       - name: sqlite-vec doctor check (cross-platform validation)
         run: bun run src/cli.ts doctor --core-only --json | tee doctor.json
         continue-on-error: ${{ runner.os == 'Windows' }}
-      - run: bun test
+      - name: run selected tests
+        shell: bash
         env:
           SECOND_BRAIN_HOME: ${{ runner.temp }}/sb-home
-      - run: bun audit --audit-level=high
-        continue-on-error: true
+          SECOND_BRAIN_EMBED_FAKE: "1"
+        run: |
+          echo '${{ needs.plan.outputs.tests }}' | jq -r '.[]' | xargs bun test --timeout 60000
+
+  # 4. Swift launcher typecheck when the app changed.
+  swift:
+    needs: plan
+    if: needs.plan.outputs.docs_only != 'true' && needs.plan.outputs.swift == 'true'
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: swiftc -typecheck second-brain-app/main.swift
+
+  # 5. The one required status check. It always runs, passes when everything needed passed or was
+  #    legitimately skipped, and fails on any failure or cancellation.
+  ci-status:
+    needs: [plan, check, test, swift]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - shell: bash
+        run: |
+          echo "plan:  ${{ needs.plan.result }}"
+          echo "check: ${{ needs.check.result }}"
+          echo "test:  ${{ needs.test.result }}"
+          echo "swift: ${{ needs.swift.result }}"
+          for r in "${{ needs.plan.result }}" "${{ needs.check.result }}" "${{ needs.test.result }}" "${{ needs.swift.result }}"; do
+            case "$r" in
+              success|skipped) ;;
+              *) echo "CI failed ($r)"; exit 1 ;;
+            esac
+          done
+          [ "${{ needs.plan.result }}" = "success" ] || { echo "plan did not run"; exit 1; }
+          echo "CI green"

@@ -261,8 +261,14 @@ presets carry a comment reminding you to use an id your entitlement offers.
   a fake agent process, the web helpers under happy-dom, and the CLI end to end as a subprocess with
   a registry guard that every command and route group is registered. External services are behind seams (injectable embedder, fake router, mocked fetch,
   scripted subprocess runners) so the suite is hermetic.
-- CI (`.github/workflows/ci.yml`) runs typecheck, the web and extension builds, the sqlite-vec doctor
-  check, the tests and a dependency audit on Linux, macOS and Windows.
+- CI (`.github/workflows/ci.yml`) is change-aware. A `plan` job diffs the push or pull request and
+  runs `scripts/ci-plan.ts`, which walks each test file's transitive import graph (plus the sources of
+  any bundle it builds and the data files it reads) and selects only the tests that can be affected.
+  Documentation-only changes run nothing; changes to global files (lockfile, tsconfig, the workflow,
+  test helpers) run everything on Linux, macOS and Windows; a weekly scheduled run and a manual
+  dispatch always run everything. The single required status check is `ci-status`, which always runs
+  and passes only when every planned job succeeded or was legitimately skipped, so the branch rule on
+  `main` never blocks on a skipped job.
 - `scripts/eval-model.ts` runs the production ENRICH, CLEANUP, EDGE-REFINE and synthesis passes
   against a chosen model with weighted objective checks (summary present, tags in range, expected
   mention, glossary term fixed, negation preserved, complete batch judged, citation present).
