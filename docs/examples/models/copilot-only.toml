@@ -1,0 +1,10 @@
+# Team default: GitHub Copilot CLI only (rides the team entitlement, no key, no local chat model).
+preference = ["copilot", "openai-compat"]
+
+[[model]]
+provider = "copilot"
+id = "gpt-4.1"   # replace with a model id your Copilot entitlement offers (`copilot --help`)
+quality = "high"
+bestFor = ["tag", "summary", "entities", "edge-judge", "cleanup", "synthesis"]
+reasoningEffort = "high"
+reasoningEffortByTask = { edge-judge = "xhigh" }

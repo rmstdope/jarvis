@@ -1,0 +1,25 @@
+# Apple Silicon with >= 30 GB unified memory. Gemma 26B for Swedish/English transcript cleanup,
+# Qwen 35B for structured extraction and edge judging, Copilot as the fallback. ~35 GB of disk;
+# the two big models cannot be resident together in 32 GB, so Ollama swaps them per pass.
+preference = ["local", "copilot", "openai-compat"]
+
+[[model]]
+provider = "local"
+id = "gemma4:26b"
+quality = "high"
+langs = ["sv", "en"]
+bestFor = ["cleanup"]
+
+[[model]]
+provider = "local"
+id = "qwen3:35b"
+quality = "high"
+bestFor = ["summary", "entities", "edge-judge", "tag"]
+
+[[model]]
+provider = "copilot"
+id = "gpt-4.1"   # replace with a model id your Copilot entitlement offers (`copilot --help`)
+quality = "high"
+bestFor = ["synthesis"]
+reasoningEffort = "high"
+reasoningEffortByTask = { edge-judge = "xhigh" }

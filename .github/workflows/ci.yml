@@ -1,0 +1,31 @@
+name: ci
+on:
+  push:
+    branches: [main]
+  pull_request:
+jobs:
+  test:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.2
+      - if: runner.os == 'macOS'
+        run: brew install sqlite
+      - run: bun install --frozen-lockfile
+      - run: bun run typecheck
+      - run: bun run web:build
+      - run: bun run extension:build
+      - name: sqlite-vec doctor check (cross-platform validation)
+        run: bun run src/cli.ts doctor --core-only --json | tee doctor.json
+        continue-on-error: ${{ runner.os == 'Windows' }}
+      - run: bun test
+        env:
+          SECOND_BRAIN_HOME: ${{ runner.temp }}/sb-home
+      - run: bun audit --audit-level=high
+        continue-on-error: true

@@ -1,0 +1,15 @@
+# Windows/Linux with a 12 GB GPU: qwen3 14B locally for standard tasks, Copilot for high.
+preference = ["local", "copilot", "openai-compat"]
+
+[[model]]
+provider = "local"
+id = "qwen3:14b"
+quality = "standard"
+
+[[model]]
+provider = "copilot"
+id = "gpt-4.1"   # replace with a model id your Copilot entitlement offers (`copilot --help`)
+quality = "high"
+bestFor = ["cleanup", "synthesis", "edge-judge"]
+reasoningEffort = "high"
+reasoningEffortByTask = { edge-judge = "xhigh" }

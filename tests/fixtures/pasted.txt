@@ -1,0 +1,11 @@
+Anna Svensson   0:01
+Hello everyone, welcome.
+Let's start with the firmware.
+
+Bob
+0:05
+Sure. The zoom drift is fixed in 11.8.
+
+Bob   0:07
+And tested on the X1656.
+this is a stray line before any speaker? no, after Bob so it's attached.

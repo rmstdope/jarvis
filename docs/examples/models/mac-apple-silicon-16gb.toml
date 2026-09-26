@@ -1,0 +1,15 @@
+# Apple Silicon with 16 GB: a standard-quality local model plus Copilot for the high-quality tasks.
+preference = ["local", "copilot", "openai-compat"]
+
+[[model]]
+provider = "local"
+id = "qwen3:8b"
+quality = "standard"
+
+[[model]]
+provider = "copilot"
+id = "gpt-4.1"   # replace with a model id your Copilot entitlement offers (`copilot --help`)
+quality = "high"
+bestFor = ["cleanup", "synthesis", "edge-judge"]
+reasoningEffort = "high"
+reasoningEffortByTask = { edge-judge = "xhigh" }

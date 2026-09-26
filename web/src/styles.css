@@ -1,0 +1,42 @@
+:root { --bg:#fff; --text:#161b26; --muted:#6b7280; --border:#d9dee7; --panel:#fff; --accent:#2563eb; --green:#14a05c; --purple:#7c3aed; --orange:#c2760c; --error:#d32f3a; --radius:8px; }
+* { box-sizing:border-box; }
+body { margin:0; background:var(--bg); color:var(--text); font:15px/1.5 ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif; }
+a { color:var(--accent); text-decoration:none; } a:hover { text-decoration:underline; }
+button, input, select, textarea { font:inherit; }
+button { cursor:pointer; border:1px solid var(--border); background:var(--panel); border-radius:var(--radius); padding:6px 12px; color:var(--text); }
+button.primary { background:var(--accent); color:#fff; border-color:var(--accent); }
+button:disabled { opacity:.5; cursor:default; }
+input[type=text], input[type=search], select, textarea { border:1px solid var(--border); border-radius:var(--radius); padding:6px 10px; background:var(--panel); color:var(--text); width:100%; }
+header.top { position:sticky; top:0; z-index:5; background:var(--bg); border-bottom:1px solid var(--border); display:flex; align-items:center; gap:12px; padding:8px 16px; flex-wrap:wrap; }
+header.top .brand { font-weight:700; font-size:17px; margin-right:6px; }
+header.top nav a { margin-right:10px; padding:4px 8px; border-radius:6px; }
+header.top nav a.active { background:#eef4ff; }
+header.top .spacer { flex:1; }
+header.top .hist button { padding:4px 8px; margin-right:2px; }
+main { max-width:1100px; margin:0 auto; padding:20px 16px 60px; }
+.muted { color:var(--muted); } .small { font-size:13px; }
+.row { display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
+.card { border:1px solid var(--border); border-radius:var(--radius); padding:12px 14px; margin:10px 0; background:var(--panel); }
+.card h3 { margin:0 0 4px; font-size:16px; }
+.two { display:grid; grid-template-columns:1fr 1fr; gap:24px; } @media (max-width:800px){ .two { grid-template-columns:1fr; } }
+.facets { display:flex; gap:10px; flex-wrap:wrap; margin:12px 0; } .facets select { width:auto; }
+.tag { display:inline-block; padding:1px 8px; border-radius:999px; background:#eef4ff; color:var(--accent); font-size:12px; margin-right:4px; }
+.pill { display:inline-block; padding:1px 8px; border-radius:999px; font-size:12px; font-weight:600; color:#fff; background:var(--muted); }
+.pill.green { background:var(--green);} .pill.orange { background:var(--orange);} .pill.purple { background:var(--purple);} .pill.red { background:var(--error);}
+.toast { position:fixed; bottom:20px; left:50%; transform:translateX(-50%); background:var(--text); color:#fff; padding:10px 16px; border-radius:var(--radius); z-index:20; max-width:90vw; }
+.toast.error { background:var(--error); }
+.modal-bg { position:fixed; inset:0; background:rgba(0,0,0,.35); display:flex; align-items:center; justify-content:center; z-index:15; }
+.modal { background:var(--panel); border-radius:var(--radius); padding:20px; max-width:460px; width:92vw; }
+.body-md pre { background:#f8fafc; border:1px solid var(--border); border-radius:var(--radius); padding:10px; overflow:auto; }
+.body-md table, .brief table { border-collapse:collapse; } .body-md td, .body-md th { border:1px solid var(--border); padding:4px 8px; }
+.body-md blockquote { border-left:3px solid var(--border); margin:0; padding-left:12px; color:var(--muted); }
+.brief-layout { display:grid; grid-template-columns:200px 1fr 300px; gap:24px; } @media (max-width:1000px){ .brief-layout { grid-template-columns:1fr; } }
+.toc { position:sticky; top:70px; font-size:13px; } .toc a { display:block; padding:2px 0; } .toc .l3 { padding-left:12px; }
+.comments { border-left:1px solid var(--border); padding-left:16px; } .comment { border-bottom:1px solid var(--border); padding:8px 0; font-size:14px; }
+.edges li { margin:3px 0; }
+.snip mark, .snip b { background:#fff3bf; font-weight:600; }
+.hit .score { float:right; color:var(--muted); font-size:12px; }
+.discuss { position:fixed; top:0; right:0; height:100vh; width:420px; min-width:320px; max-width:85vw; background:var(--panel); border-left:1px solid var(--border); z-index:10; display:flex; flex-direction:column; }
+.discuss .msgs { flex:1; overflow:auto; padding:12px; } .discuss .msg { margin:8px 0; padding:8px 10px; border-radius:var(--radius); } .discuss .user { background:#eef4ff; } .discuss .assistant { background:#f3f4f6; }
+.discuss form { display:flex; gap:6px; padding:10px; border-top:1px solid var(--border); }
+.resizer { position:absolute; left:0; top:0; width:6px; height:100%; cursor:ew-resize; }

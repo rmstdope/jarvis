@@ -1,0 +1,3 @@
+# Zero models: pins Tier 0 so that a Copilot CLI on PATH is never silently drafted into burning credits.
+# Capture, index and search still work; enrichment, edge judging and ask are skipped.
+preference = ["local"]

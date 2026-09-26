@@ -1,0 +1,16 @@
+<!doctype html><html><head><meta charset="utf-8"><style>
+body{font:13px system-ui;width:340px;margin:0;padding:10px;color:#161b26}h3{margin:6px 0}.row{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin:6px 0}
+.dot{width:10px;height:10px;border-radius:50%;display:inline-block}.on{background:#14a05c}.off{background:#d32f3a}.muted{color:#6b7280}.err{color:#d32f3a}
+button{font:12px system-ui;padding:4px 8px;border:1px solid #d9dee7;border-radius:6px;background:#fff;cursor:pointer}button:disabled{opacity:.5}
+input,textarea{width:100%;box-sizing:border-box;font:13px system-ui;border:1px solid #d9dee7;border-radius:6px;padding:4px 6px}ul{padding-left:16px;margin:4px 0}.chip{display:inline-block;background:#eef4ff;color:#2563eb;border-radius:999px;padding:0 8px;margin:2px;font-size:12px}
+</style></head><body>
+<div class="row"><span id="dot" class="dot off"></span><span id="status">…</span><span style="flex:1"></span><button id="toggle">…</button></div>
+<div id="captured" class="muted">…</div><div id="tags"></div>
+<div class="row"><button id="capture">Capture Now</button><button id="update">Update</button><button id="star">★ Star</button><button id="visuals">Visuals</button></div>
+<textarea id="context" rows="2" placeholder="Why is this useful? (context)"></textarea>
+<div class="row"><input id="newTags" placeholder="tags, comma separated"><button id="saveContext">Save</button></div>
+<div id="msg" class="muted"></div>
+<h3>Recent</h3><ul id="recent"></ul>
+<h3>Search</h3><div class="row"><button id="tabAll">All</button><button id="tabTasks">Tasks</button></div><input id="q" placeholder="search the brain…"><ul id="results"></ul>
+<h3>New task</h3><div class="row"><input id="taskTitle" placeholder="task title"><button id="newTask">Add</button></div>
+<script type="module" src="popup.js"></script></body></html>
