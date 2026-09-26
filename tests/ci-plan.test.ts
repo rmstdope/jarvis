@@ -54,7 +54,7 @@ describe("ci planner", () => {
     expect(f.tests).not.toContain("tests/router.test.ts");
     const a = planFromChanges(["second-brain-app/main.swift"]);
     expect(a.swift).toBe(true);
-    expect(a.tests).toEqual([]);
+    expect(only(a.tests)).toEqual([]);
     const s = planFromChanges(["scripts/ci-plan.ts"]);
     expect(s.full).toBe(true);
   });
