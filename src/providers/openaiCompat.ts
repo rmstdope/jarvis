@@ -6,15 +6,19 @@ export interface OpenAICompatConfig {
   apiKeyEnv?: string;
   extraBody?: Record<string, unknown>;
 }
-/** The readable reason in a failed response: an OpenAI-style `{"error":{"message":…}}` body's message, else the body as text. */
-export function errorReason(body: string): string {
+/**
+ * The readable reason in a failed response: an OpenAI-style `{"error":{"message":…}}` body's message,
+ * a plain `{"error":"…"}` string, else the body as text, else the status text when the body is empty.
+ */
+export function errorReason(body: string, statusText = ""): string {
   try {
-    const msg = (JSON.parse(body) as { error?: { message?: unknown } } | null)?.error?.message;
+    const err = (JSON.parse(body) as { error?: unknown } | null)?.error;
+    const msg = typeof err === "string" ? err : (err as { message?: unknown } | null)?.message;
     if (typeof msg === "string" && msg.trim()) return msg;
   } catch {
     // not JSON: the body is the reason
   }
-  return body;
+  return body.trim() || statusText;
 }
 
 /** Any OpenAI-compatible chat-completions server: OpenAI itself, oMLX, vLLM, LM Studio, a gateway. */
@@ -45,7 +49,7 @@ export function openaiCompatProvider(name: "openai-compat" = "openai-compat", cf
       else if (opts.reasoningEffort) body.reasoning_effort = opts.reasoningEffort; // mutually exclusive with response_format
       if (opts.maxTokens) body.max_tokens = opts.maxTokens;
       const r = await fetch(`${baseUrl}/chat/completions`, { method: "POST", headers, body: JSON.stringify(body), signal: AbortSignal.timeout(LLM_TIMEOUT_MS) });
-      if (!r.ok) throw new Error(`${name} chat failed (${r.status}): ${errorReason(await r.text())}`);
+      if (!r.ok) throw new Error(`${name} chat failed (${r.status}): ${errorReason(await r.text(), r.statusText)}`);
       const j = (await r.json()) as { choices?: { message?: { content?: string }; finish_reason?: string }[] };
       const c = j.choices?.[0];
       if (c?.finish_reason === "length") throw new TruncationError();

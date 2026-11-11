@@ -73,6 +73,12 @@ describe("openai-compatible provider", () => {
     responder = () => new Response("<html>bad gateway</html>", { status: 502 });
     const raw = await p.complete("m", "hi").then(() => null, (e: Error) => e);
     expect(raw?.message).toBe("openai-compat chat failed (502): <html>bad gateway</html>"); // a non-JSON body is kept as text
+    responder = () => new Response(JSON.stringify({ error: "model 'x' not found" }), { status: 404 });
+    const str = await p.complete("x", "hi").then(() => null, (e: Error) => e);
+    expect(str?.message).toBe("openai-compat chat failed (404): model 'x' not found"); // a string error, as LM Studio sends
+    responder = () => new Response("", { status: 500, statusText: "Internal Server Error" });
+    const empty = await p.complete("m", "hi").then(() => null, (e: Error) => e);
+    expect(empty?.message).toBe("openai-compat chat failed (500): Internal Server Error"); // an empty body reads as the status text
   });
 });
 
