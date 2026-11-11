@@ -2,7 +2,10 @@ import { describe, expect, test } from "bun:test";
 import { createRouter } from "../src/providers/router.ts";
 import { parseModelsToml, serializeModelsToml, detectModels } from "../src/providers/models.ts";
 import { parseJsonObject, TruncationError, type Provider } from "../src/providers/types.ts";
-import { parseCopilotOutput, copilotProvider } from "../src/providers/copilot.ts";
+import { parseCopilotOutput, copilotProvider, type Spawn } from "../src/providers/copilot.ts";
+import { listPresets, readPreset } from "../src/core/presets.ts";
+import { TASK_KINDS } from "../src/providers/types.ts";
+import type { ModelsConfig } from "../src/providers/models.ts";
 
 const toml = `
 preference = ["copilot", "local"]
@@ -68,7 +71,8 @@ describe("models.toml", () => {
     expect(cfg.models.map((m) => `${m.provider}:${m.id}:${m.quality}`)).toEqual(["local:gemma4:26b:high", "local:qwen3:14b:high", "local:llama3:8b:standard", "openai-compat:Qwen3-30B:high", "copilot:gpt-4.1:high", "openai-compat:gpt-4o:high"]);
     expect(cfg.models[5]).toMatchObject({ baseUrl: "https://api.openai.com/v1", apiKeyEnv: "OPENAI_API_KEY" });
     expect(cfg.models[0].bestFor).toEqual(["cleanup"]);
-    expect(cfg.models[4].reasoningEffortByTask).toEqual({ "edge-judge": "xhigh" });
+    expect(cfg.models[4].reasoningEffort).toBeUndefined();
+    expect(cfg.models[4].reasoningEffortByTask).toBeUndefined();
     const none = await detectModels({ ollama: async () => [], omlxModels: async () => [], copilotOnPath: () => false, openaiKey: () => false });
     expect(none.models).toEqual([]);
   });
@@ -122,4 +126,34 @@ describe("provider helpers", () => {
   test("TruncationError is an Error", () => {
     expect(new TruncationError()).toBeInstanceOf(Error);
   });
+});
+
+describe("copilot model steps on live detection and the shipped presets (jv-zdv)", () => {
+  /** Copilot CLI 1.0.105: gpt-4.1 refuses any --reasoning-effort, as the real CLI does. */
+  const copilot1105: Spawn = async (args) => {
+    const model = args[args.indexOf("--model") + 1];
+    if (model === "gpt-4.1" && args.includes("--reasoning-effort")) return { code: 1, stdout: "", stderr: "Error: Model 'gpt-4.1' does not support reasoning effort configuration" };
+    return { code: 0, stdout: '{"type":"assistant.message","data":{"content":"{\\"ok\\":true}"}}\n', stderr: "" };
+  };
+  /** Only the Copilot CLI is present: every other provider is unavailable. */
+  const onlyCopilot = (entry: { provider: string }): Provider =>
+    entry.provider === "copilot" ? copilotProvider(copilot1105, () => "/usr/bin/copilot") : { name: entry.provider, available: async () => false, complete: async () => { throw new Error("unavailable"); } };
+  const completesEveryCopilotStep = async (config: ModelsConfig) => {
+    const r = await createRouter({ config, factory: onlyCopilot });
+    for (const kind of TASK_KINDS) {
+      const m = r.resolve({ kind, minQuality: "cheap" });
+      if (!m || m.provider !== "copilot") continue;
+      expect(`${kind}: ${await m.complete("p", { json: true }).catch((e: Error) => e.message)}`).toBe(`${kind}: {"ok":true}`);
+    }
+  };
+  test("no models.toml: live detection's Copilot entry answers every task kind", async () => {
+    const detected = await detectModels({ ollama: async () => [], omlxModels: async () => [], copilotOnPath: () => true, openaiKey: () => false });
+    expect(detected.models.map((m) => `${m.provider}:${m.id}`)).toEqual(["copilot:gpt-4.1"]);
+    await completesEveryCopilotStep({ ...detected, source: "detected" });
+  });
+  for (const name of listPresets()) {
+    test(`preset ${name}: its Copilot entry answers the steps routed to it`, async () => {
+      await completesEveryCopilotStep({ ...parseModelsToml(readPreset(name)), source: "file" });
+    });
+  }
 });

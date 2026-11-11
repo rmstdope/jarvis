@@ -37,7 +37,7 @@ describe("presets", () => {
     expect(names).toEqual(["copilot-only", "cpu-only-minimal", "mac-apple-silicon-16gb", "mac-apple-silicon-32gb", "windows-gpu-12gb", "windows-low-vram"]);
     for (const n of names) expect(() => parseModelsToml(readPreset(n))).not.toThrow();
     expect(parseModelsToml(readPreset("cpu-only-minimal")).models).toEqual([]);
-    expect(parseModelsToml(readPreset("copilot-only")).models[0]).toMatchObject({ provider: "copilot", id: "gpt-4.1", reasoningEffortByTask: { "edge-judge": "xhigh" } });
+    expect(parseModelsToml(readPreset("copilot-only")).models[0]).toMatchObject({ provider: "copilot", id: "gpt-4.1" });
     expect(parseModelsToml(readPreset("mac-apple-silicon-32gb")).models.map((m) => m.id)).toEqual(["gemma4:26b", "qwen3:35b", "gpt-4.1"]);
     expect(parseModelsToml(readPreset("windows-low-vram")).preference).toEqual(["copilot", "openai-compat"]);
     expect(parseModelsToml(readPreset("windows-low-vram")).models[1]).toMatchObject({ provider: "openai-compat", apiKeyEnv: "OPENAI_API_KEY" });
