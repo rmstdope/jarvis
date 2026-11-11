@@ -3,7 +3,7 @@ import { existsSync, rmSync, writeFileSync } from "node:fs";
 import { resolveAuthor } from "./config.ts";
 import { RELATIONS, type Relation } from "./constants.ts";
 import { openDb } from "./db.ts";
-import { docPath } from "./docs.ts";
+import { docPath, readDocFile } from "./docs.ts";
 import { appendSidecar, readSidecar, sidecarPath } from "./sidecar.ts";
 import { nowIso } from "./util.ts";
 
@@ -13,7 +13,24 @@ export interface LinkResult {
   src: string;
   dst: string;
   relation: Relation;
-  status: "linked" | "exists";
+  /** `member`: one side is an initiative and the other is already its task; nothing was written. */
+  status: "linked" | "exists" | "member";
+  /** For `member`: the task's title and the initiative's title. */
+  title?: string;
+  initiative?: string;
+  /** For `member`: the task's id. */
+  task?: string;
+}
+
+/** When `a` and `b` are an initiative and one of its own tasks (either order), the two titles. */
+function ownTask(dataDir: string, a: string, b: string): { title: string; initiative: string; task: string } | null {
+  const docs = [readDocFile(dataDir, a), readDocFile(dataDir, b)];
+  for (const [ini, task] of [[docs[0], docs[1]], [docs[1], docs[0]]]) {
+    if (ini?.frontmatter.source === "initiative" && task?.frontmatter.source === "task" && task.frontmatter.task?.initiative === ini.frontmatter.id) {
+      return { title: task.frontmatter.title, initiative: ini.frontmatter.title, task: task.frontmatter.id };
+    }
+  }
+  return null;
 }
 
 /** True when the id exists as a doc row, an entity row, or a doc file. */
@@ -36,6 +53,11 @@ export function link(dataDir: string, src: string, dsts: string[], opts: { relat
     for (const dst of dsts) {
       if (dst === src) throw new Error("cannot link an item to itself");
       if (!targetExists(db, dataDir, dst)) throw new Error(`target ${dst} not found`);
+      const own = ownTask(dataDir, src, dst);
+      if (own) {
+        out.push({ src, dst, relation, status: "member", ...own });
+        continue;
+      }
       if (existing.some((l) => l.kind === "edge" && l.dst === dst && l.relation === relation && l.created_by === "manual")) {
         out.push({ src, dst, relation, status: "exists" });
         continue;

@@ -278,11 +278,11 @@ export class ChatService {
     }
   }
   /** Run one tool call of the agent: make the change, record it, tell the turn in flight. */
-  async act(id: string, tool: string, args: Record<string, unknown>): Promise<{ change: Change; text: string }> {
+  async act(id: string, tool: string, args: Record<string, unknown>): Promise<{ change: Change | null; text: string }> {
     const s = this.sessions.get(id);
     if (!s) throw new ChatError("session not found", 404);
     const r = await runTool(new ChangeLog(this.dataDir, s.conversationId), s.turn, tool, args, { dataDir: this.dataDir, attachments: s.attachments });
-    s.onChange?.(r.change);
+    if (r.change) s.onChange?.(r.change);
     return r;
   }
   /** The change log of a conversation (it outlives chat sessions). */

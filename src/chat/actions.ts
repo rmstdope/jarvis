@@ -39,7 +39,7 @@ export interface ActionContext {
   /** Files attached to this message: name → absolute path. */
   attachments: Record<string, string>;
 }
-interface Done { kind: ChangeKind; items: ChangeItem[]; ops: Op[]; detail?: Change["detail"]; draft?: Change["draft"]; undoable?: boolean }
+interface Done { kind: ChangeKind; items: ChangeItem[]; ops: Op[]; detail?: Change["detail"]; draft?: Change["draft"]; undoable?: boolean; noop?: string }
 const str = (a: Record<string, unknown>, k: string): string | undefined => (typeof a[k] === "string" && (a[k] as string).trim() ? (a[k] as string).trim() : undefined);
 const need = (a: Record<string, unknown>, k: string): string => str(a, k) ?? (() => { throw new Error(`${k} is required`); })();
 const ids = (v: unknown): string[] => (Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : []);
@@ -140,6 +140,7 @@ async function perform(tool: string, a: Record<string, unknown>, ctx: ActionCont
       const src = need(a, "src"), dst = need(a, "dst");
       const relation = (str(a, "relation") ?? "related") as Relation;
       const r = link(d, src, [dst], { relation, author })[0];
+      if (r.status === "member") return { kind: "link", items: [], ops: [], noop: `${r.title} is already a task in ${r.initiative}; nothing was linked. Tell the user so.` };
       if (r.status === "exists") throw new Error("they are already linked");
       return { kind: "link", items: [item(d, src), item(d, dst)], detail: { relation }, ops: [{ op: "edge", src, dst, relation }] };
     }
@@ -174,10 +175,11 @@ async function perform(tool: string, a: Record<string, unknown>, ctx: ActionCont
 }
 
 /** Run one tool call and record it; a failure is recorded as a failed row, never thrown. Returns the row and the text the model reads. */
-export async function runTool(log: ChangeLog, turn: string, tool: string, args: Record<string, unknown>, ctx: ActionContext): Promise<{ change: Change; text: string }> {
+export async function runTool(log: ChangeLog, turn: string, tool: string, args: Record<string, unknown>, ctx: ActionContext): Promise<{ change: Change | null; text: string }> {
   if (!(tool in VERBS)) throw new Error(`unknown tool ${tool}`);
   try {
     const done = await perform(tool, args, ctx);
+    if (done.noop) return { change: null, text: done.noop };
     const change = log.record({ turn, kind: done.kind, ok: true, items: done.items, detail: done.detail, draft: done.draft, undoable: done.undoable }, done.ops);
     return { change, text: `Done: ${done.items.map((i) => `${i.title} [${i.id}]`).join(" → ")}` };
   } catch (e) {
