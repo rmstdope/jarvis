@@ -32,7 +32,12 @@ export async function viewCapture(ctx: Ctx): Page {
     }
   }
   const form = h("form", { class: "jv-write", onSubmit: (e: Event) => { e.preventDefault(); void submit(); }, onKeydown: (e: KeyboardEvent) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); void submit(); } } },
-    title, h("hr", {}), body, problem, h("div", { class: "jv-wfoot" }, h("span", { class: "jv-hint" }, "⌘/Ctrl+Enter to capture"), btn));
+    title, h("hr", {}), body, problem, h("div", { class: "jv-wfoot" }, h("span", { class: "jv-whint" }, "⌘/Ctrl+Enter to capture"), btn));
+  const anywhere = (e: KeyboardEvent): void => {
+    if (!form.isConnected) { document.removeEventListener("keydown", anywhere); return; }
+    if (e.key === "Enter" && (e.metaKey || e.ctrlKey) && !form.contains(e.target as Node)) { e.preventDefault(); void submit(); }
+  };
+  document.addEventListener("keydown", anywhere);
   paint();
   ctx.main.append(heading("Capture"), form);
   return () => title.focus();

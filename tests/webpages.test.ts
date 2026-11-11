@@ -112,6 +112,32 @@ describe("Browse & search", () => {
     const store = JSON.parse(localStorage.getItem("jv.browse")!);
     expect(store.q).toBe("kept");
   });
+  test("kind, a filter and the paging offset come back after leaving and returning", async () => {
+    env = await boot("#/browse", { setup: (e) => e.routes.set("GET /api/browse", () => ({ json: { ...emptyBrowse, added: [sum("A", "A")], pagination: { added: pg(20, 45, true), updated: pg(0, 0) }, facets: { sources: [{ value: "note", count: 1 }], authors: [], tags: [] } } })) });
+    localStorage.setItem("jv.browse", JSON.stringify({ mode: "semantic", source: "note", addedOffset: 20 }));
+    await go(env, "#/capture");
+    await go(env, "#/browse");
+    expect((q(".jv-kind") as HTMLSelectElement).value).toBe("semantic");
+    expect((qa(".jv-fp")[0] as HTMLSelectElement).value).toBe("note");
+    expect(qa(".jv-fp")[0].classList.contains("on")).toBe(true);
+    expect(env.calls.at(-1)!.path).toContain("addedOffset=20");
+  });
+  test("a stored page past the end goes back to the first page; a stored filter the library lost still shows", async () => {
+    env = await boot("#/browse", { setup: (e) => {
+      localStorage.setItem("jv.browse", JSON.stringify({ addedOffset: 40, tag: "gone" }));
+      e.routes.set("GET /api/browse", (_b, r) => { const off = Number(new URL("http://x" + r.path).searchParams.get("addedOffset") ?? 0); return { json: { ...emptyBrowse, added: off >= 30 ? [] : [sum("A", "First")], pagination: { added: pg(off, 30), updated: pg(0, 0) } } }; });
+    } });
+    expect(text(".jv-ct")).toBe("First");
+    expect(text(".jv-empty")).not.toContain("Nothing captured yet.");
+    expect(qa(".jv-fp")[2].classList.contains("on")).toBe(true);
+    expect((qa(".jv-fp")[2] as HTMLSelectElement).value).toBe("gone");
+  });
+  test("page styles never reuse a class the chat or the sidebar already own", async () => {
+    const { readFileSync, readdirSync } = await import("node:fs");
+    const cls = (src: string) => new Set([...src.matchAll(/jv-[a-z0-9-]+/g)].map((m) => m[0]));
+    const owned = new Set([...cls(readFileSync("web/src/chat.ts", "utf8")), ...cls(readFileSync("web/src/shell.ts", "utf8")), ...cls(readFileSync("web/src/tasks.ts", "utf8"))]);
+    for (const f of readdirSync("web/src/pages")) for (const c of cls(readFileSync(`web/src/pages/${f}`, "utf8"))) expect([f, owned.has(c)]).toEqual([f, false]);
+  });
 });
 
 describe("an item", () => {
@@ -147,7 +173,7 @@ describe("Capture", () => {
     expect(document.activeElement).toBe(title);
     expect(title.placeholder).toBe("Title");
     expect(body.placeholder).toBe("Paste or write anything…");
-    expect(text(".jv-write .jv-hint")).toBe("⌘/Ctrl+Enter to capture");
+    expect(text(".jv-write .jv-whint")).toBe("⌘/Ctrl+Enter to capture");
     const btn = button("Capture") as HTMLButtonElement;
     expect(btn.disabled).toBe(true);
     type(title, "T");
@@ -166,6 +192,13 @@ describe("Capture", () => {
     expect(text(".toast")).toBe("Captured: My note");
     expect(text(".jv-title")).toBe("On-call rollout");
     expect(localStorage.getItem("jv.capture")).toBeNull();
+  });
+  test("⌘/Ctrl+Enter captures from outside the form too", async () => {
+    env = await boot("#/capture", { setup: (e) => { e.routes.set("POST /api/capture", () => ({ json: { id: "I1", status: "created" } })); e.routes.set("GET /api/item/I1", () => ({ json: { item: ITEM, edges: [] } })); } });
+    type(draft()[0], "T"); type(draft()[1], "B");
+    document.body.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", ctrlKey: true, bubbles: true }));
+    await env.tick(80);
+    expect(env.calls.some((c) => c.path === "/api/capture")).toBe(true);
   });
   test("a failure keeps the text and says so; a half-written draft survives leaving the page", async () => {
     env = await boot("#/capture", { setup: (e) => e.routes.set("POST /api/capture", () => ({ status: 500, json: { error: "repo locked" } })) });

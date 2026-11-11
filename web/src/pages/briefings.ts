@@ -21,7 +21,7 @@ export async function viewBriefings(ctx: Ctx): Page {
   const filter = h("input", { type: "search", placeholder: "Filter…", "aria-label": "Filter", value: list.filter, onInput: () => { list.filter = filter.value; setJson(KEY_BRIEF_LIST, list); draw(); } });
   const sort = h("select", { class: "jv-fp", "aria-label": "Sort", onChange: () => { list.sort = sort.value as Sort; setJson(KEY_BRIEF_LIST, list); draw(); } }, ...SORTS.map(([v, l]) => h("option", { value: v }, l)));
   sort.value = list.sort;
-  ctx.main.append(heading("Briefings"), h("div", { class: "jv-bar" }, filter, sort), box);
+  ctx.main.append(heading("Briefings"), h("div", { class: "jv-filterbar" }, filter, sort), box);
   function draw(): void {
     clear(box);
     const q = list.filter.trim().toLowerCase();
@@ -55,12 +55,14 @@ export async function viewBriefing(ctx: Ctx, id: string): Page {
   const links = toc.map((t) => h("a", { href: `#/briefing/${id}#${t.slug}`, class: t.level >= 3 ? "l3" : "", onClick: (e: Event) => { e.preventDefault(); activate(t.slug); article.querySelector(`[id="${t.slug}"]`)?.scrollIntoView?.({ behavior: "smooth" }); } }, t.text));
   function activate(slug: string): void { toc.forEach((t, i) => links[i].classList.toggle("on", t.slug === slug)); }
   if (toc.length) activate(toc[0].slug);
-  ctx.scroller.addEventListener("scroll", () => {
+  const onScroll = (): void => {
+    if (!wrap.isConnected) { ctx.scroller.removeEventListener("scroll", onScroll); return; }
     const top = ctx.scroller.getBoundingClientRect().top + 90;
     let cur = toc[0]?.slug;
     for (const t of toc) { const el = article.querySelector(`[id="${t.slug}"]`); if (el && el.getBoundingClientRect().top <= top) cur = t.slug; }
     if (cur) activate(cur);
-  });
+  };
+  ctx.scroller.addEventListener("scroll", onScroll);
 
   const fold = (c: Col) => h("button", { class: "jv-cfold", "data-col": c, onClick: () => (narrow ? close() : setHidden(c, true)) });
   const strip = (c: Col) => h("button", { class: "jv-strip", "data-col": c, onClick: () => (narrow ? openCol(c) : setHidden(c, false)) });
@@ -80,19 +82,19 @@ export async function viewBriefing(ctx: Ctx, id: string): Page {
         e.preventDefault();
         if (!ta.value.trim()) return;
         try { await api.addComment(id, ta.value.trim()); drawComments(await api.comments(id)); toast("Comment added"); }
-        catch (err) { problem.replaceChildren(h("div", { class: "jv-err" }, (err as Error).message)); }
+        catch (err) { problem.replaceChildren(h("div", { class: "jv-cerr" }, (err as Error).message)); }
       } }, ta, problem, h("button", { class: "primary" }, "Post")));
     paint();
   };
-  const colEl = (c: Col, body: Node) => h("aside", { class: `jv-col jv-col-${c}` }, h("div", { class: "jv-colh" }, h("h3", { class: "jv-sh" }, c === "contents" ? "Contents" : `Comments · ${count}`), folds[c]), body);
+  const colEl = (c: Col, body: Node) => h("aside", { class: `jv-bcol jv-col-${c}` }, h("div", { class: "jv-colh" }, h("h3", { class: "jv-sh" }, c === "contents" ? "Contents" : `Comments · ${count}`), folds[c]), body);
   const contentsCol = colEl("contents", h("nav", { class: "jv-toc" }, ...links));
   const commentsCol = colEl("comments", rail);
   const colOf = { contents: contentsCol, comments: commentsCol };
 
   const shown = (c: Col): boolean => (narrow ? open === c : !hidden[c]);
   function paint(): void {
-    wrap.classList.toggle("jv-narrow", narrow);
-    wrap.classList.toggle("jv-phone", phone);
+    wrap.classList.toggle("jv-bnarrow", narrow);
+    wrap.classList.toggle("jv-bphone", phone);
     for (const c of cols) {
       const on = shown(c);
       colOf[c].hidden = !on;
@@ -102,7 +104,7 @@ export async function viewBriefing(ctx: Ctx, id: string): Page {
       const label = COL[c];
       const f = folds[c];
       f.textContent = narrow ? "✕" : label.fold;
-      f.title = narrow ? "Close" : label.hide;
+      f.title = label.hide;
       f.setAttribute("aria-label", f.title);
       strips[c].title = label.show;
       strips[c].setAttribute("aria-label", label.show);
@@ -121,7 +123,7 @@ export async function viewBriefing(ctx: Ctx, id: string): Page {
   const titleRow = h("div", { class: "jv-titlerow" }, h("h1", { class: "jv-title" }, b.title), b.status ? statusPill(b.status, tone(b.status)) : null,
     toc.length ? phoneBtns.contents : null, phoneBtns.comments, h("button", { onClick: () => ctx.chat.askAbout({ type: "briefing", ids: [id] }, b.title) }, "Ask about this"));
   const wrap = h("div", { class: "jv-bwrap", onKeydown: (e: KeyboardEvent) => { if (e.key === "Escape" && open) { e.preventDefault(); close(); } } },
-    trail("Briefings", "#/briefings", b.title), titleRow, h("div", { class: "jv-meta" }, entryLine(b.kind, b.author, `updated ${fmtDate(b.updatedAt)}`)), b.subtitle ? h("div", { class: "jv-sub muted" }, b.subtitle) : null, grid);
+    trail("Briefings", "#/briefings", b.title), titleRow, h("div", { class: "jv-meta" }, entryLine(b.kind, b.author, `updated ${fmtDate(b.updatedAt)}`)), b.subtitle ? h("div", { class: "jv-bsub muted" }, b.subtitle) : null, grid);
   drawComments(comments);
   const mqT = matchMedia(`(max-width: ${TABLET_MAX}px)`), mqP = matchMedia(`(max-width: ${PHONE_MAX}px)`);
   let seen = false;

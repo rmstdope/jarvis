@@ -25,7 +25,7 @@ export async function viewPresentation(ctx: Ctx, id: string): Page {
     ? h("a", { class: "jv-btn primary jv-wide", href: p.viewer.launchUrl, target: inApp() ? "_self" : "_blank", rel: "noopener" }, "▶ Present")
     : h("div", { class: "muted small" }, NOT_READY[p.viewer.status] ?? "The deck viewer isn't running.");
   const code = h("pre", { class: "jv-code" }, h("code", {}, p.body));
-  const fold = h("button", { class: "jv-fold", "aria-expanded": "false", onClick: () => { const open = fold.getAttribute("aria-expanded") !== "true"; fold.setAttribute("aria-expanded", String(open)); fold.textContent = open ? "▾ Hide source" : "▸ Show source"; code.hidden = !open; } }, "▸ Show source");
+  const fold = h("button", { class: "jv-srcfold", "aria-expanded": "false", onClick: () => { const open = fold.getAttribute("aria-expanded") !== "true"; fold.setAttribute("aria-expanded", String(open)); fold.textContent = open ? "▾ Hide source" : "▸ Show source"; code.hidden = !open; } }, "▸ Show source");
   code.hidden = true;
   ctx.main.append(trail("Presentations", "#/presentations", p.title), h("div", { class: "jv-read" },
     h("div", { class: "jv-view" }, h("h1", { class: "jv-title" }, p.title), h("div", { class: "jv-meta" }, `${p.slug} · added ${fmtDate(p.created_at)} by ${p.author}`),

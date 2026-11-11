@@ -1,5 +1,5 @@
 /** Browse & search: the search box, the four filters, and either the two "Recently" lists or the results. */
-import { api, type BrowseResult, type ItemSummary, type SearchHit } from "../api.ts";
+import { api, type BrowseResult, type ItemSummary, type Page as PageInfo, type SearchHit } from "../api.ts";
 import { clear, entryLine, fmtDate, h, highlightSnippet, itemHref, sinceIso } from "../ui.ts";
 import { getJson, KEY_BROWSE, setJson } from "../prefs.ts";
 import { type Ctx, emptyBox, entryCard, errorBox, heading, type Page, skeleton } from "./common.ts";
@@ -37,6 +37,7 @@ export async function viewBrowse(ctx: Ctx): Page {
   ctx.main.append(heading("Browse & search"), bar, filters, lists);
 
   const pill = (label: string, key: Key, opts: { value: string; label: string }[]) => {
+    if (state[key] && !opts.some((o) => o.value === state[key])) opts = [...opts, { value: state[key], label: state[key] }]; // a stored filter keeps showing even when the library no longer has it
     const s = h("select", { class: "jv-fp", "aria-label": label, onChange: () => { state[key] = s.value; state.addedOffset = state.updatedOffset = 0; save(); void load(); } }, h("option", { value: "" }, label), ...opts.map((o) => h("option", { value: o.value }, o.label)));
     s.value = state[key];
     s.classList.toggle("on", !!s.value);
@@ -63,12 +64,20 @@ export async function viewBrowse(ctx: Ctx): Page {
       let b: BrowseResult | null = null;
       if (state.q) {
         const hits = await api.search(state.q, state.mode, 20);
-        if (!facets) facets = (await api.browse({ limit: 1 })).facets;
+        if (!facets) facets = await api.browse({ limit: 1 }).then((r) => r.facets, () => ({ sources: [], authors: [], tags: [] }));
         if (mine !== seq) return;
         body.append(...(hits.length ? [h("h2", { class: "jv-sh" }, hits.length === 1 ? "1 result" : `${hits.length} results`), ...hits.map(hitCard)] : [emptyBox(`No matches for “${state.q}”.`, "Try fewer or different words, or switch the search to Exact words.")]));
       } else {
         b = await api.browse({ limit: 20, addedOffset: state.addedOffset, updatedOffset: state.updatedOffset, source: state.source, author: state.author, tag: state.tag, since: state.days ? sinceIso(Number(state.days)) : undefined });
         if (mine !== seq) return;
+        // A stored page past the end (the library shrank) goes back to the first page instead of showing a false empty state.
+        const past = (key: "addedOffset" | "updatedOffset", p: PageInfo) => state[key] > 0 && p.total > 0 && p.total <= state[key];
+        if (past("addedOffset", b.pagination.added) || past("updatedOffset", b.pagination.updated)) {
+          if (past("addedOffset", b.pagination.added)) state.addedOffset = 0;
+          if (past("updatedOffset", b.pagination.updated)) state.updatedOffset = 0;
+          save();
+          return load();
+        }
         facets = b.facets;
       }
       paintFilters(facets!);

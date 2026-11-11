@@ -24,16 +24,20 @@ describe("Briefings list", () => {
   ];
   test("cards with status pills, Filter… with the cursor in it, sort words, and the no-match message", async () => {
     env = await boot("#/briefings", { setup: (e) => e.routes.set("GET /api/briefings", () => ({ json: list })) });
-    expect(document.activeElement).toBe(q(".jv-bar input"));
-    expect(q(".jv-bar input").getAttribute("placeholder")).toBe("Filter…");
-    const sort = q(".jv-bar select") as HTMLSelectElement;
+    expect(document.activeElement).toBe(q(".jv-filterbar input"));
+    expect(q(".jv-filterbar input").getAttribute("placeholder")).toBe("Filter…");
+    const sort = q(".jv-filterbar select") as HTMLSelectElement;
     expect([...sort.options].map((o) => o.textContent)).toEqual(["Sort: Last updated", "Sort: Newest", "Sort: Title"]);
     expect(qa(".jv-card .jv-ct").map((a) => a.textContent)).toEqual(["Alpha", "Q3 plan"]);
     expect(qa(".jv-card")[1].querySelector(".jv-m")!.textContent).toBe("briefing · mia · updated 2026-01-05 draft");
     expect(qa(".jv-card")[1].querySelector(".jv-s")!.textContent).toBe("What we do");
-    type(q(".jv-bar input"), "zzz");
+    type(q(".jv-filterbar input"), "zzz");
     expect(text(".jv-empty")).toContain("No briefings match “zzz”.");
     expect(JSON.parse(localStorage.getItem("jv.briefList")!).filter).toBe("zzz");
+    await go(env, "#/browse");
+    await go(env, "#/briefings");
+    expect((q(".jv-filterbar input") as HTMLInputElement).value).toBe("zzz");
+    expect(text(".jv-empty")).toContain("No briefings match “zzz”.");
   });
   test("none yet names the command", async () => {
     env = await boot("#/briefings");
@@ -95,6 +99,7 @@ describe("a briefing", () => {
     expect(col("comments").hidden).toBe(false);
     expect(col("comments").classList.contains("jv-over")).toBe(true);
     expect(foldBtn("comments").textContent).toBe("✕");
+    expect(foldBtn("comments").title).toBe("Hide comments");
     q(".jv-bwrap").dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
     expect(col("comments").hidden).toBe(true);
     expect(document.activeElement).toBe(strip("comments"));
@@ -126,7 +131,7 @@ describe("a briefing", () => {
     ta.value = "Hello";
     q(".jv-col-comments form").dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
     await env.tick(60);
-    expect(text(".jv-col-comments .jv-err")).toBe("locked");
+    expect(text(".jv-col-comments .jv-cerr")).toBe("locked");
     expect((q(".jv-col-comments textarea") as HTMLTextAreaElement).value).toBe("Hello");
     fail = false;
     q(".jv-col-comments form").dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
