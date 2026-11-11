@@ -3,7 +3,7 @@ import type { WebChange } from "./changes.ts";
 export interface ItemSummary { id: string; source: string; title: string; author: string; created_at: string; updated_at: string | null; updated_by: string | null; source_url: string | null; starred: boolean; summary: string | null; tags: string[]; metadata: Record<string, unknown> | null; }
 export interface Item extends ItemSummary { body: string; proc_version: number; file_path: string | null; }
 export interface ItemEdge { otherId: string; otherTitle: string | null; relation: string; createdBy: string; weight: number | null; direction: "out" | "in"; }
-export interface SearchHit { docId: string; title: string; snippet: string; score: number; source: string; }
+export interface SearchHit { docId: string; title: string; snippet: string; score: number; source: string; author?: string; createdAt?: string; }
 export interface Facet { value: string; count: number; }
 export interface Page { offset: number; limit: number; total: number; hasMore: boolean; }
 export interface BrowseResult { added: ItemSummary[]; updated: ItemSummary[]; pagination: { added: Page; updated: Page }; facets: { sources: Facet[]; authors: Facet[]; tags: Facet[] }; }
