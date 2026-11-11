@@ -132,6 +132,15 @@ describe("Browse & search", () => {
       expect(text(".jv-empty")).toContain("switch the search to Best match.");
       expect(button("Clear filters")).toBeFalsy();
     });
+    test("a contributor or tag filter alone counts as filters, and Clear filters blanks them", async () => {
+      env = await boot("#/capture", { setup: empty });
+      stored({ author: "mia", tag: "ops" });
+      await go(env, "#/browse");
+      expect(text(".jv-empty")).toContain("with these filters.");
+      button("Clear filters")!.click();
+      await env.tick(60);
+      expect(JSON.parse(localStorage.getItem("jv.browse")!)).toMatchObject({ author: "", tag: "" });
+    });
     test("with no filters on Best match it still suggests Exact words", async () => {
       env = await boot("#/capture", { setup: empty });
       stored({});
