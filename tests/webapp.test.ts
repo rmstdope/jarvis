@@ -6,8 +6,9 @@ let env: WebEnv;
 const q = (sel: string) => document.querySelector(sel) as HTMLElement;
 const qa = (sel: string) => [...document.querySelectorAll(sel)] as HTMLElement[];
 const ITEM = { id: "I1", source: "note", title: "On-call rollout", author: "mia", created_at: "2026-01-01T00:00:00Z", updated_at: null, updated_by: null, source_url: null, starred: false, summary: null, tags: [], metadata: null, body: "Body text", proc_version: 1, file_path: null };
-async function boot(hash = "") {
+async function boot(hash = "", stored: Record<string, string> = {}) {
   env = installWebEnv(1280);
+  for (const [k, v] of Object.entries(stored)) localStorage.setItem(k, v);
   env.routes.set("GET /api/me", () => ({ json: { name: "Mia" } }));
   env.routes.set("GET /api/chat/status", () => ({ json: { available: true } }));
   env.routes.set("GET /api/tasks", () => ({ json: { tasks: [] } }));
@@ -159,6 +160,29 @@ describe("sync", () => {
     expect(q(".toast").textContent).toBe(`Shared with the team, but enrichment failed for 7 item(s): ${reason} Run \`jarvis doctor\` for the fix.`);
     expect(q(".jv-syncline").textContent).toBe("Synced just now · enrichment failed");
     expect(q(".jv-syncline").classList.contains("jv-err")).toBe(true);
+  });
+  test("a reload still shows that the last sync's model step failed (jv-zgk)", async () => {
+    await boot();
+    localStorage.setItem("sb.sync.noconfirm", "1");
+    env.routes.set("POST /api/sync", () => ({ json: { ...syncOk, failures: [{ step: "enrich", failed: 2, reason: "file missing", doctor: false }] } }));
+    q(".jv-sync").click();
+    await env.tick(30);
+    expect(q(".jv-syncline").textContent).toBe("Synced just now · enrichment failed");
+    const stored = Object.fromEntries(Array.from({ length: localStorage.length }, (_, i) => localStorage.key(i)!).map((k) => [k, localStorage.getItem(k)!]));
+    env.restore();
+    await boot("", stored); // the reload: a fresh page over the same browser storage
+    expect(q(".jv-syncline").textContent).toBe("Synced just now · enrichment failed");
+    expect(q(".jv-syncline").classList.contains("jv-err")).toBe(true);
+    // A later clean sync clears it, and a reload after that shows no failure.
+    env.routes.set("POST /api/sync", () => ({ json: syncOk }));
+    q(".jv-sync").click();
+    await env.tick(30);
+    expect(q(".jv-syncline").textContent).toBe("Synced just now");
+    const stored2 = Object.fromEntries(Array.from({ length: localStorage.length }, (_, i) => localStorage.key(i)!).map((k) => [k, localStorage.getItem(k)!]));
+    env.restore();
+    await boot("", stored2);
+    expect(q(".jv-syncline").textContent).toBe("Synced just now");
+    expect(q(".jv-syncline").classList.contains("jv-err")).toBe(false);
   });
   test("an unpushed sync with two failed steps says so, and points at doctor only where it has a fix (jv-m9l)", async () => {
     await boot();
