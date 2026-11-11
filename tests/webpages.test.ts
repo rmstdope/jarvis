@@ -128,6 +128,52 @@ describe("Browse & search", () => {
     expect(qa(".jv-fp")[2].classList.contains("on")).toBe(true);
     expect((qa(".jv-fp")[2] as HTMLSelectElement).value).toBe("gone");
   });
+  describe("filters that match nothing", () => {
+    const withFilter = (added: unknown[], updated: unknown[], filters: Record<string, string> = { source: "slack", author: "mia", tag: "ops", days: "7" }) => (e: WebEnv) => {
+      localStorage.setItem("jv.browse", JSON.stringify({ mode: "keyword", addedOffset: 0, updatedOffset: 0, ...filters }));
+      e.routes.set("GET /api/browse", () => ({ json: { ...emptyBrowse, added, updated, pagination: { added: pg(0, added.length), updated: pg(0, updated.length) }, facets: { sources: [{ value: "slack", count: 1 }], authors: [], tags: [] } } }));
+    };
+    test("both lists empty: one message replaces both columns, with Clear filters", async () => {
+      env = await boot("#/browse", { setup: withFilter([], []) });
+      expect(qa(".jv-sh").length).toBe(0);
+      expect(qa(".jv-empty").length).toBe(1);
+      expect(text(".jv-empty")).toContain("Nothing matches these filters.");
+      expect(text(".jv-empty")).toContain("Remove a filter to see more.");
+      expect(text(".jv-empty")).not.toContain("Nothing captured yet.");
+      expect(button("＋ Capture") === undefined).toBe(true);
+      expect((qa(".jv-fp")[0] as HTMLSelectElement).value).toBe("slack");
+    });
+    for (const f of <Record<string, string>[]>[{ source: "slack" }, { author: "mia" }, { tag: "ops" }, { days: "7" }]) {
+      test(`${Object.keys(f)[0]} alone counts as a filter`, async () => {
+        env = await boot("#/browse", { setup: withFilter([], [], f) });
+        expect(text(".jv-empty")).toContain("Nothing matches these filters.");
+      });
+    }
+    test("Clear filters resets the four filters, keeps the kind, reloads and focuses the search box", async () => {
+      env = await boot("#/browse", { setup: withFilter([], []) });
+      const before = env.calls.length;
+      button("Clear filters")!.click();
+      await env.tick(60);
+      expect(env.calls.length).toBeGreaterThan(before);
+      expect(env.calls.at(-1)!.path).not.toContain("source=");
+      expect(env.calls.at(-1)!.path).not.toContain("since=");
+      const store = JSON.parse(localStorage.getItem("jv.browse")!);
+      expect([store.source, store.author, store.tag, store.days, store.addedOffset, store.updatedOffset, store.mode]).toEqual(["", "", "", "", 0, 0, "keyword"]);
+      expect(document.activeElement).toBe(q(".jv-searchbar input"));
+      expect(qa(".jv-fp").some((s) => s.classList.contains("on"))).toBe(false);
+    });
+    test("only one list empty: the columns stay and the empty one says the filters are why, without a button", async () => {
+      env = await boot("#/browse", { setup: withFilter([sum("A", "Kept")], []) });
+      expect(qa(".jv-sh").map((e) => e.textContent)).toEqual(["Recently added", "Recently updated"]);
+      expect(text(".jv-empty")).toBe("Nothing updated matches these filters.");
+      expect(button("Clear filters") === undefined).toBe(true);
+    });
+    test("only Recently added empty: says so without a Capture button", async () => {
+      env = await boot("#/browse", { setup: withFilter([], [sum("B", "Kept")]) });
+      expect(text(".jv-empty")).toBe("Nothing added matches these filters.");
+      expect(button("＋ Capture") === undefined).toBe(true);
+    });
+  });
   test("page styles never reuse a class the chat or the sidebar already own", async () => {
     const { readFileSync, readdirSync } = await import("node:fs");
     const cls = (src: string) => new Set([...src.matchAll(/jv-[a-z0-9-]+/g)].map((m) => m[0]));

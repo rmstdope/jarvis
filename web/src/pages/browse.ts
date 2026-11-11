@@ -82,11 +82,19 @@ export async function viewBrowse(ctx: Ctx): Page {
       }
       paintFilters(facets!);
       if (b) {
+        const filtered = !!(state.source || state.author || state.tag || state.days);
         const col = (name: string, rows: ItemSummary[], empty: HTMLElement, key: "addedOffset" | "updatedOffset", p: BrowseResult["pagination"]["added"]) =>
           h("section", {}, h("h2", { class: "jv-sh" }, name), ...(rows.length ? [...rows.map(card), pager(key, p)] : [empty]));
-        body.append(h("div", { class: "jv-two" },
-          col("Recently added", b.added, emptyBox("Nothing captured yet.", "Save a note or a link and it shows up here.", h("div", {}, h("button", { class: "primary", onClick: () => { location.hash = "#/capture"; } }, "＋ Capture"))), "addedOffset", b.pagination.added),
-          col("Recently updated", b.updated, emptyBox("Nothing updated yet."), "updatedOffset", b.pagination.updated)));
+        if (filtered && !b.added.length && !b.updated.length) {
+          // Filters are why nothing shows: one message with a way out, not the empty-library one.
+          const reset = () => { state.source = state.author = state.tag = state.days = ""; state.addedOffset = state.updatedOffset = 0; save(); void load(); input.focus(); };
+          body.append(emptyBox("Nothing matches these filters.", "Remove a filter to see more.", h("div", {}, h("button", { class: "primary", onClick: reset }, "Clear filters"))));
+        } else {
+          const capture = h("div", {}, h("button", { class: "primary", onClick: () => { location.hash = "#/capture"; } }, "＋ Capture"));
+          body.append(h("div", { class: "jv-two" },
+            col("Recently added", b.added, filtered ? emptyBox("Nothing added matches these filters.") : emptyBox("Nothing captured yet.", "Save a note or a link and it shows up here.", capture), "addedOffset", b.pagination.added),
+            col("Recently updated", b.updated, emptyBox(filtered ? "Nothing updated matches these filters." : "Nothing updated yet."), "updatedOffset", b.pagination.updated)));
+        }
       }
     } catch (e) {
       if (mine !== seq) return;
