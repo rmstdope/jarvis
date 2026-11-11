@@ -185,3 +185,13 @@ describe("chat service", () => {
     expect((await call("POST", `/api/chat/sessions/${s.sessionId}/messages`, { message: "x" })).status).toBe(404);
   });
 });
+
+describe("chat status route", () => {
+  const status = async (chatDeps?: { spawn?: unknown; available?: () => boolean }) =>
+    (await (await handle(new Request("http://127.0.0.1:7281/api/chat/status"), { dataDir: t.dir, chatDeps } as never)).json()) as { available: boolean };
+  test("available with an injected agent or a probe saying yes; unavailable when the probe says no", async () => {
+    expect(await status({ spawn })).toEqual({ available: true });
+    expect(await status({ available: () => true })).toEqual({ available: true });
+    expect(await status({ available: () => false })).toEqual({ available: false });
+  });
+});

@@ -27,6 +27,12 @@ const wrap = async (fn: () => Promise<Response>): Promise<Response> => {
   }
 };
 
+/** Whether an agent can be started: an injected one (tests), a probe, or the `copilot` CLI on PATH. */
+route("GET", "/api/chat/status", (_r, _u, _p, ctx) => {
+  const deps = (ctx as ServerContext & { chatDeps?: ConstructorParameters<typeof ChatService>[1] & { available?: () => boolean } }).chatDeps;
+  const available = deps?.available ? deps.available() : deps?.spawn ? true : Bun.which("copilot") !== null;
+  return json({ available });
+});
 route("POST", "/api/chat/sessions", (req, _u, _p, ctx) => wrap(async () => {
   const b = await body<{ scope?: ChatScope }>(req);
   if (!b.scope) return error("scope is required");
