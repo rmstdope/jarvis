@@ -85,10 +85,10 @@ export function rebuildChunks(db: Database, docId: string, body: string): { inse
   const wantedIds = new Set(wanted.map((c) => c.id));
   const existing = db.query("SELECT id FROM chunks WHERE doc_id = ?").all(docId) as { id: string }[];
   const existingIds = new Set(existing.map((e) => e.id));
-  const delChunk = db.prepare("DELETE FROM chunks WHERE id = ?");
-  const delVec = db.prepare("DELETE FROM chunks_vec WHERE chunk_id = ?");
-  const ins = db.prepare("INSERT INTO chunks (id, doc_id, seq, text, embedded) VALUES (?, ?, ?, ?, 0)");
-  const upd = db.prepare("UPDATE chunks SET seq = ? WHERE id = ?");
+  const delChunk = db.query("DELETE FROM chunks WHERE id = ?");
+  const delVec = db.query("DELETE FROM chunks_vec WHERE chunk_id = ?");
+  const ins = db.query("INSERT INTO chunks (id, doc_id, seq, text, embedded) VALUES (?, ?, ?, ?, 0)");
+  const upd = db.query("UPDATE chunks SET seq = ? WHERE id = ?");
   let inserted = 0;
   let deleted = 0;
   db.transaction(() => {

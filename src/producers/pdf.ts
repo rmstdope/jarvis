@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { basename, resolve } from "node:path";
-import { sha256 } from "../core/util.ts";
+import { fileSourceUrl, sha256 } from "../core/util.ts";
 import type { CapturePayload } from "../core/ingest.ts";
 
 export class PdfError extends Error {}
@@ -37,7 +37,7 @@ export async function pdfToPayload(path: string, opts: { title?: string; author?
     title,
     body: text,
     author: opts.author,
-    source_url: `file:${abs}`,
+    source_url: fileSourceUrl(abs),
     metadata: { format: "pdf", filename: basename(abs), mime_type: "application/pdf", sha256: sha256(bytes), extractor: "@opendocsg/pdf2md", page_count: pageCount },
   };
 }

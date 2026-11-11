@@ -1,4 +1,5 @@
-import { mkdtempSync, rmSync } from "node:fs";
+import { Database } from "bun:sqlite";
+import { existsSync, mkdtempSync, readdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { setEmbedderForTests, type Embedder } from "../src/core/embed.ts";
@@ -9,9 +10,54 @@ import { setRouterForTests } from "../src/providers/index.ts";
 // Keep every test hermetic: no live provider detection unless a test opts in.
 setRouterForTests(null);
 
+/** Every index database under `dir` (one per data dir, at any depth: clones, home, content). */
+function indexDbsUnder(dir: string): string[] {
+  const out: string[] = [];
+  const walk = (d: string) => {
+    for (const e of readdirSync(d, { withFileTypes: true })) {
+      if (!e.isDirectory() || e.name === ".git" || e.name === "node_modules") continue;
+      const p = join(d, e.name);
+      if (e.name === ".index" && existsSync(join(p, "jarvis.db"))) out.push(join(p, "jarvis.db"));
+      else walk(p);
+    }
+  };
+  if (existsSync(dir)) walk(dir);
+  return out;
+}
+
+/**
+ * The databases under `dir` that some connection still holds open. A connection left alive (an
+ * unfinalized statement keeps `close()` from closing it) locks the file, which Windows refuses to
+ * delete (EBUSY); switching the journal mode needs every other connection gone, so it detects the
+ * same leak on every platform.
+ */
+export function heldDatabases(dir: string): string[] {
+  return indexDbsUnder(dir).filter((f) => {
+    const db = new Database(f);
+    try {
+      db.query("PRAGMA journal_mode = DELETE").get();
+      return false;
+    } catch {
+      return true;
+    } finally {
+      db.close();
+    }
+  });
+}
+
+/** A temporary data directory; `cleanup` fails the test if an index database was left open. */
 export function tmpDataDir(): { dir: string; cleanup: () => void } {
   const dir = mkdtempSync(join(tmpdir(), "jarvis-test-"));
-  return { dir, cleanup: () => rmSync(dir, { recursive: true, force: true }) };
+  return {
+    dir,
+    cleanup: () => {
+      const held = heldDatabases(dir);
+      // Retries ride out a child process (an ACP agent, git) that Windows still counts in the
+      // directory for a moment after it was killed; a leaked database never frees itself.
+      rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
+      if (held.length) throw new Error(`database still open at cleanup: ${held.join(", ")}`);
+    },
+  };
 }
 
 /** Deterministic bag-of-words hashing embedder so semantic tests need no server. */

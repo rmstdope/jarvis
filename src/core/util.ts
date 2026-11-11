@@ -27,3 +27,14 @@ export function vecToJson(v: Float32Array): string {
 export function escapeRegExp(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
+
+/**
+ * The `source_url` of a captured local file. POSIX paths keep the `file:/abs/path` shape existing
+ * content repos dedupe on; a Windows path (`D:\a\b.pdf`, `\\server\share\b`) becomes a valid,
+ * forward-slashed file URL (`file:/D:/a/b.pdf`, `file://server/share/b`).
+ */
+export function fileSourceUrl(absPath: string): string {
+  if (/^[A-Za-z]:[\\/]/.test(absPath)) return `file:/${absPath.replace(/\\/g, "/")}`;
+  if (absPath.startsWith("\\\\")) return `file:${absPath.replace(/\\/g, "/")}`;
+  return `file:${absPath}`;
+}

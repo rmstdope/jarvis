@@ -6,6 +6,7 @@ import { pdfToPayload, PdfError } from "../src/producers/pdf.ts";
 import { meetingToPayload } from "../src/producers/meeting.ts";
 import { parseGlossary, whisperInitialPrompt, variantMap } from "../src/core/glossary.ts";
 import { detectWhisperBackend } from "../src/producers/whisper.ts";
+import { fileSourceUrl } from "../src/core/util.ts";
 
 const fx = (f: string) => join(import.meta.dir, "fixtures", f);
 
@@ -65,10 +66,19 @@ describe("pdf", () => {
     expect(p.body).toContain("Hello Second Brain PDF");
     expect(p.title).toBe("Fixture Title");
     expect(p.source_url).toMatch(/^file:\//);
+    expect(p.source_url).not.toContain("\\");
     expect(p.metadata).toMatchObject({ format: "pdf", filename: "hello.pdf", page_count: 1, extractor: "@opendocsg/pdf2md" });
   });
   test("rejects non-PDF", async () => {
     await expect(pdfToPayload(fx("teams.vtt"))).rejects.toThrow(PdfError);
+  });
+});
+
+describe("file source urls", () => {
+  test("POSIX paths keep their shape; Windows paths become forward-slashed file URLs", () => {
+    expect(fileSourceUrl("/Users/anna/talk.pdf")).toBe("file:/Users/anna/talk.pdf");
+    expect(fileSourceUrl("D:\\a\\jarvis\\hello.pdf")).toBe("file:/D:/a/jarvis/hello.pdf");
+    expect(fileSourceUrl("\\\\server\\share\\m.vtt")).toBe("file://server/share/m.vtt");
   });
 });
 
