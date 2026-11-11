@@ -8,6 +8,7 @@ import { basename, extname, join, relative } from "node:path";
 import { briefingPath, createBriefing } from "../briefings/store.ts";
 import { resolveAuthor } from "../core/config.ts";
 import { LINK_RELATIONS, link } from "../core/links.ts";
+import { withDb } from "../core/db.ts";
 import { readDocFile } from "../core/docs.ts";
 import { readSidecar, type EdgeLine } from "../core/sidecar.ts";
 import { ingest, type CapturePayload } from "../core/ingest.ts";
@@ -51,6 +52,19 @@ const kindOfDoc = (dataDir: string, id: string): ChangeItem["kind"] => {
   return s === "task" ? "task" : s === "initiative" ? "initiative" : "doc";
 };
 const item = (dataDir: string, id: string): ChangeItem => ({ id, title: titleOf(dataDir, id), kind: kindOfDoc(dataDir, id) });
+/**
+ * The id an action's reference names: the reference itself when it is an id, else the one indexed
+ * item of `source` (any source when omitted) whose title matches it, ignoring case. The agent sees
+ * ids only for what retrieval put in its context, so it names everything else by title (jv-zyp).
+ * No match leaves the reference as it is, for the action to report as not found.
+ */
+const resolveRef = (dataDir: string, ref: string, source?: string): string => {
+  if (readDocFile(dataDir, ref)) return ref;
+  const found = withDb(dataDir, (db) =>
+    db.query<{ id: string }, [string, string | null]>("SELECT id FROM documents WHERE title = ?1 COLLATE NOCASE AND (?2 IS NULL OR source = ?2)").all(ref.trim(), source ?? null));
+  if (found.length > 1) throw new Error(`more than one item is called "${ref}"; name it by id`);
+  return found[0]?.id ?? ref;
+};
 const slugify = (s: string): string => s.toLowerCase().normalize("NFKD").replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 48) || "deck";
 
 /** Verb after "Couldn't" for a failed row. */
@@ -102,8 +116,9 @@ async function perform(tool: string, a: Record<string, unknown>, ctx: ActionCont
       return capture(d, "capture.file", { source: "paste", title: str(a, "title") ?? name, body: readFileSync(path, "utf8"), author });
     }
     case "jarvis_create_task": {
-      const links = ids(a.link);
-      const value = await addTask(d, { title: need(a, "title"), body: str(a, "body"), due: str(a, "due"), owner: str(a, "owner"), initiative: str(a, "initiative"), links, author });
+      const links = ids(a.link).map((l) => resolveRef(d, l));
+      const initiative = str(a, "initiative");
+      const value = await addTask(d, { title: need(a, "title"), body: str(a, "body"), due: str(a, "due"), owner: str(a, "owner"), initiative: initiative && resolveRef(d, initiative, "initiative"), links, author });
       const task = item(d, value.id);
       const also: Done[] = readSidecar(d, value.id)
         .filter((l): l is EdgeLine => l.kind === "edge" && l.created_by === "manual" && links.includes(l.dst))
@@ -113,7 +128,7 @@ async function perform(tool: string, a: Record<string, unknown>, ctx: ActionCont
     case "jarvis_update_task":
     case "jarvis_set_task_status":
     case "jarvis_move_task": {
-      const id = need(a, "task");
+      const id = resolveRef(d, need(a, "task"), "task");
       const before = readDocFile(d, id)?.frontmatter.task;
       if (!before) throw new Error("the task was not found");
       const beforeCopy = { ...before };
@@ -126,7 +141,8 @@ async function perform(tool: string, a: Record<string, unknown>, ctx: ActionCont
         setTaskStatus(d, id, status, author);
         kind = status === "done" ? "task.done" : "task.reopen";
       } else if (tool === "jarvis_move_task") {
-        const target = str(a, "initiative") ?? null;
+        const given = str(a, "initiative");
+        const target = given ? resolveRef(d, given, "initiative") : null;
         const r = await moveTask(d, id, target, author);
         kind = "task.move";
         detail = { from: r.from, to: r.to };
@@ -145,7 +161,7 @@ async function perform(tool: string, a: Record<string, unknown>, ctx: ActionCont
       return { kind: "initiative.create", items: [item(d, value.id)], ops: docOp(d, value.id) };
     }
     case "jarvis_link": {
-      const src = need(a, "src"), dst = need(a, "dst");
+      const src = resolveRef(d, need(a, "src")), dst = resolveRef(d, need(a, "dst"));
       const relation = (str(a, "relation") ?? "related") as Relation;
       const r = link(d, src, [dst], { relation, author })[0];
       if (r.status === "member") throw new Error(`${r.title} is already a task in ${r.initiative}`);

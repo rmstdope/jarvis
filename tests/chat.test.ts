@@ -391,4 +391,23 @@ describe("the agent acts (jv-oya.4)", () => {
     const evs = await ndjson(await call("POST", `/api/chat/sessions/${sid}/messages`, { message: "PERMISSION please" }));
     expect(evs.some((e) => e.type === "status" && e.text === "permission cancelled")).toBe(true);
   });
+  test("an action may name an existing task or note by its title when its id is not in context (jv-zyp)", async () => {
+    const task = await addTask(t.dir, { title: "Ship the firmware", author: "me" });
+    const sync = await ingest(t.dir, { source: "note", title: "Weekly sync", body: "agenda", author: "me" });
+    const drift = await ingest(t.dir, { source: "note", title: "Zoom drift", body: "clock drift seen", author: "me" });
+    const sid = await open("conv11");
+    const evs = await ndjson(await call("POST", `/api/chat/sessions/${sid}/messages`, { message: 'ACT jarvis_capture_note {"text":"new","title":"Fresh"} ACT jarvis_set_task_status {"task":"Ship the firmware","status":"done"} ACT jarvis_link {"src":"weekly sync","dst":"Zoom drift"}' }));
+    const changes = evs.filter((e) => e.type === "change").map((e) => e.change);
+    expect(changes.map((c) => [c.kind, c.ok, c.error])).toEqual([["capture.note", true, undefined], ["task.done", true, undefined], ["link", true, undefined]]);
+    expect(changes[1].items[0].id).toBe(task.id);
+    expect(changes[2].items.map((i: { id: string }) => i.id)).toEqual([sync.id, drift.id]);
+  });
+  test("a title two tasks share is refused rather than guessed (jv-zyp)", async () => {
+    await addTask(t.dir, { title: "Review", author: "me" });
+    await addTask(t.dir, { title: "review", author: "me" });
+    const sid = await open("conv12");
+    const evs = await ndjson(await call("POST", `/api/chat/sessions/${sid}/messages`, { message: 'ACT jarvis_set_task_status {"task":"Review","status":"done"}' }));
+    const c = evs.find((e) => e.type === "change").change;
+    expect([c.ok, c.error]).toEqual([false, 'more than one item is called "Review"; name it by id']);
+  });
 });
