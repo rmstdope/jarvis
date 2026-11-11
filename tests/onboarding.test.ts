@@ -132,7 +132,7 @@ describe("doctor jarvis-command", () => {
     const c = checkJarvisCommand({ ...base, found: "/usr/local/bin/jarvis", realpath: (p) => (p.endsWith("/jarvis") ? "/old/jarvis/src/cli.ts" : p) });
     expect(c).toMatchObject({ status: "warn", detail: "jarvis on PATH runs /old/jarvis, not /code/jarvis", fix: "cd /code/jarvis && bun link" });
   });
-  test("another program called jarvis is named by its resolved path; custom BUN_INSTALL; Windows shim", () => {
+  test("another program called jarvis is named by its resolved path; Windows shim", () => {
     const c = checkJarvisCommand({ ...base, found: "/usr/local/bin/jarvis" });
     expect(c.detail).toBe("jarvis on PATH runs /usr/local/bin/jarvis, not /code/jarvis");
     expect(checkJarvisCommand({ ...base, found: "C:\\u\\.bun\\bin\\jarvis.exe", platform: "win32" }).status).toBe("ok");
