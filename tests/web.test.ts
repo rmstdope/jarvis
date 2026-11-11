@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { buildWeb } from "../scripts/build-web.ts";
-import { metaLine, parseRoute, itemHref, fmtDate } from "../web/src/ui.ts";
+import { parseRoute, itemHref, fmtDate } from "../web/src/ui.ts";
 
 describe("web", () => {
   test("bundle builds with Bun and contains the 19 components", async () => {
@@ -24,6 +24,5 @@ describe("web", () => {
     expect(itemHref({ id: "x", source: "presentation" })).toBe("#/presentation/x");
     expect(itemHref({ id: "x", source: "web" })).toBe("#/item/x");
     expect(fmtDate("2026-01-02T03:04:05Z")).toBe("2026-01-02");
-    expect(metaLine({ source: "web", created_at: "2026-01-01T00:00:00Z", author: "mia", updated_at: "2026-01-02T00:00:00Z", updated_by: "kim", metadata: { source_author: "Jane" } })).toBe("web · added 2026-01-01 by mia · updated 2026-01-02 by kim · source by Jane");
   });
 });

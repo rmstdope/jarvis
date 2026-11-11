@@ -63,13 +63,13 @@ export function fmtDate(iso: string | null | undefined): string {
   const d = new Date(iso);
   return Number.isNaN(d.getTime()) ? String(iso) : d.toISOString().slice(0, 10);
 }
-/** `source · added 2026-01-01 by mia · updated 2026-01-02 by kim · source by byline` */
-export function metaLine(i: { source: string; created_at: string; author: string; updated_at?: string | null; updated_by?: string | null; metadata?: Record<string, unknown> | null }): string {
-  const parts = [i.source, `added ${fmtDate(i.created_at)} by ${i.author}`];
-  if (i.updated_at) parts.push(`updated ${fmtDate(i.updated_at)}${i.updated_by ? ` by ${i.updated_by}` : ""}`);
-  const byline = i.metadata?.source_author;
-  if (typeof byline === "string" && byline) parts.push(`source by ${byline}`);
-  return parts.join(" · ");
+/** "<kind> · <who> · <when>": the details line of every entry; missing parts are left out. */
+export function entryLine(...parts: (string | null | undefined)[]): string {
+  return parts.filter((p) => p).join(" · ");
+}
+/** Escape a search snippet and turn its `[matched]` words into <mark> (the only markup produced). */
+export function highlightSnippet(s: string): string {
+  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/\[([^\]]+)\]/g, "<mark>$1</mark>");
 }
 export function itemHref(i: { id: string; source: string }): string {
   if (i.source === "briefing") return `#/briefing/${i.id}`;
