@@ -31,7 +31,7 @@ satisfies the Four eye Principle below.
 
 ## Work tracking
 
-Planned work is tracked in beads (`bd`), prefix `sb`; `skills/beads-workflow` carries the commands.
+Planned work is tracked in beads (`bd`), prefix `jv`; `skills/beads-workflow` carries the commands.
 GitHub issues are the inbox for outside requests and bug reports only. Every bead is created
 unranked and ranked later with the navigator; a bead is planned in one session and implemented in
 another.
