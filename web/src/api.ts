@@ -34,7 +34,7 @@ const qs = (o: Record<string, string | number | undefined>) => {
 };
 export const api = {
   health: () => req<{ ok: boolean; docs: number }>("GET", "/api/health"),
-  search: (q: string, mode: string, limit = 20) => req<SearchHit[]>("GET", `/api/search${qs({ q, mode, limit })}`),
+  search: (q: string, mode: string, limit = 20, filter: { source?: string; author?: string; tag?: string; since?: string } = {}) => req<SearchHit[]>("GET", `/api/search${qs({ q, mode, limit, ...filter })}`),
   browse: (o: Record<string, string | number | undefined>) => req<BrowseResult>("GET", `/api/browse${qs(o)}`),
   item: (id: string) => req<{ item: Item; edges: ItemEdge[] }>("GET", `/api/item/${encodeURIComponent(id)}`),
   capture: (title: string, body: string) => req<{ id: string; status: string }>("POST", "/api/capture", { source: "paste", title, body }),
