@@ -296,6 +296,21 @@ describe("the agent acts (jv-oya.4)", () => {
     expect(listed.map((c) => [c.id, c.undone])).toEqual([[note.id, false], [made.id, true], [linked.id, true]]);
     expect(r.changes).toEqual(listed); // the Undo answer carries every row it settled, so the card updates at once
   });
+  test("undoing a created task leaves every other Linked row as it was, even one already gone some other way (jv-a9b)", async () => {
+    const { rmSync } = await import("node:fs");
+    const { docPath } = await import("../src/core/docs.ts");
+    const sid = await open("conv-a9b-2");
+    const evs = await ndjson(await call("POST", `/api/chat/sessions/${sid}/messages`, { message: 'ACT jarvis_capture_note {"text":"x","title":"X"} AS x ACT jarvis_capture_note {"text":"y","title":"Y"} AS y ACT jarvis_link {"src":"$x","dst":"$y"} ACT jarvis_create_task {"title":"One","link":["$x"]} ACT jarvis_create_task {"title":"Two","link":["$y"]}' }));
+    const rows = evs.filter((e) => e.type === "change").map((e) => e.change);
+    expect(rows.map((c) => c.kind)).toEqual(["capture.note", "capture.note", "link", "task.create", "link", "task.create", "link"]);
+    const [, , xy, one, oneX, two, twoY] = rows;
+    rmSync(docPath(t.dir, two.items[0].id)); // a teammate's sync removed task Two and its links, outside this chat
+    rmSync(join(t.dir, "edges", `${two.items[0].id}.jsonl`), { force: true });
+    expect((await call("POST", `/api/chat/conversations/conv-a9b-2/changes/${one.id}/undo`)).status).toBe(200);
+    const listed = (await (await call("GET", "/api/chat/conversations/conv-a9b-2/changes")).json()).changes as { id: string; undone: boolean }[];
+    const undone = new Map(listed.map((c) => [c.id, c.undone]));
+    expect([undone.get(one.id), undone.get(oneX.id), undone.get(xy.id), undone.get(twoY.id)]).toEqual([true, true, false, false]);
+  });
   test("the change log outlives the chat session", async () => {
     const sid = await open("conv2");
     await ndjson(await call("POST", `/api/chat/sessions/${sid}/messages`, { message: 'ACT jarvis_capture_note {"text":"remember this","title":"Remember"}' }));
