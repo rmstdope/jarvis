@@ -12,6 +12,7 @@ import { ASK_MAX_LIMIT } from "./core/constants.ts";
 import { ask } from "./core/ask.ts";
 import { getRouter } from "./providers/index.ts";
 import "./core/passes.ts";
+import { decorateItems, initiativeOfTask } from "./core/initiativeDecor.ts";
 
 import { route, json, error, body, HttpError, listRoutes, matchRoute, type RouteHandler, type ServerContext } from "./http.ts";
 export { route, json, error, body, HttpError, listRoutes, type RouteHandler, type ServerContext };
@@ -57,7 +58,7 @@ route("GET", "/api/search", async (_r, url, _p, ctx) => {
   return json(await withDbAsync(ctx.dataDir, async (db) => {
     const hits = await search(ctx.dataDir, q, { mode, limit, db });
     const row = db.query("SELECT author, created_at AS createdAt FROM documents WHERE id = ?");
-    return hits.map((h) => ({ ...h, ...((row.get(h.docId) as { author: string; createdAt: string } | null) ?? {}) }));
+    return decorateItems(ctx.dataDir, hits.map((h) => ({ ...h, ...((row.get(h.docId) as { author: string; createdAt: string } | null) ?? {}) })), (h) => h.docId);
   }));
 });
 
@@ -73,10 +74,11 @@ route("POST", "/api/sync", async (_r, _u, _p, ctx) => {
 route("GET", "/api/browse", (_r, url, _p, ctx) => {
   const sp = url.searchParams;
   const num = (k: string) => (sp.get(k) === null ? undefined : Number(sp.get(k)) || 0);
-  return json(browse(ctx.dataDir, {
+  const r = browse(ctx.dataDir, {
     limit: num("limit"), addedOffset: num("addedOffset"), updatedOffset: num("updatedOffset"),
     source: sp.get("source") ?? undefined, author: sp.get("author") ?? undefined, tag: sp.get("tag") ?? undefined, since: sp.get("since") ?? undefined,
-  }));
+  });
+  return json({ ...r, added: decorateItems(ctx.dataDir, r.added, (i) => i.id), updated: decorateItems(ctx.dataDir, r.updated, (i) => i.id) });
 });
 route("GET", "/api/recent", (_r, url, _p, ctx) => json({ items: recent(ctx.dataDir, Number(url.searchParams.get("limit") ?? 10) || 10) }));
 route("GET", "/api/item-by-source", (_r, url, _p, ctx) => {
@@ -86,7 +88,9 @@ route("GET", "/api/item-by-source", (_r, url, _p, ctx) => {
 });
 route("GET", "/api/item/:id", (_r, _u, p, ctx) => {
   const r = getItem(ctx.dataDir, p.id);
-  return r ? json(r) : error("not found", 404);
+  if (!r) return error("not found", 404);
+  const initiative = r.item.source === "task" ? initiativeOfTask(ctx.dataDir, p.id) : undefined;
+  return json(initiative ? { ...r, initiative } : r);
 });
 route("POST", "/api/item/:id/tags", async (req, _u, p, ctx) => {
   const b = await body<{ tags?: string[]; author?: string }>(req);
@@ -211,3 +215,6 @@ route("GET", "/api/presentation/:id", async (_r, _u, p, ctx) => {
 
 // ---- M9: chat ("Discuss") over Copilot ACP ----
 import "./chat/routes.ts";
+
+// ---- initiatives in the web UI ----
+import "./initiatives/routes.ts";
