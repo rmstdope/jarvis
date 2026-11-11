@@ -32,13 +32,31 @@ export function toast(message: string, kind: "ok" | "error" = "ok", ms = 4000): 
   clearTimeout(toastTimer);
   toastTimer = setTimeout(() => t.remove(), ms);
 }
-export function modal(title: string, body: Child, actions: { label: string; primary?: boolean; onClick: () => void }[]): HTMLElement {
+/**
+ * A dialog over the page. Esc and a click outside close it; focus starts on the action labelled
+ * `focus` (else the first button) and returns to where it was when the dialog closes.
+ */
+export function modal(title: string, body: Child, actions: { label: string; primary?: boolean; onClick: () => void }[], focus?: string): HTMLElement {
+  const before = document.activeElement as HTMLElement | null;
   const bg = h("div", { class: "modal-bg" });
-  const box = h("div", { class: "modal" }, h("h3", { style: "margin-top:0" }, title), body, h("div", { class: "row", style: "justify-content:flex-end;margin-top:14px" }, ...actions.map((a) => h("button", { class: a.primary ? "primary" : "", onClick: () => { a.onClick(); bg.remove(); } }, a.label))));
+  const close = () => { document.removeEventListener("keydown", onKey, true); bg.remove(); before?.focus?.(); };
+  const onKey = (e: Event) => { if ((e as KeyboardEvent).key === "Escape") { e.preventDefault(); e.stopPropagation(); close(); } };
+  const buttons = actions.map((a) => h("button", { class: a.primary ? "primary" : "", onClick: () => { close(); a.onClick(); } }, a.label));
+  const box = h("div", { class: "modal", role: "dialog", "aria-modal": "true", "aria-label": title }, h("h3", { style: "margin-top:0" }, title), body, h("div", { class: "row", style: "justify-content:flex-end;margin-top:14px" }, ...buttons));
   bg.appendChild(box);
-  bg.addEventListener("click", (e) => { if (e.target === bg) bg.remove(); });
+  bg.addEventListener("click", (e) => { if (e.target === bg) close(); });
+  document.addEventListener("keydown", onKey, true);
   document.body.appendChild(bg);
+  (buttons[actions.findIndex((a) => a.label === focus)] ?? buttons[0])?.focus();
   return bg;
+}
+/** "just now", "5 min ago", "3 h ago", "2 d ago". */
+export function ago(ms: number): string {
+  const m = Math.floor(Math.max(0, ms) / 60000);
+  if (m < 1) return "just now";
+  if (m < 60) return `${m} min ago`;
+  if (m < 1440) return `${Math.floor(m / 60)} h ago`;
+  return `${Math.floor(m / 1440)} d ago`;
 }
 export function fmtDate(iso: string | null | undefined): string {
   if (!iso) return "";
@@ -62,7 +80,7 @@ export function sinceIso(days: number): string {
   return new Date(Date.now() - days * 86400000).toISOString();
 }
 export function parseRoute(hash: string): { name: string; id?: string } {
-  const h = (hash || "#/browse").replace(/^#\/?/, "");
+  const h = (hash || "#/chat").replace(/^#\/?/, "");
   const [name, ...rest] = h.split("/");
-  return { name: name || "browse", id: rest.length ? decodeURIComponent(rest.join("/")) : undefined };
+  return { name: name || "chat", id: rest.length ? decodeURIComponent(rest.join("/")) : undefined };
 }
