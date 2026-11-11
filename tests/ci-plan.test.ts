@@ -6,8 +6,16 @@ describe("ci planner", () => {
     const p = planFromChanges(["README.md", "docs/ARCHITECTURE.md", "IMPLEMENTATION-PLAN.md"]);
     expect(p.docsOnly).toBe(true);
     expect(p.tests).toEqual([]);
-    expect(planFromChanges(["AGENTS.md"]).tests).toContain("tests/extension.test.ts");
+    expect(planFromChanges(["docs/AGENT-INSTRUCTIONS.md"]).tests).toContain("tests/extension.test.ts");
     expect(planFromChanges([]).docsOnly).toBe(true);
+  });
+  test("the fleet's own files (cerebro, beads, agent and skill links) run nothing", () => {
+    const fleet = [".cerebro/project.conf", ".cerebro/cerebro", ".gitmodules", ".beads/config.yaml", ".claude/skills/write-bead", ".github/agents/producer.md", ".github/skills/write-bead", ".github/hooks/cerebro.json", "CLAUDE.md"];
+    const p = planFromChanges([...fleet, "README.md"]);
+    expect(p.docsOnly).toBe(true);
+    expect(p.full).toBe(false);
+    expect(p.tests).toEqual([]);
+    expect(planFromChanges([".cerebro/roster.conf", "src/core/chunk.ts"]).tests).toContain("tests/chunk.test.ts");
   });
   test("global files force the full suite", () => {
     for (const f of ["bun.lock", "package.json", "tsconfig.json", ".github/workflows/ci.yml", "tests/helpers.ts"]) {
