@@ -131,7 +131,8 @@ describe("copilot acp command line", () => {
     expect(args.slice(0, 2)).toEqual(["copilot", "--acp"]);
     expect(args).not.toContain("--model");
     expect(args).not.toContain("--reasoning-effort");
-    expect(args).toContain("--available-tools=jarvis_*,jarvis-jarvis_*");
+    expect(args).toContain("--available-tools=");
+    expect(args.join(" ")).not.toContain("jarvis");
   });
   test("a configured chatModel is passed through, still without a reasoning effort a model may reject", () => {
     const args = copilotAcpArgs("gpt-4.1");
@@ -239,20 +240,14 @@ describe("chat status route", () => {
 });
 
 describe("the agent acts (jv-oya.4)", () => {
-  let server: ReturnType<typeof Bun.serve>;
   let ctx: { dataDir: string; chatDeps: Record<string, unknown> };
-  beforeEach(() => {
-    ctx = { dataDir: t.dir, chatDeps: { spawn } };
-    server = Bun.serve({ port: 0, hostname: "127.0.0.1", fetch: (req) => handle(req, ctx as never) });
-    ctx.chatDeps.serverUrl = () => `http://127.0.0.1:${server.port}`;
-  });
-  afterEach(() => { server.stop(true); });
+  beforeEach(() => { ctx = { dataDir: t.dir, chatDeps: { spawn } }; });
   const call = (method: string, path: string, body?: unknown | FormData) =>
     handle(new Request(`http://127.0.0.1:7281${path}`, { method, body: body === undefined ? undefined : body instanceof FormData ? body : JSON.stringify(body), headers: body instanceof FormData ? undefined : { "content-type": "application/json" } }), ctx as never);
   const ndjson = async (r: Response) => (await r.text()).trim().split("\n").map((l) => JSON.parse(l));
   const open = async (conversationId = "conv1") => (await (await call("POST", "/api/chat/sessions", { scope: { type: "jarvis", ids: [] }, conversationId })).json()).sessionId as string;
 
-  test("a tool call through the MCP server makes a change, streams it, and Undo works over HTTP", async () => {
+  test("action blocks in the answer make a change, streams it, and Undo works over HTTP", async () => {
     const sid = await open();
     const evs = await ndjson(await call("POST", `/api/chat/sessions/${sid}/messages`, { message: 'ACT jarvis_create_task {"title":"Ring the vendor","due":"2026-11-13"} ACT jarvis_link {"src":"nope","dst":"x"}' }));
     const changes = evs.filter((e) => e.type === "change").map((e) => e.change);
@@ -337,21 +332,39 @@ describe("the agent acts (jv-oya.4)", () => {
     const evs = await ndjson(await call("POST", `/api/chat/sessions/${sid}/messages`, f));
     expect(evs.find((e) => e.type === "change").change).toMatchObject({ kind: "capture.file", ok: true });
   });
-  test("the MCP server lists the tools and forwards calls", async () => {
-    const { handleMcp } = await import("../src/chat/mcp.ts");
-    const list = (await handleMcp({ id: 1, method: "tools/list" }, async () => ({ text: "", isError: false })))!;
-    expect((list.result as { tools: { name: string }[] }).tools.map((x) => x.name)).toContain("jarvis_create_task");
-    const got: unknown[] = [];
-    const r = (await handleMcp({ id: 2, method: "tools/call", params: { name: "jarvis_link", arguments: { src: "a" } } }, async (tool, args) => { got.push([tool, args]); return { text: "ok", isError: false }; }))!;
-    expect(got).toEqual([["jarvis_link", { src: "a" }]]);
-    expect(r.result).toEqual({ content: [{ type: "text", text: "ok" }], isError: false });
-    expect(await handleMcp({ method: "notifications/initialized" }, async () => ({ text: "", isError: false }))).toBeNull();
+  test("the blocks and the Info lines never reach the person; aliases carry ids between blocks", async () => {
+    const sid = await open("conv8");
+    const evs = await ndjson(await call("POST", `/api/chat/sessions/${sid}/messages`, { message: 'ACT jarvis_create_initiative {"title":"Launch","goal":"Ship it"} AS i1 ACT jarvis_create_task {"title":"Write notes","initiative":"$i1"}' }));
+    const said = evs.filter((e) => e.type === "message").map((e) => e.text).join("");
+    expect(said).toBe("On it.\nDone.");
+    const changes = evs.filter((e) => e.type === "change").map((e) => e.change);
+    expect(changes.map((c) => [c.kind, c.ok])).toEqual([["initiative.create", true], ["task.create", true]]);
+    expect(evs.findIndex((e) => e.type === "done")).toBeGreaterThan(evs.findLastIndex((e) => e.type === "change"));
+    const { readDocFile } = await import("../src/core/docs.ts");
+    expect(readDocFile(t.dir, changes[1].items[0].id)?.frontmatter.task?.initiative).toBe(changes[0].items[0].id);
   });
-  test("permission policy: our tools once, everything else cancelled", async () => {
-    const { permissionOutcome } = await import("../src/chat/acp.ts");
-    const options = [{ optionId: "a1", kind: "allow_once" }, { optionId: "r1", kind: "reject_once" }];
-    expect(permissionOutcome({ toolCall: { title: "jarvis_create_task" }, options })).toEqual({ outcome: "selected", optionId: "a1" });
-    expect(permissionOutcome({ toolCall: { title: "write file" }, options })).toEqual({ outcome: "cancelled" });
-    expect(permissionOutcome({ toolCall: { title: "jarvis_create_task" }, options: [] })).toEqual({ outcome: "cancelled" });
+  test("a failure is told to the agent in the same turn, and the next turn is told every id it made", async () => {
+    const sid = await open("conv11");
+    const first = await ndjson(await call("POST", `/api/chat/sessions/${sid}/messages`, { message: 'ACT jarvis_create_task {"title":"Seed"} AS s ACT jarvis_set_task_status {"task":"missing","status":"done"}' }));
+    expect(first.filter((e) => e.type === "message").map((e) => e.text).join("")).toContain("could not update task"); // the follow-up prompt (the fake echoes it)
+    expect(first.filter((e) => e.type === "message").map((e) => e.text).join("").match(/Some of your actions failed/g)).toHaveLength(1); // exactly one extra prompt
+    expect(first.filter((e) => e.type === "change")).toHaveLength(2); // the follow-up's own block did not run
+    expect(first.filter((e) => e.type === "message").map((e) => e.text).join("")).not.toContain("jarvis-action");
+    expect(first.filter((e) => e.type === "message").map((e) => e.text).join("")).toContain("Done.\n\nSorry.");
+    const id = first.find((e) => e.type === "change").change.items[0].id;
+    const second = await ndjson(await call("POST", `/api/chat/sessions/${sid}/messages`, { message: "now mark that done" }));
+    const said = second.filter((e) => e.type === "message").map((e) => e.text).join("");
+    expect(said).toContain(`Seed [${id}]`);
+    expect(said).not.toContain("Some of your actions failed"); // a turn without failures sends no extra prompt
+  });
+  test("an action naming an unknown tool is dropped without a row", async () => {
+    const sid = await open("conv9");
+    const evs = await ndjson(await call("POST", `/api/chat/sessions/${sid}/messages`, { message: 'ACT jarvis_format_disk {} ACT jarvis_capture_note {"text":"kept","title":"Kept"}' }));
+    expect(evs.filter((e) => e.type === "change").map((e) => e.change.kind)).toEqual(["capture.note"]);
+  });
+  test("every permission request is cancelled", async () => {
+    const sid = await open("conv10");
+    const evs = await ndjson(await call("POST", `/api/chat/sessions/${sid}/messages`, { message: "PERMISSION please" }));
+    expect(evs.some((e) => e.type === "status" && e.text === "permission cancelled")).toBe(true);
   });
 });

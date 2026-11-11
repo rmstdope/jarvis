@@ -2,25 +2,6 @@
 const enc = new TextEncoder();
 const out = (o: unknown) => process.stdout.write(enc.encode(JSON.stringify(o) + "\n"));
 let sessions = 0;
-const mcpBySession = new Map<string, { command: string; args: string[]; env: { name: string; value: string }[] }>();
-/** Call one tool through the real MCP server the client handed us, the way an agent would. */
-async function callTool(sid: string, tool: string, args: unknown): Promise<string> {
-  const m = mcpBySession.get(sid)!;
-  const p = Bun.spawn([m.command, ...m.args], { stdin: "pipe", stdout: "pipe", stderr: "inherit", env: { ...process.env, ...Object.fromEntries(m.env.map((e) => [e.name, e.value])) } });
-  p.stdin.write(JSON.stringify({ jsonrpc: "2.0", id: 1, method: "initialize", params: {} }) + "\n");
-  p.stdin.write(JSON.stringify({ jsonrpc: "2.0", id: 2, method: "tools/call", params: { name: tool, arguments: args } }) + "\n");
-  p.stdin.flush();
-  const reader = p.stdout.getReader();
-  let acc = "";
-  for (;;) {
-    const { value, done } = await reader.read();
-    if (done) break;
-    acc += new TextDecoder().decode(value);
-    const line = acc.split("\n").find((l) => l.includes('"id":2'));
-    if (line) { p.kill(); return JSON.parse(line).result.content[0].text; }
-  }
-  return "no answer";
-}
 let pendingPermission: number | null = null;
 const cancelled = new Set<string>();
 const td = new TextDecoder();
@@ -48,7 +29,7 @@ async function handle(msg: any): Promise<void> {
         out({ jsonrpc: "2.0", id: msg.id, result: { protocolVersion: 1, agentCapabilities: {} } });
         break;
       case "session/new":
-        { const sid = `s${++sessions}`; if (msg.params.mcpServers?.[0]) mcpBySession.set(sid, msg.params.mcpServers[0]); out({ jsonrpc: "2.0", id: msg.id, result: { sessionId: sid } }); }
+        out({ jsonrpc: "2.0", id: msg.id, result: { sessionId: `s${++sessions}` } });
         break;
       case "session/cancel":
         cancelled.add(msg.params.sessionId);
@@ -61,11 +42,18 @@ async function handle(msg: any): Promise<void> {
           out({ jsonrpc: "2.0", id: msg.id, result: { stopReason: cancelled.has(sid) ? "cancelled" : "end_turn" } });
           break;
         }
-        const act = [...text.matchAll(/ACT (jarvis_\w+) (\{.*?\})(?= ACT |\s*$|\n)/g)];
+        // `ACT jarvis_x {json} [AS name]` in the prompt: answer with the fenced action blocks a model would write, behind a Copilot-style Info line
+        if (text.startsWith("Some of your actions failed")) { // a model that disobeys "no action blocks"
+          const answer = "Sorry.\n```jarvis-action\n" + JSON.stringify({ tool: "jarvis_capture_note", args: { text: "sneaky", title: "Sneaky" } }) + "\n```\n";
+          out({ jsonrpc: "2.0", method: "session/update", params: { sessionId: sid, update: { sessionUpdate: "agent_message_chunk", content: { type: "text", text: answer + text } } } });
+          out({ jsonrpc: "2.0", id: msg.id, result: { stopReason: "end_turn" } });
+          break;
+        }
+        const act = [...text.matchAll(/ACT (jarvis_\w+) (\{.*?\})(?: AS (\w+))?(?= ACT |\s*$|\n)/g)];
         if (act.length) {
-          const said: string[] = [];
-          for (const a of act) said.push(await callTool(sid, a[1], JSON.parse(a[2])));
-          out({ jsonrpc: "2.0", method: "session/update", params: { sessionId: sid, update: { sessionUpdate: "agent_message_chunk", content: { type: "text", text: said.join(" | ") } } } });
+          const blocks = act.map((a) => "```jarvis-action\n" + JSON.stringify({ tool: a[1], args: JSON.parse(a[2]), ...(a[3] ? { as: a[3] } : {}) }) + "\n```\n");
+          const answer = `Info: Disabled tools: bash\nOn it.\n${blocks.join("")}Done.`;
+          for (const part of [answer.slice(0, 40), answer.slice(40)]) out({ jsonrpc: "2.0", method: "session/update", params: { sessionId: sid, update: { sessionUpdate: "agent_message_chunk", content: { type: "text", text: part } } } });
           out({ jsonrpc: "2.0", id: msg.id, result: { stopReason: "end_turn" } });
           break;
         }
@@ -74,7 +62,7 @@ async function handle(msg: any): Promise<void> {
           out({ jsonrpc: "2.0", id: 999, method: "session/request_permission", params: { sessionId: sid, toolCall: { title: "write file" }, options: [{ optionId: "allow", kind: "allow_once" }] } });
           await new Promise((r) => setTimeout(r, 50));
         }
-        const reply = text.includes("[") ? `Echo with context: ${text.split("User: ").pop()}` : `Echo: ${text.split("User: ").pop()}`;
+        const reply = /Relevant captured items|You are discussing one/.test(text) ? `Echo with context: ${text.split("User: ").pop()}` : `Echo: ${text.split("User: ").pop()}`;
         for (const part of [reply.slice(0, 5), reply.slice(5)]) out({ jsonrpc: "2.0", method: "session/update", params: { sessionId: sid, update: { sessionUpdate: "agent_message_chunk", content: { type: "text", text: part } } } });
         out({ jsonrpc: "2.0", method: "session/update", params: { sessionId: sid, update: { sessionUpdate: "usage_update", used: 1200, size: 128000 } } });
         out({ jsonrpc: "2.0", id: msg.id, result: { stopReason: "end_turn" } });

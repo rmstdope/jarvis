@@ -152,7 +152,6 @@ export async function handle(req: Request, ctx: ServerContext, webDist?: string)
 
 export function startServer(ctx: ServerContext, port: number, webDist?: string) {
   const server = Bun.serve({ hostname: "127.0.0.1", port, fetch: (req) => handle(req, ctx, webDist) });
-  ctx.url = `http://127.0.0.1:${server.port}`;
   return server;
 }
 
