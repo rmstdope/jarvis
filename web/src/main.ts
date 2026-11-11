@@ -3,19 +3,29 @@ import { clear, h, modal, parseRoute, toast } from "./ui.ts";
 import { createChat, type Chat } from "./chat.ts";
 import { applyTheme, getPref, getTheme, KEY_LAST_SYNC, KEY_SYNC_SKIP, setPref } from "./prefs.ts";
 import { createShell, type Shell } from "./shell.ts";
+import { createStrip, type Strip } from "./strip.ts";
+import { createTabs, KEY_TABS_STORE, type DocRef, type Tabs } from "./tabs.ts";
+import { renderDoc, type DocView } from "./docview.ts";
+import { kindLabel } from "./transcript.ts";
 
-import { type Ctx, errorBox, notFound, skeleton } from "./pages/common.ts";
+import { type Ctx, errorBox, inApp, skeleton } from "./pages/common.ts";
 import { resetBrowse, viewBrowse } from "./pages/browse.ts";
 import { viewCapture } from "./pages/capture.ts";
-import { viewItem } from "./pages/item.ts";
-import { viewBriefing, viewBriefings } from "./pages/briefings.ts";
-import { viewPresentation, viewPresentations } from "./pages/presentations.ts";
+import { viewBriefings } from "./pages/briefings.ts";
+import { viewPresentations } from "./pages/presentations.ts";
 
 // ---- chrome ----
 let page: HTMLElement;
 let main: HTMLElement; // where the current page draws
 let shell: Shell;
 let chat: Chat;
+let tabs: Tabs;
+let strip: Strip;
+let docHost: HTMLElement;
+const views = new Map<string, DocView>();
+let pageHash: string | null = null; // the hash the sidebar page on screen was drawn for
+let lastPageHash = "#/chat"; // where the address returns to after a document route
+let firstRender = true;
 
 async function confirmSync() {
   if (getPref(KEY_SYNC_SKIP) === "1") return runSync();
@@ -46,21 +56,76 @@ async function runSync() {
 }
 
 // ---- router ----
-/** Where "Back to …" goes when an item, briefing or presentation is missing. */
-const BACK: Record<string, [string, string]> = { item: ["Browse & search", "#/browse"], briefing: ["Briefings", "#/briefings"], presentation: ["Presentations", "#/presentations"] };
-let renderSeq = 0;
-async function render() {
+const DOC_ROUTES: Record<string, DocRef["type"]> = { item: "item", briefing: "briefing", presentation: "presentation" };
+const guessKind = (t: DocRef["type"]): string => (t === "briefing" ? "Briefing" : t === "presentation" ? "Presentation" : kindLabel("note"));
+
+/** Make sure the tab's page exists (drawn once, kept hidden while another tab shows). */
+function ensureView(key: string): DocView {
+  let v = views.get(key);
+  if (v) return v;
+  const t = tabs.list().find((x) => x.key === key)!;
+  v = renderDoc({ type: t.type, id: t.id }, {
+    chat,
+    scroller: docHost,
+    askAbout: (scope, title) => chat.askAbout(scope, title),
+    close: () => closeTab(key),
+    loaded: (title, kind) => { tabs.setTitle(key, title, kind); strip.draw(tabs.list(), tabs.shown()); },
+    inApp,
+  });
+  views.set(key, v);
+  v.el.hidden = true;
+  docHost.append(v.el);
+  return v;
+}
+/** Draw what the state says: the shown tab, else Chat, else the sidebar page already drawn. */
+function syncView(focusDoc = false): void {
+  const key = tabs.shown();
   const r = parseRoute(location.hash);
-  shell.setActive(r.name);
-  if (r.name === "chat") {
+  for (const [k] of views) if (!tabs.has(k)) { views.get(k)!.el.remove(); views.delete(k); }
+  docHost.hidden = !key;
+  for (const [k, v] of views) v.el.hidden = k !== key;
+  const onChat = r.name === "chat" || !r.name;
+  if (key) {
+    const v = ensureView(key);
+    v.el.hidden = false;
+    chat.hide();
     page.hidden = true;
-    chat.show();
+    shell.setActive("");
+    shell.setChatDot(chat.hasConversation());
+    if (focusDoc) void v.ready.then(() => { if (tabs.shown() === key) v.el.querySelector<HTMLElement>("[data-doc-title]")?.focus(); });
+  } else if (onChat) {
+    page.hidden = true;
+    if (chat.el.hidden) chat.show();
+    shell.setActive("chat");
     shell.setChatDot(false);
-    return;
+  } else {
+    chat.hide();
+    page.hidden = false;
+    shell.setActive(r.name);
+    shell.setChatDot(chat.hasConversation());
   }
-  chat.hide();
-  page.hidden = false;
-  shell.setChatDot(chat.hasConversation());
+  strip.draw(tabs.list(), key ?? (onChat ? "chat" : null));
+  chat.redraw();
+}
+/** Open a document as a tab: shown now (a click) or quietly with a dot (the agent). */
+function openDoc(ref: DocRef, title: string, kind: string, show: boolean): void {
+  tabs.open(ref, title, kind, { show, dot: !show });
+  syncView(show);
+}
+function showTab(key: string | null, focusDoc = true): void {
+  if (key === null) { tabs.show(null); if (parseRoute(location.hash).name !== "chat") location.hash = "#/chat"; else syncView(); return; }
+  tabs.show(key);
+  syncView(focusDoc);
+}
+function closeTab(key: string): void {
+  tabs.close(key);
+  views.get(key)?.el.remove(); views.delete(key);
+  syncView(true);
+  if (tabs.shown() === null && parseRoute(location.hash).name === "chat") chat.focusInput();
+}
+let renderSeq = 0;
+async function drawPage(r: { name: string; id?: string }): Promise<void> {
+  pageHash = location.hash;
   const mine = ++renderSeq;
   clear(main);
   main.append(skeleton());
@@ -73,17 +138,12 @@ async function render() {
       case "browse": case "search": after = await viewBrowse(ctx); break;
       case "capture": after = await viewCapture(ctx); break;
       case "briefings": after = await viewBriefings(ctx); break;
-      case "briefing": if (r.id) after = await viewBriefing(ctx, r.id.split("#")[0]); break;
       case "presentations": after = await viewPresentations(ctx); break;
-      case "presentation": if (r.id) after = await viewPresentation(ctx, r.id); break;
-      case "item": if (r.id) after = await viewItem(ctx, r.id); break;
       default: view.append(h("p", {}, "Not found. ", h("a", { href: "#/chat" }, "Back to chat")));
     }
   } catch (e) {
     clear(view);
-    const back = BACK[r.name];
-    if (back && e instanceof ApiError && e.status === 404) view.append(...notFound(...back));
-    else view.append(errorBox("Couldn't load this page.", (e as Error).message, () => void render()));
+    view.append(errorBox("Couldn't load this page.", (e as Error).message, () => void render()));
   }
   if (mine !== renderSeq) return;
   clear(main);
@@ -91,24 +151,62 @@ async function render() {
   main.scrollTop = 0;
   after?.();
 }
+async function render() {
+  const r = parseRoute(location.hash);
+  const type = DOC_ROUTES[r.name];
+  if (type && r.id) {
+    // A document route: the click that opens a tab. The address goes back to where the person was.
+    const id = r.id.split("#")[0];
+    const ref: DocRef = { type, id };
+    firstRender = false;
+    const had = tabs.list().find((t) => t.type === type && t.id === id);
+    window.history.replaceState(null, "", lastPageHash);
+    openDoc(ref, had?.title ?? id, had?.kind ?? guessKind(type), true);
+    return;
+  }
+  lastPageHash = location.hash || "#/chat";
+  const keepShown = firstRender && tabs.shown() !== null; // a reload keeps the tab that was shown
+  firstRender = false;
+  if (!keepShown) tabs.show(null);
+  if (r.name !== "chat" && (!keepShown || pageHash !== location.hash)) await drawPage(r);
+  syncView();
+}
 const typing = (t: EventTarget | null) => t instanceof HTMLElement && (["INPUT", "TEXTAREA", "SELECT"].includes(t.tagName) || t.isContentEditable);
 function onKey(e: KeyboardEvent) {
   const mod = e.metaKey || e.ctrlKey;
   const k = e.key.toLowerCase();
-  if (mod && e.shiftKey && k === "o") { e.preventDefault(); chat.newChat(); }
+  if ((e.ctrlKey && e.key === "Tab") || (e.ctrlKey && e.altKey && (e.key === "ArrowRight" || e.key === "ArrowLeft"))) {
+    e.preventDefault();
+    const d = e.key === "ArrowLeft" || (e.key === "Tab" && e.shiftKey) ? -1 : 1;
+    const keys: (string | null)[] = [null, ...tabs.list().map((t) => t.key)];
+    showTab(keys[(keys.indexOf(tabs.shown()) + d + keys.length) % keys.length]);
+  }
+  else if (mod && e.shiftKey && k === "o") { e.preventDefault(); chat.newChat(); }
   else if (mod && e.shiftKey && k === "s") { e.preventDefault(); shell.toggleFold(); }
-  else if (e.key === "Escape") { if (shell.menuOpen()) shell.closeMenu(); else if (chat.isAnswering()) chat.stop(); }
-  else if (e.key === "/" && !mod && !typing(e.target)) { e.preventDefault(); if (parseRoute(location.hash).name !== "chat") location.hash = "#/chat"; chat.focusInput(); }
+  else if (e.key === "Escape") { if (strip.closeLists()) return; if (shell.menuOpen()) shell.closeMenu(); else if (chat.isAnswering()) chat.stop(); }
+  else if (e.key === "/" && !mod && !typing(e.target)) { e.preventDefault(); if (tabs.shown() !== null || parseRoute(location.hash).name !== "chat") showTab(null); chat.focusInput(); }
 }
 
 /** Build the app into `root` and start routing. */
 export function mountApp(root: HTMLElement): void {
   applyTheme(getTheme());
-  shell = createShell({ onNewChat: () => chat.newChat(), onSync: () => void confirmSync() });
-  chat = createChat({ navigate: (hash) => { if (location.hash === hash) void render(); else location.hash = hash; }, onChange: () => shell.setChatDot(chat.hasConversation() && parseRoute(location.hash).name !== "chat") });
+  views.clear(); pageHash = null; lastPageHash = "#/chat"; firstRender = true;
+  tabs = createTabs({ get: () => getPref(KEY_TABS_STORE), set: (v) => setPref(KEY_TABS_STORE, v) });
+  strip = createStrip({ show: showTab, close: closeTab });
+  window.addEventListener("resize", () => strip.draw(tabs.list(), tabs.shown() ?? (parseRoute(location.hash).name === "chat" ? "chat" : null)));
+  shell = createShell({ onNewChat: () => chat.newChat(), onSync: () => void confirmSync(), strip, onNav: () => { if (tabs.shown() !== null) { tabs.show(null); syncView(); } } });
+  chat = createChat({
+    navigate: (hash) => { if (location.hash === hash) void render(); else location.hash = hash; },
+    onChange: () => shell.setChatDot(chat.hasConversation() && (tabs.shown() !== null || parseRoute(location.hash).name !== "chat")),
+    openQuietly: (ref, title, kind) => openDoc(ref, title, kind, false),
+    showDoc: (ref, title, kind) => openDoc(ref, title, kind, true),
+    shownKey: () => tabs.shown(),
+  });
+  docHost = h("div", { class: "jv-doc-host", hidden: "" });
+  docHost.hidden = true;
   page = h("div", { class: "jv-page" });
   main = page;
-  shell.main.append(chat.el, page);
+  shell.main.append(chat.el, page, docHost);
   shell.setSync(lastSyncState());
   root.append(shell.el);
   window.addEventListener("hashchange", () => void render());

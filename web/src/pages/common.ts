@@ -58,7 +58,3 @@ export function emptyBox(title: string, sub?: string, ...extra: Child[]): HTMLEl
 export function errorBox(what: string, reason: string, retry?: () => void, after?: string): HTMLElement {
   return h("div", { class: "jv-errbox", role: "alert" }, h("b", {}, what), h("div", { class: "jv-reason" }, reason), after ? h("div", {}, after) : null, retry ? h("button", { onClick: retry }, "Try again") : null);
 }
-/** The box for an item, briefing or presentation that is not there. */
-export function notFound(backLabel: string, backHref: string): HTMLElement[] {
-  return [trail(backLabel, backHref), emptyBox("We couldn't find that.", "It may have been removed or renamed.", h("div", {}, h("a", { href: backHref }, `Back to ${backLabel}`)))];
-}
