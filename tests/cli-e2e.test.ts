@@ -163,6 +163,21 @@ describe("cli end to end (subprocess)", () => {
     expect(out).not.toContain("<code repo>");
     expect(out).not.toMatch(/bun run jarvis [a-z]/);
   });
+  test("skill teaches initiatives: when to create, filing tasks, linking captures, reporting", () => {
+    const out = jarvis("skill").out.replace(/\s+/g, " ");
+    for (const s of [
+      "jarvis initiative list",
+      'jarvis initiative add "<title>" --goal "<what done looks like>"',
+      "weeks or months",
+      'jarvis task add "<title>" --initiative <id>',
+      "jarvis task move <task> --initiative <id>",
+      "jarvis initiative show <id>",
+      "jarvis initiative suggest <id>",
+      "jarvis link <task> <doc>",
+      "never close an initiative yourself",
+      "Report every initiative, task and link you create **by id and title**",
+    ]) expect(out).toContain(s);
+  });
   test("the skill's fallback command, run from the content repo, runs the search", () => {
     const out = jarvis("skill").out.replace(/\s+/g, " ");
     const [, flag, script] = out.match(/If `jarvis` is not found, run `bun (--cwd=.+?) run (jarvis) …` instead/)!;
