@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { cpSync, mkdirSync, readFileSync, symlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { commands } from "../src/cli.ts";
 import { listRoutes } from "../src/http.ts";
@@ -159,7 +159,7 @@ describe("cli end to end (subprocess)", () => {
     const out = jarvis("skill").out.replace(/\s+/g, " ");
     const repo = join(import.meta.dir, "..");
     expect(out).toContain("driven through the `jarvis` CLI and the local HTTP service on");
-    expect(out).toContain(`run \`bun --cwd=${repo} run jarvis …\` instead, and tell the user to run \`bun link\` in that folder`);
+    expect(out).toContain(`run \`bun "${repo}/src/cli.ts" …\` instead, and tell the user to run \`bun link\` in \`${repo}\` so the plain command works`);
     expect(out).not.toContain("<code repo>");
     expect(out).not.toMatch(/bun run jarvis [a-z]/);
   });
@@ -192,14 +192,32 @@ describe("cli end to end (subprocess)", () => {
   });
   test("the skill's fallback command, run from the content repo, runs the search", () => {
     const out = jarvis("skill").out.replace(/\s+/g, " ");
-    const [, flag, script] = out.match(/If `jarvis` is not found, run `bun (--cwd=.+?) run (jarvis) …` instead/)!;
-    const p = Bun.spawnSync([process.execPath, flag!, "run", script!, "search", "zqxjvnomatch", "--mode", "keyword", "--data", data], {
+    const [, script] = out.match(/If `jarvis` is not found, run `bun "(.+?)" …` instead/)!;
+    const p = Bun.spawnSync([process.execPath, script!, "search", "zqxjvnomatch", "--mode", "keyword", "--data", data], {
       cwd: data, stdout: "pipe", stderr: "pipe",
       env: { ...process.env, JARVIS_HOME: home, JARVIS_MODELS: join(home, "models.toml"), JARVIS_EMBED_FAKE: "1" },
     });
     const res = new TextDecoder().decode(p.stdout) + new TextDecoder().decode(p.stderr);
     expect(res).not.toContain("Usage: bun run");
     expect(res).toContain("no results");
+    expect(p.exitCode).toBe(0);
+  });
+  test("the skill's fallback, run from the content repo, captures a relative file even when the code repo path has a space", () => {
+    // A copy of the code repo at a path with a space (Bun resolves symlinks, so a link would not do).
+    const code = join(t.dir, "code repo");
+    const root = join(import.meta.dir, "..");
+    mkdirSync(join(code, "docs"), { recursive: true });
+    cpSync(join(root, "src"), join(code, "src"), { recursive: true });
+    cpSync(join(root, "package.json"), join(code, "package.json"));
+    cpSync(join(root, "docs", "AGENT-INSTRUCTIONS.md"), join(code, "docs", "AGENT-INSTRUCTIONS.md"));
+    symlinkSync(join(root, "node_modules"), join(code, "node_modules"));
+    const env = { ...process.env, JARVIS_HOME: home, JARVIS_MODELS: join(home, "models.toml"), JARVIS_EMBED_FAKE: "1", JARVIS_AUTHOR: "cli-tester" };
+    const skill = new TextDecoder().decode(Bun.spawnSync([process.execPath, join(code, "src", "cli.ts"), "skill"], { env, stdout: "pipe" }).stdout).replace(/\s+/g, " ");
+    const fallback = skill.match(/If `jarvis` is not found, run `(bun [^`]+?) …` instead/)![1]!;
+    writeFileSync(join(data, "rel-note.md"), "# Relative\n\nquokka relative capture");
+    const p = Bun.spawnSync(["sh", "-c", `${fallback} ingest --file ./rel-note.md --data "${data}"`], { cwd: data, env, stdout: "pipe", stderr: "pipe" });
+    const res = new TextDecoder().decode(p.stdout) + new TextDecoder().decode(p.stderr);
+    expect(res).toMatch(/^captured \S+  rel-note\.md  /);
     expect(p.exitCode).toBe(0);
   });
   test("package.json bin and README setup use the plain jarvis command", () => {
