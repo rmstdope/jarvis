@@ -3,8 +3,6 @@ export type RouteHandler = (req: Request, url: URL, params: Record<string, strin
 export interface ServerContext {
   dataDir: string;
   router?: unknown;
-  /** The base URL this service answers on, set once it is listening (the chat tools call back to it). */
-  url?: string;
 }
 interface Route {
   method: string;

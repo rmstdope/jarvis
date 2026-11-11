@@ -1,14 +1,13 @@
 import { route, json, error, body, HttpError, type ServerContext } from "../http.ts";
 import { ChatService, ChatError, type ChatFile, type ChatScope } from "./sessions.ts";
 import { UndoConflict } from "./changes.ts";
-import { resolvePort } from "../core/config.ts";
 
 const services = new Map<string, ChatService>();
 export function chatService(ctx: ServerContext): ChatService {
   const key = ctx.dataDir;
   let s = services.get(key);
   if (!s) {
-    s = new ChatService(ctx.dataDir, { serverUrl: () => ctx.url ?? `http://127.0.0.1:${resolvePort()}`, ...(ctx as ServerContext & { chatDeps?: ConstructorParameters<typeof ChatService>[1] }).chatDeps });
+    s = new ChatService(ctx.dataDir, { ...(ctx as ServerContext & { chatDeps?: ConstructorParameters<typeof ChatService>[1] }).chatDeps });
     services.set(key, s);
   }
   return s;
@@ -75,12 +74,6 @@ route("POST", "/api/chat/sessions/:id/cancel", (_r, _u, p, ctx) => wrap(async ()
 route("DELETE", "/api/chat/sessions/:id", (_r, _u, p, ctx) => wrap(async () => {
   chatService(ctx).delete(p.id);
   return json({ ok: true });
-}));
-route("POST", "/api/chat/sessions/:id/actions", (req, _u, p, ctx) => wrap(async () => {
-  const b = await body<{ tool?: string; args?: Record<string, unknown> }>(req);
-  if (!b.tool) return error("tool is required");
-  const r = await chatService(ctx).act(p.id, b.tool, b.args ?? {});
-  return json(r);
 }));
 route("GET", "/api/chat/conversations/:cid/changes", (_r, _u, p, ctx) => wrap(async () => json({ changes: chatService(ctx).changes(p.cid).list() })));
 route("POST", "/api/chat/conversations/:cid/changes/undo-all", (req, _u, p, ctx) => wrap(async () => json(await chatService(ctx).changes(p.cid).undoAll((await req.json().catch(() => ({}) as { turn?: string })).turn))));
