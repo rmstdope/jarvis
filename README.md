@@ -94,7 +94,7 @@ is working with:
 | Browser extension (MV3) | `extension/` | `bun run extension:build`, load `extension/dist` unpacked |
 | macOS app | `jarvis-app/` | `./jarvis-app/bundle.sh` → `~/Applications/J.A.R.V.I.S.app` |
 | Model presets | `docs/examples/models/` | `jarvis config preset <name>` |
-| Eval | `scripts/eval-model.ts` | `bun run scripts/eval-model.ts --model copilot:gpt-4.1` |
+| Eval | `scripts/eval-model.ts` | `bun run scripts/eval-model.ts --model copilot:default` |
 
 `bun test` runs 124 tests (two-clone git sync, every pipeline pass, parsers, routes, the LLM providers and
 embedders over mocked HTTP, the CLI as a real subprocess, a fake ACP agent); `bun run test:coverage` reports

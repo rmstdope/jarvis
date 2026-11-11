@@ -30,6 +30,12 @@ export function parseCopilotOutput(stdout: string): string {
   }
 }
 
+/**
+ * The Copilot model id that passes no --model, so the CLI uses the account's own default model.
+ * Live detection and the shipped presets use it: a named id is refused on an account that does not offer it.
+ */
+export const COPILOT_CLI_DEFAULT = "default";
+
 /** Headless GitHub Copilot CLI. Availability is PATH-only. Never --allow-all-tools. */
 export function copilotProvider(spawn: Spawn = defaultSpawn, which: (b: string) => string | null = (b) => Bun.which(b)): Provider {
   return {
@@ -38,7 +44,7 @@ export function copilotProvider(spawn: Spawn = defaultSpawn, which: (b: string) 
       return which("copilot") !== null;
     },
     async complete(modelId, prompt, opts: CompleteOpts = {}) {
-      const args = ["copilot", "-p", prompt, "--model", modelId, "--silent", "--output-format", "json", "--no-color", "--disable-builtin-mcps", "--no-custom-instructions"];
+      const args = ["copilot", "-p", prompt, ...(modelId === COPILOT_CLI_DEFAULT ? [] : ["--model", modelId]), "--silent", "--output-format", "json", "--no-color", "--disable-builtin-mcps", "--no-custom-instructions"];
       if (opts.reasoningEffort) args.push("--reasoning-effort", opts.reasoningEffort);
       const r = await spawn(args, LLM_TIMEOUT_MS);
       if (r.code !== 0) throw new Error(`copilot failed (${r.code}): ${(r.stderr || r.stdout).trim().slice(-400)}`);
