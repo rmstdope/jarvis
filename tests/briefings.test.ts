@@ -113,7 +113,7 @@ describe("components", () => {
     expect(html).toContain("jv-grid2");
     expect(html).toContain("A -&gt; B");
     expect(html).toContain("Soon");
-    expect(html).toContain("background:#e3fcef");
+    expect(html).toContain("background:var(--jv-row-hl, #e3fcef)");
     expect(html).toContain('href="#/item/01X"');
     expect(html).toContain("not loaded");
     expect(html).not.toContain("<script>");
@@ -240,5 +240,17 @@ describe("confluence", () => {
     expect(calls[3].url).toBe("https://wiki.test/rest/api/content/123");
     expect(JSON.parse(calls[3].init.body as string).version).toEqual({ number: 5 });
     expect(confluenceAuthHeader({ CONFLUENCE_EMAIL: "a@b", CONFLUENCE_API_TOKEN: "t" })).toBe(`Basic ${Buffer.from("a@b:t").toString("base64")}`);
+  });
+
+  test("tinted panels take their background from tokens, so dark looks stay readable", () => {
+    const variants = ["accent", "warn", "good", "bad", "neutral", "investigate"];
+    const src = variants.map((v) => `<Callout variant="${v}" title="T">\n\nx\n\n</Callout>`).join("\n\n")
+      + `\n\n<FlowDiagram>\nA --> B\n</FlowDiagram>\n\n<ComparisonTable headers={["h"]} rows={[{cells:["a"],highlight:true}]} />`;
+    const html = renderBriefingHtml(parseBriefingBody(src));
+    const light: Record<string, string> = { accent: "#eef4ff", warn: "#fff7e6", good: "#e8f8ef", bad: "#fdecec", neutral: "#f3f4f6", investigate: "#f3eefe" };
+    for (const v of variants) expect(html).toContain(`jv-callout-${v}" style="margin:16px 0;padding:12px 16px;border-left:4px solid`), expect(html).toContain(`background:var(--jv-tint-${v}, ${light[v]})`);
+    expect(html).toContain("background:var(--jv-code-bg, #f8fafc)");
+    expect(html).toContain("background:var(--jv-head-bg, #f3f4f6)");
+    expect(html).toContain('style="background:var(--jv-row-hl, #e3fcef)"');
   });
 });
