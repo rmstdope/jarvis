@@ -46,8 +46,8 @@ describe("ci planner", () => {
   test("web, extension, presets, fixtures and app changes map to their consumers", () => {
     const w = planFromChanges(["web/src/main.ts", "web/src/styles.css"]);
     const only = (tests: string[]) => tests.filter((x) => x !== "tests/ci-plan.test.ts"); // the planner's own test mentions fixture names literally
-    expect(only(w.tests)).toEqual(["tests/web.test.ts"]);
-    expect(only(planFromChanges(["web/src/ui.ts"]).tests)).toEqual(["tests/web.test.ts", "tests/webdom.test.ts"]);
+    expect(only(w.tests)).toEqual(["tests/web.test.ts", "tests/webapp.test.ts"]);
+    expect(only(planFromChanges(["web/src/ui.ts"]).tests)).toEqual(["tests/web.test.ts", "tests/webapp.test.ts", "tests/webchat.test.ts", "tests/webdom.test.ts", "tests/webshell.test.ts"]);
     expect(only(planFromChanges(["extension/src/blocklist.ts"]).tests)).toEqual(["tests/extension.test.ts"]);
     expect(w.buildWeb).toBe(true);
     expect(w.typecheck).toEqual({ core: false, web: true, extension: false });

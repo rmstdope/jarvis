@@ -122,7 +122,7 @@ The content repo layout that these pieces read and write:
 |---|---|
 | **Ollama** (`http://localhost:11434`, overridable) | Embeddings with `qwen3-embedding:0.6b` via `POST /api/embed`, and local chat models via `POST /api/chat` with `think:false` (thinking under constrained JSON burns the budget). |
 | **oMLX** (`http://127.0.0.1:8000/v1`) | Alternative embedding and chat server on Apple Silicon, OpenAI-style API. |
-| **GitHub Copilot CLI** | Headless `copilot -p … --output-format json` for document-level enrichment, and `copilot --acp` (Agent Client Protocol over NDJSON stdio) for the Discuss chat. Rides the team entitlement, no key. |
+| **GitHub Copilot CLI** | Headless `copilot -p … --output-format json` for document-level enrichment, and `copilot --acp` (Agent Client Protocol over NDJSON stdio) for the chat. Rides the team entitlement, no key. |
 | **OpenAI-compatible API** (OpenAI itself, or any compatible server such as vLLM or LM Studio) | `POST /chat/completions` with a bearer token read from the environment variable *named* in `models.toml`; `OPENAI_API_KEY` is detected automatically. |
 
 The **embedding contract** is pinned in `src/core/constants.ts`: model Qwen3-Embedding-0.6B, native
@@ -210,7 +210,7 @@ throws when the embedding server is down; hybrid degrades to keyword only.
 |---|---|---|
 | **CLI** `src/cli.ts` | Bun, `src/core/args.ts` | A command registry; each command is a few lines over the core. The entrypoint must stay the last statement because top-level `await` stops later registrations. |
 | **HTTP service** `src/server.ts`, `src/http.ts` | `Bun.serve` on `127.0.0.1:7281`, no auth | `src/http.ts` holds the route registry so feature modules (`src/chat/routes.ts`) never import `server.ts` back. Non-API paths serve `web/dist` with an SPA fallback. |
-| **Web UI** `web/` | vanilla TypeScript, hash routing, imperative DOM, bundled by `Bun.build` | Imports only `src/briefings/*` (never core). Views: browse/search with facets, capture, briefings with TOC and comments rail, presentations, item detail, Sync button, resizable Discuss panel. |
+| **Web UI** `web/` | vanilla TypeScript, hash routing, imperative DOM, bundled by `Bun.build` | Imports only `src/briefings/*` (never core). Opens in Chat, the front door: one persisted conversation (`web/src/chat.ts`) beside a foldable sidebar shell (`web/src/shell.ts`), with warm-light and glowing-dark looks. Pages (browse/search with facets, capture, briefings with TOC and comments rail, presentations, item detail) replace the chat in the main area; items and briefings offer "Ask about this". |
 | **Chat** `src/chat/` | Agent Client Protocol (JSON-RPC 2.0 over NDJSON stdio) | A dependency-free ACP client spawns one shared `copilot --acp` process, advertises no filesystem or terminal capabilities and answers every permission request "cancelled", so chat is strictly read-only. One ACP session per chat session, 60-minute idle expiry, NDJSON streaming to the browser. |
 | **Browser extension** `extension/` | Chrome/Edge Manifest V3, TypeScript, bundled `@mozilla/readability` 0.6 | Opt-in auto-capture after a dwell timer, a single blocklist module (globs, allow overrides block), server-synced filters, and a popup for capture, context, tags, search, tasks and links. |
 | **macOS app** `jarvis-app/` | Swift, Cocoa + WebKit, built by `swiftc` from `bundle.sh` | A WKWebView over the web UI. Reuses a running service or starts a managed backend (`bun install`, `web:build`, `jarvis serve`) with logs under Application Support. |
@@ -244,7 +244,7 @@ is hardcoded to a particular product or port.
 
 No model id is pinned in code for a third-party service. Live detection uses `gpt-4.1` for the Copilot
 CLI and OpenAI unless `JARVIS_COPILOT_MODEL` / `JARVIS_OPENAI_MODEL` say otherwise, the
-Discuss chat model comes from `chatModel` in `config.toml` or `JARVIS_CHAT_MODEL`, and the shipped
+Chat model comes from `chatModel` in `config.toml` or `JARVIS_CHAT_MODEL`, and the shipped
 presets carry a comment reminding you to use an id your entitlement offers.
 
 ### 2.11 Configuration, diagnostics and quality
