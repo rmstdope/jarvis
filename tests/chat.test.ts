@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { join } from "node:path";
-import { spawnBunAcp, AcpClient } from "../src/chat/acp.ts";
+import { spawnBunAcp, AcpClient, copilotAcpArgs } from "../src/chat/acp.ts";
 import { ChatService, retrievalTerms, chatModel } from "../src/chat/sessions.ts";
 import { ingest } from "../src/core/ingest.ts";
 import { createBriefing } from "../src/briefings/store.ts";
@@ -9,7 +9,7 @@ import { resetChatServices } from "../src/chat/routes.ts";
 import { clearEmbedder, tmpDataDir, useFakeEmbedder } from "./helpers.ts";
 
 const FAKE = join(import.meta.dir, "fixtures", "fake-acp.ts");
-const spawn = (_model: string, cwd: string) => spawnBunAcp(FAKE, cwd);
+const spawn = (_model: string | undefined, cwd: string) => spawnBunAcp(FAKE, cwd);
 let t: ReturnType<typeof tmpDataDir>;
 beforeEach(() => { t = tmpDataDir(); useFakeEmbedder(); });
 afterEach(async () => { await resetChatServices(); t.cleanup(); clearEmbedder(); });
@@ -122,14 +122,36 @@ describe("shutdown waits for the agent process (jv-den)", () => {
   });
 });
 
+describe("copilot acp command line", () => {
+  test("no chatModel configured: Copilot picks its own model and no reasoning effort is forced (jv-e1c)", () => {
+    const args = copilotAcpArgs(undefined);
+    expect(args.slice(0, 2)).toEqual(["copilot", "--acp"]);
+    expect(args).not.toContain("--model");
+    expect(args).not.toContain("--reasoning-effort");
+    expect(args).toContain("--available-tools=");
+  });
+  test("a configured chatModel is passed through, still without a reasoning effort a model may reject", () => {
+    const args = copilotAcpArgs("gpt-4.1");
+    expect(args[args.indexOf("--model") + 1]).toBe("gpt-4.1");
+    expect(args).not.toContain("--reasoning-effort");
+  });
+});
+
 describe("chat service", () => {
   test("terms and model", () => {
     expect(retrievalTerms("What did we decide about the camera firmware and the zoom drift?")).toEqual(["decide", "camera", "firmware", "zoom", "drift"]);
     expect(retrievalTerms("a b c d e f g h i j k l m n o p q r s t").length).toBe(0);
-    expect(chatModel()).toBe("gpt-4.1");
+    expect(chatModel()).toBeUndefined();
     process.env.JARVIS_CHAT_MODEL = "x";
     expect(chatModel()).toBe("x");
     delete process.env.JARVIS_CHAT_MODEL;
+  });
+  test("with no chatModel configured the agent is spawned with no model (jv-e1c)", async () => {
+    const models: (string | undefined)[] = [];
+    const svc = new ChatService(t.dir, { spawn: (m, cwd) => { models.push(m); return spawnBunAcp(FAKE, cwd); } });
+    await svc.create({ type: "jarvis", ids: [] });
+    expect(models).toEqual([undefined]);
+    await svc.shutdown();
   });
   test("jarvis scope retrieves per turn; item scope grounds the first turn only; busy and expiry", async () => {
     const doc = await ingest(t.dir, { source: "note", title: "Zoom drift", body: "camera firmware zoom drift fixed in 11.8", author: "me" });
