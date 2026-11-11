@@ -244,7 +244,8 @@ is hardcoded to a particular product or port.
 
 No model id is pinned in code for a third-party service. Live detection uses `gpt-4.1` for the Copilot
 CLI and OpenAI unless `JARVIS_COPILOT_MODEL` / `JARVIS_OPENAI_MODEL` say otherwise, the
-Chat model comes from `chatModel` in `config.toml` or `JARVIS_CHAT_MODEL`, and the shipped
+Chat model comes from `chatModel` in `config.toml` or `JARVIS_CHAT_MODEL`; with neither, chat lets
+the Copilot CLI pick its own default model and forces no reasoning effort. The shipped
 presets carry a comment reminding you to use an id your entitlement offers.
 
 ### 2.11 Configuration, diagnostics and quality

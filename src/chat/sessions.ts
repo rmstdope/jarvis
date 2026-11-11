@@ -6,7 +6,6 @@ import { openDb } from "../core/db.ts";
 import { readDocFile } from "../core/docs.ts";
 import { readBriefing } from "../briefings/store.ts";
 
-export const CHAT_DEFAULT_MODEL = "gpt-4.1"; // any Copilot model id; override with config chatModel or JARVIS_CHAT_MODEL
 export const CHAT_GROUNDED_BODY_CHARS = 60_000;
 export const CHAT_SNIPPET_CHARS = 8_000;
 export const CHAT_RESULTS = 6;
@@ -33,8 +32,9 @@ export interface ChatSession {
   sources: { docId: string; title: string; source: string }[];
 }
 
-export function chatModel(): string {
-  return process.env.JARVIS_CHAT_MODEL ?? (loadConfig() as { chatModel?: string }).chatModel ?? CHAT_DEFAULT_MODEL;
+/** The configured chat model id (`JARVIS_CHAT_MODEL`, else config `chatModel`); undefined lets Copilot pick its default. */
+export function chatModel(): string | undefined {
+  return process.env.JARVIS_CHAT_MODEL || (loadConfig() as { chatModel?: string }).chatModel || undefined;
 }
 
 const STOP = new Set("a an the and or of to in on for with is are was were be been it this that these those i you we they he she what which who whom how why when where do does did can could should would will shall may might about from by as at into over under not no yes me my our your their its than then there here up down out off just so if but".split(" "));
@@ -50,7 +50,7 @@ export function retrievalTerms(message: string): string[] {
 }
 
 export interface ChatDeps {
-  spawn?: (model: string, cwd: string) => AcpTransport;
+  spawn?: (model: string | undefined, cwd: string) => AcpTransport;
   now?: () => number;
 }
 
