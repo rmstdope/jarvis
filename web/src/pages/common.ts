@@ -58,3 +58,13 @@ export function emptyBox(title: string, sub?: string, ...extra: Child[]): HTMLEl
 export function errorBox(what: string, reason: string, retry?: () => void, after?: string): HTMLElement {
   return h("div", { class: "jv-errbox", role: "alert" }, h("b", {}, what), h("div", { class: "jv-reason" }, reason), after ? h("div", {}, after) : null, retry ? h("button", { onClick: retry }, "Try again") : null);
 }
+/** The progress bar with "<d> of <n> done" (or "No tasks yet") beside it. */
+export function progress(done: number, total: number, o: { small?: boolean } = {}): HTMLElement {
+  const pct = total === 0 ? 0 : Math.round((done / total) * 100);
+  const bar = h("span", { class: "jv-bar-track", role: "progressbar", "aria-valuemin": "0", "aria-valuemax": String(total), "aria-valuenow": String(done) }, h("span", { class: "jv-bar-fill", style: `width:${pct}%` }));
+  return h("div", { class: `jv-progress${o.small ? " jv-small" : ""}` }, bar, h("span", { class: "jv-ptext" }, total === 0 ? "No tasks yet" : `${done} of ${total} done`));
+}
+/** The small outlined "◎ <initiative title>" link a task in an initiative carries. */
+export function initiativeLabel(i: { id: string; title: string }): HTMLElement {
+  return h("a", { class: "jv-ilabel", href: `#/initiative/${encodeURIComponent(i.id)}`, title: i.title }, `◎ ${i.title}`);
+}

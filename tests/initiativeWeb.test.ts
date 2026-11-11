@@ -37,6 +37,7 @@ describe("initiative routes", () => {
     link(t.dir, a.id, [note.id]);
     const d = await (await call("GET", `/api/initiative/${a.id}`)).json();
     expect(d.initiative).toMatchObject({ title: "Alpha", goal: "the goal" });
+    expect(d.initiative.updated_at).toBeTruthy(); // the tab's "updated <when>"
     expect(d.tasks.length).toBe(12);
     expect(d.direct.items.map((i: { id: string }) => i.id)).toEqual([note.id]);
     expect((await call("GET", "/api/initiative/NOPE")).status).toBe(404);

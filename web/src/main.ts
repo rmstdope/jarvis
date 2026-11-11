@@ -12,6 +12,7 @@ import { type Ctx, errorBox, inApp, skeleton } from "./pages/common.ts";
 import { resetBrowse, viewBrowse } from "./pages/browse.ts";
 import { viewCapture } from "./pages/capture.ts";
 import { viewBriefings } from "./pages/briefings.ts";
+import { viewInitiatives } from "./pages/initiatives.ts";
 import { viewPresentations } from "./pages/presentations.ts";
 
 // ---- chrome ----
@@ -56,8 +57,8 @@ async function runSync() {
 }
 
 // ---- router ----
-const DOC_ROUTES: Record<string, DocRef["type"]> = { item: "item", briefing: "briefing", presentation: "presentation" };
-const guessKind = (t: DocRef["type"]): string => (t === "briefing" ? "Briefing" : t === "presentation" ? "Presentation" : kindLabel("note"));
+const DOC_ROUTES: Record<string, DocRef["type"]> = { item: "item", briefing: "briefing", presentation: "presentation", initiative: "initiative" };
+const guessKind = (t: DocRef["type"]): string => (t === "briefing" ? "Briefing" : t === "presentation" ? "Presentation" : t === "initiative" ? "Initiative" : kindLabel("note"));
 
 /** Make sure the tab's page exists (drawn once, kept hidden while another tab shows). */
 function ensureView(key: string): DocView {
@@ -108,8 +109,8 @@ function syncView(focusDoc = false): void {
   chat.redraw();
 }
 /** Open a document as a tab: shown now (a click) or quietly with a dot (the agent). */
-function openDoc(ref: DocRef, title: string, kind: string, show: boolean): void {
-  tabs.open(ref, title, kind, { show, dot: !show });
+function openDoc(ref: DocRef, title: string, kind: string, show: boolean, after: string | null = null): void {
+  tabs.open(ref, title, kind, { show, dot: !show, after });
   syncView(show);
 }
 function showTab(key: string | null, focusDoc = true): void {
@@ -138,6 +139,7 @@ async function drawPage(r: { name: string; id?: string }): Promise<void> {
       case "browse": case "search": after = await viewBrowse(ctx); break;
       case "capture": after = await viewCapture(ctx); break;
       case "briefings": after = await viewBriefings(ctx); break;
+      case "initiatives": after = await viewInitiatives(ctx); break;
       case "presentations": after = await viewPresentations(ctx); break;
       default: view.append(h("p", {}, "Not found. ", h("a", { href: "#/chat" }, "Back to chat")));
     }
@@ -161,7 +163,8 @@ async function render() {
     firstRender = false;
     const had = tabs.list().find((t) => t.type === type && t.id === id);
     window.history.replaceState(null, "", lastPageHash);
-    openDoc(ref, had?.title ?? id, had?.kind ?? guessKind(type), true);
+    // A link inside a tab opens right after it, as in a browser; from a sidebar page or Chat no tab is shown.
+    openDoc(ref, had?.title ?? id, had?.kind ?? guessKind(type), true, tabs.shown());
     return;
   }
   lastPageHash = location.hash || "#/chat";

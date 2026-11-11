@@ -24,7 +24,11 @@ route("GET", "/api/initiatives", (_r, url, _p, ctx) => {
   });
   return json({ initiatives: rows.sort((a, b) => b.updated_at.localeCompare(a.updated_at) || a.id.localeCompare(b.id)) });
 });
-route("GET", "/api/initiative/:id", (_r, _u, p, ctx) => guard(async () => json(await showInitiative(ctx.dataDir, p.id, { all: true }))));
+route("GET", "/api/initiative/:id", (_r, _u, p, ctx) => guard(async () => {
+  const d = await showInitiative(ctx.dataDir, p.id, { all: true });
+  const fm = readDocFile(ctx.dataDir, d.initiative.id)?.frontmatter;
+  return json({ ...d, initiative: { ...d.initiative, updated_at: fm?.updated_at ?? fm?.created_at } });
+}));
 route("GET", "/api/initiative/:id/suggest", (_r, _u, p, ctx: ServerContext) => guard(async () => {
   const router = (ctx.router as Awaited<ReturnType<typeof getRouter>> | undefined) ?? (await getRouter());
   return json(await initiativeSuggestions(ctx.dataDir, p.id, { router }));

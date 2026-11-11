@@ -8,7 +8,7 @@ import { drawCard, keptCount, type WebChange } from "./changes.ts";
 import { h, modal, toast } from "./ui.ts";
 import { renderMarkdown } from "../../src/briefings/markdown.ts";
 
-export interface Scope { type: "jarvis" | "item" | "briefing"; ids: string[]; }
+export interface Scope { type: "jarvis" | "item" | "briefing" | "initiative"; ids: string[]; }
 type ChatEvent = { type: "change"; change: WebChange } | { type: "open"; docId: string; title?: string; source?: string } | { type: "source"; docId?: string; title?: string; source?: string } | { type: "message"; text: string } | { type: "status"; text: string } | { type: "usage"; used: number; size: number } | { type: "done"; stopReason?: string } | { type: "error"; error: string };
 
 /** Split a byte stream into NDJSON objects; partial trailing lines carry over between chunks. */
@@ -29,6 +29,7 @@ export function ndjsonDecoder(onEvent: (e: ChatEvent) => void): (chunk: string, 
 export const SUGGESTIONS: Record<Scope["type"], string[]> = {
   jarvis: ["Summarise the newest captures", "What did the team decide this week?", "Turn this week's decisions into tasks for me", "Draft a briefing on what changed this week"],
   item: ["Summarise this in three bullets", "What questions does this raise?", "Draft a task from this"],
+  initiative: ["What's left before we can close it?", "What's blocking it right now?", "Write a status update I can share"],
   briefing: ["What is the key takeaway?", "List the open decisions", "Suggest a diagram for section 2"],
 };
 export const KEY_CHAT = "jv.chat";
@@ -193,7 +194,7 @@ export function createChat(opts: { navigate: (hash: string) => void; onChange?: 
     attachRow.replaceChildren();
     fileRow.replaceChildren(...pending.map((p, i) => h("span", { class: `jv-file${p.problem ? " jv-bad" : ""}`, title: p.file.name }, h("span", { class: "jv-fn" }, p.problem ? `⚠ ${p.problem}` : `📄 ${p.file.name}`), p.problem ? "" : ` · ${fileSize(p.file.size)}`, h("button", { class: "jv-file-x", "aria-label": `Remove ${p.file.name}`, title: "Remove", onClick: () => removeFile(i) }, "×"))));
     fileRow.hidden = pending.length === 0;
-    if (conv.attached) attachRow.append(h("span", { class: "jv-attach", title: conv.attached.title }, h("span", { class: "jv-attach-t" }, conv.attached.title), h("button", { "aria-label": "Remove", title: "Remove", onClick: detach }, "×")));
+    if (conv.attached) attachRow.append(h("span", { class: "jv-attach", title: conv.attached.title }, h("span", { class: "jv-attach-t" }, conv.scope.type === "initiative" ? `◎ ${conv.attached.title}` : conv.attached.title), h("button", { "aria-label": "Remove", title: "Remove", onClick: detach }, "×")));
     const action = answering
       ? h("button", { class: "jv-stop", title: "Stop", "aria-label": "Stop", onClick: () => stop() }, "■")
       : h("button", { class: "jv-send", title: "Send", "aria-label": "Send", disabled: off ? "" : null, onClick: () => void send(input.value) }, "↑");
