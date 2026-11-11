@@ -220,6 +220,10 @@ describe("chat service", () => {
     expect(r.prompt).not.toContain("zebrafish");
     expect(r.prompt).not.toContain("Sam");
     expect(r.sources.map((x) => x.docId)).toContain(meeting.id);
+    const { mkdirSync, writeFileSync } = await import("node:fs");
+    mkdirSync(join(t.dir, "config"), { recursive: true });
+    writeFileSync(join(t.dir, "config", "team.toml"), "[privacy]\ntranscripts_to_cloud = true\n");
+    expect(svc.buildPrompt(s, "Link the Weekly sync meeting to the Zoom drift note.").prompt).toContain("zebrafish");
     await svc.shutdown();
   });
   test("HTTP routes stream NDJSON and map errors", async () => {
@@ -330,7 +334,7 @@ describe("the agent acts (jv-oya.4)", () => {
     expect(said).not.toContain("secret txt line");
     expect(said).toContain("buy milk");
   });
-  test("a captured meeting never reaches the prompt through retrieval unless allowed", async () => {
+  test("a captured meeting's transcript never reaches the prompt through retrieval unless allowed", async () => {
     const { ingest } = await import("../src/core/ingest.ts");
     await ingest(t.dir, { source: "meeting", title: "Standup", body: "zebrafish rollout decision", author: "me" });
     const sid = await open("conv7");
