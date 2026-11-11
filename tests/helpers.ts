@@ -2,6 +2,7 @@ import { Database } from "bun:sqlite";
 import { existsSync, mkdtempSync, readdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { ensureCustomSqlite } from "../src/core/db.ts";
 import { setEmbedderForTests, type Embedder } from "../src/core/embed.ts";
 import { EMBEDDING_DIMS } from "../src/core/constants.ts";
 import { normalizeVector } from "../src/core/util.ts";
@@ -32,6 +33,7 @@ function indexDbsUnder(dir: string): string[] {
  * same leak on every platform.
  */
 export function heldDatabases(dir: string): string[] {
+  ensureCustomSqlite(); // the first in-process database decides which SQLite library Bun loads
   return indexDbsUnder(dir).filter((f) => {
     const db = new Database(f);
     try {
@@ -52,10 +54,13 @@ export function tmpDataDir(): { dir: string; cleanup: () => void } {
     dir,
     cleanup: () => {
       const held = heldDatabases(dir);
+      if (held.length) {
+        try { rmSync(dir, { recursive: true, force: true }); } catch {} // Windows: EBUSY, by definition
+        throw new Error(`database still open at cleanup: ${held.join(", ")}`);
+      }
       // Retries ride out a child process (an ACP agent, git) that Windows still counts in the
       // directory for a moment after it was killed; a leaked database never frees itself.
       rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
-      if (held.length) throw new Error(`database still open at cleanup: ${held.join(", ")}`);
     },
   };
 }
