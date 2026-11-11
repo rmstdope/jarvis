@@ -38,7 +38,7 @@ export interface StepFailure {
 }
 
 /** Reasons `jarvis doctor` checks and prints a fix for: copilot-model and openai-model (a refused id) and models-available (unreachable). */
-const DOCTOR_FIXABLE = /is not available|ECONNREFUSED|Unable to connect|Executable not found/i;
+const DOCTOR_FIXABLE = /is not available|model .*(does not exist|not found)|ECONNREFUSED|Unable to connect|Executable not found/i;
 
 /** Build a {@link StepFailure}, marking whether doctor has its fix. */
 export function stepFailure(step: string, failed: number, reason: string): StepFailure {

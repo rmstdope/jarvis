@@ -10,6 +10,8 @@ export interface CompleteOpts {
   json?: boolean;
   maxTokens?: number;
   reasoningEffort?: ReasoningEffort;
+  /** Abort the call after this many milliseconds; providers default to `LLM_TIMEOUT_MS`. */
+  timeoutMs?: number;
 }
 export interface ResolvedModel {
   id: string; // "provider:model"
