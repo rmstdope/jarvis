@@ -197,6 +197,21 @@ describe("store, comments, index, routes", () => {
     expect((await call("POST", `/api/briefing/${b.id}/comments`, {})).status).toBe(400);
     expect((await (await call("GET", `/api/briefing/${b.id}/comments`)).json()).length).toBe(1);
   });
+  test("a comment posted as the web client posts it carries the service's author, as the CLI would record (jv-ii7)", async () => {
+    const saved = process.env.JARVIS_AUTHOR;
+    process.env.JARVIS_AUTHOR = "psylocke";
+    try {
+      const b = createBriefing(t.dir, { title: "R", author: "me", body: "hi\n" });
+      const req = new Request(`http://127.0.0.1:7281/api/briefing/${b.id}/comments`, { method: "POST", body: JSON.stringify({ comment: "from the web" }), headers: { "content-type": "application/json" } });
+      expect((await (await handle(req, { dataDir: t.dir })).json()).author).toBe("psylocke");
+      expect(readComments(t.dir, b.id)[0].author).toBe("psylocke");
+      const explicit = new Request(`http://127.0.0.1:7281/api/briefing/${b.id}/comments`, { method: "POST", body: JSON.stringify({ comment: "x", author: "kim" }), headers: { "content-type": "application/json" } });
+      expect((await (await handle(explicit, { dataDir: t.dir })).json()).author).toBe("kim");
+    } finally {
+      if (saved === undefined) delete process.env.JARVIS_AUTHOR;
+      else process.env.JARVIS_AUTHOR = saved;
+    }
+  });
 });
 
 describe("confluence", () => {
