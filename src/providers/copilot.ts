@@ -52,3 +52,31 @@ export function copilotProvider(spawn: Spawn = defaultSpawn, which: (b: string) 
     },
   };
 }
+
+/**
+ * The model ids listed under `model` in `copilot help config`: the CLI's catalog, which a `--model`
+ * outside it is refused against ("… from --model flag is not available"). Null when the section is absent.
+ */
+export function parseCopilotModelCatalog(help: string): string[] | null {
+  const lines = help.split("\n");
+  const start = lines.findIndex((l) => /^\s*`model`:/.test(l));
+  if (start < 0) return null;
+  const ids: string[] = [];
+  for (const l of lines.slice(start + 1)) {
+    if (/^\s*`/.test(l)) break;
+    const m = /^\s*-\s*"([^"]+)"/.exec(l);
+    if (m) ids.push(m[1]);
+  }
+  return ids.length ? ids : null;
+}
+
+/** Reads the catalog from `copilot help config`; null when the CLI is missing, fails or lists none. */
+export async function readCopilotModelCatalog(spawn: Spawn = defaultSpawn, which: (b: string) => string | null = (b) => Bun.which(b)): Promise<string[] | null> {
+  if (!which("copilot")) return null;
+  try {
+    const r = await spawn(["copilot", "help", "config"], 10_000);
+    return r.code === 0 ? parseCopilotModelCatalog(r.stdout) : null;
+  } catch {
+    return null;
+  }
+}

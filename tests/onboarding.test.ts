@@ -2,7 +2,10 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { listPresets, readPreset, recommendPreset, applyPreset } from "../src/core/presets.ts";
-import { parseModelsToml } from "../src/providers/models.ts";
+import { modelsPath, parseModelsToml } from "../src/providers/models.ts";
+import { createRouter } from "../src/providers/router.ts";
+import { setRouterForTests } from "../src/providers/index.ts";
+import { parseCopilotModelCatalog, readCopilotModelCatalog } from "../src/providers/copilot.ts";
 import { doctor, checkSqliteVec, checkJarvisCommand, formatDoctor } from "../src/core/doctor.ts";
 import { init } from "../src/core/init.ts";
 import { loadConfig, resetConfigCache } from "../src/core/config.ts";
@@ -141,6 +144,49 @@ describe("doctor jarvis-command", () => {
     const r = await doctor({ coreOnly: true, which: (b) => (b === "jarvis" ? null : `/bin/${b}`), codeRepo: "/code/jarvis", home: "/nonexistent-home" });
     expect(r.checks.find((c) => c.name === "jarvis-command")!.status).toBe("warn");
     expect(r.checks.filter((c) => c.status === "fail").every((c) => c.name !== "jarvis-command")).toBe(true);
+  });
+});
+
+describe("doctor: a Copilot model id the account refuses (jv-5el)", () => {
+  const copilotRouter = (ids: string[]) =>
+    createRouter({
+      config: { preference: ["copilot"], models: ids.map((id) => ({ provider: "copilot" as const, id, quality: "high" as const, bestFor: [] })), source: "file" },
+      factory: () => ({ name: "copilot", available: async () => true, complete: async () => "" }),
+    });
+  afterEach(() => setRouterForTests(null));
+
+  test("a configured id missing from the Copilot catalog fails with an exact fix line", async () => {
+    setRouterForTests(await copilotRouter(["gpt-4.1"]));
+    const r = await doctor({ coreOnly: true, which: (b) => `/bin/${b}`, copilotCatalog: async () => ["gpt-5-mini", "gpt-5.4"] });
+    const c = r.checks.find((x) => x.name === "copilot-model");
+    expect(c).toMatchObject({ status: "fail", detail: 'Copilot does not offer model "gpt-4.1" to this account' });
+    expect(c!.fix).toBe(`set id = "default" for gpt-4.1 in ${modelsPath()}   or   jarvis config preset <name>`);
+    expect(r.checks.find((x) => x.name === "models-available")).toBeUndefined();
+    setRouterForTests(await copilotRouter(["gpt-4.1", "gpt-5-mini"]));
+    const both = await doctor({ coreOnly: true, which: (b) => `/bin/${b}`, copilotCatalog: async () => ["gpt-5-mini"] });
+    expect(both.checks.find((x) => x.name === "models-available")).toMatchObject({ status: "ok", detail: "copilot:gpt-5-mini" });
+    expect(r.summary.healthy).toBe(false);
+  });
+
+  test("default, auto and catalog ids pass; an unreadable catalog checks nothing", async () => {
+    setRouterForTests(await copilotRouter(["default", "auto", "gpt-5-mini"]));
+    const r = await doctor({ coreOnly: true, which: (b) => `/bin/${b}`, copilotCatalog: async () => ["gpt-5-mini"] });
+    expect(r.checks.find((x) => x.name === "copilot-model")).toMatchObject({ status: "ok" });
+    setRouterForTests(await copilotRouter(["gpt-4.1"]));
+    const r2 = await doctor({ coreOnly: true, which: (b) => `/bin/${b}`, copilotCatalog: async () => null });
+    expect(r2.checks.find((x) => x.name === "copilot-model")).toBeUndefined();
+  });
+
+  test("the catalog is read from `copilot help config`", () => {
+    const help = ["  `logLevel`: log level", "", "  `model`: AI model to use for Copilot CLI; can be changed", '    - "claude-sonnet-5.5"', '    - "gpt-5-mini"', "", "  `contextTier`: context window tier", '    - "default"'].join("\n");
+    expect(parseCopilotModelCatalog(help)).toEqual(["claude-sonnet-5.5", "gpt-5-mini"]);
+    expect(parseCopilotModelCatalog("no such section")).toBeNull();
+  });
+  test("reading the catalog: missing CLI, failing CLI and a listed catalog", async () => {
+    const out = (code: number) => async () => ({ code, stdout: '  `model`: AI model\n    - "gpt-5-mini"\n', stderr: "" });
+    expect(await readCopilotModelCatalog(out(0), () => null)).toBeNull();
+    expect(await readCopilotModelCatalog(out(1), () => "/bin/copilot")).toBeNull();
+    expect(await readCopilotModelCatalog(out(0), () => "/bin/copilot")).toEqual(["gpt-5-mini"]);
   });
 });
 
