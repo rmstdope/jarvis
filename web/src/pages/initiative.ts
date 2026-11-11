@@ -49,7 +49,7 @@ export async function initiativePage(id: string, ctx: DocCtx): Promise<DocPage> 
     const tiedRow = (x: TiedItem, via: boolean) => h("div", { class: "jv-trow" },
       h("a", { href: itemHref({ id: x.id, source: x.source ?? "" }), title: x.title }, x.title),
       via && x.via.length ? h("span", { class: "jv-via" }, `← ${x.via.join(", ")}`) : null,
-      via ? null : h("span", { class: "jv-via" }, entryLine(x.source, fmtDate(x.created_at))));
+      via ? null : h("span", { class: "jv-via" }, entryLine(x.source, x.author, fmtDate(x.created_at))));
     const folded = (key: BoxKey, rows: HTMLElement[]) => {
       const more = rows.length > SHOWN;
       const all = expanded.has(key);
@@ -73,6 +73,7 @@ export async function initiativePage(id: string, ctx: DocCtx): Promise<DocPage> 
       h("div", { class: "jv-dhead" }, kind, heading, statusPill(closed ? "closed" : "open", "n"), h("span", { class: "jv-igrow" }), toggle, ask),
       h("div", { class: "jv-dbody" },
         h("header", { class: "jv-ihead" },
+          h("h2", { class: "jv-title" }, i.title),
           h("div", { class: "muted small jv-meta" }, meta),
           progress(done, total),
           h("div", { class: "jv-goal" }, i.goal),
@@ -130,7 +131,7 @@ export async function initiativePage(id: string, ctx: DocCtx): Promise<DocPage> 
         next = rest[at] ?? rest[at - 1]; // the one that followed, else the one before
         suggest = { state: "ready", items: rest };
       }
-      d.direct = { total: d.direct.total + 1, items: [{ id: s.id, title: s.title, source: s.source, created_at: new Date().toISOString(), via: [] }, ...d.direct.items] };
+      d.direct = { total: d.direct.total + 1, items: [{ id: s.id, title: s.title, source: s.source, author: s.author ?? null, created_at: new Date().toISOString(), via: [] }, ...d.direct.items] };
       accepting.delete(s.id);
       draw(next ? `sug:${next.id}` : "suggested");
       toast(`Linked to ${d.initiative.title}`);

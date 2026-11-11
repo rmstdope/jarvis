@@ -15,7 +15,7 @@ const go = async (hash: string) => { location.hash = hash; await env.tick(60); }
 const change = (el: Element) => el.dispatchEvent(new env.win.Event("change", { bubbles: true }) as unknown as Event);
 
 const task = (n: number, o: Record<string, unknown> = {}) => ({ id: `T${n}`, title: `task ${n}`, status: "open", owner: "jonas", created_at: "2026-03-01T00:00:00Z", author: "me", links: 0, ...o });
-const tied = (n: number, via: string[] = []) => ({ id: `N${n}`, title: `note ${n}`, source: "note", created_at: "2026-03-0" + (n % 9 + 1) + "T00:00:00Z", via });
+const tied = (n: number, via: string[] = []) => ({ id: `N${n}`, title: `note ${n}`, source: "note", author: "bo", created_at: "2026-03-0" + (n % 9 + 1) + "T00:00:00Z", via });
 const base = (o: Record<string, unknown> = {}) => ({
   initiative: { id: "IA", title: "Move billing", owner: "anna", status: "open", done: 1, total: 2, created_at: "2026-02-02T00:00:00Z", goal: "All billing on the new ledger", updated_at: "2026-03-05T10:00:00Z" },
   tasks: [task(1, { status: "done" }), task(2, { due: "2026-11-20" })],
@@ -51,6 +51,9 @@ describe("an initiative's page", () => {
     expect(text(".jv-dhead .jv-status")).toBe("open");
     expect(qa(".jv-dhead button").map((b) => b.textContent)).toEqual(["Close initiative", "Ask about this"]);
     expect(text(".jv-meta")).toBe("Initiative · anna · started 2026-02-02 · updated 2026-03-05");
+    const title = q(".jv-ihead .jv-title");
+    expect(title.textContent).toBe("Move billing"); // the serif title on the page, not only in the header
+    expect(title.nextElementSibling!.classList.contains("jv-meta")).toBe(true); // above the meta line
     expect(text(".jv-goal")).toBe("All billing on the new ledger");
     expect(text(".jv-ihead .jv-progress")).toBe("1 of 2 done");
     expect(qa(".jv-ibox h4").map((h) => h.textContent)).toEqual(["Tasks · 2", "Through its tasks · 1", "Linked directly · 1", "Suggested · 0 — not part of it until you accept"]);
@@ -70,7 +73,7 @@ describe("an initiative's page", () => {
     await boot("#/initiative/IA");
     expect(box("Through").textContent).toContain("note 1");
     expect(box("Through").textContent).toContain("← task 2");
-    expect(box("Linked").textContent).toContain("note · 2026-03-03");
+    expect(box("Linked").querySelector(".jv-via")!.textContent).toBe("note · bo · 2026-03-03");
     await boot("#/initiative/IA", { detail: base({ tasks: [], through: { total: 0, items: [] }, direct: { total: 0, items: [] } }) });
     expect(box("Tasks").textContent).toContain("No tasks yet.");
     expect(box("Tasks").textContent).toContain("Add one with jarvis task add “<title>” --initiative IA");
@@ -151,7 +154,7 @@ describe("ticking tasks", () => {
 });
 
 describe("suggestions", () => {
-  const sug = { model: true, suggestions: [{ id: "S1", title: "Finance weekly", source: "meeting", reason: "mentions the cut-over date" }, { id: "S2", title: "Ledger FAQ", source: "note", reason: "same topic" }] };
+  const sug = { model: true, suggestions: [{ id: "S1", title: "Finance weekly", source: "meeting", author: "anna", reason: "mentions the cut-over date" }, { id: "S2", title: "Ledger FAQ", source: "note", reason: "same topic" }] };
   test("load after the page, show title, reason and Accept; no model and nothing-fits say so", async () => {
     let release!: () => void;
     const gate = new Promise<void>((r) => (release = r));
@@ -181,6 +184,7 @@ describe("suggestions", () => {
     await env.tick(20);
     expect(env.calls.find((c) => c.path === "/api/link")!.body).toEqual({ src: "IA", dst: "S1" });
     expect(box("Linked").textContent).toContain("Finance weekly");
+    expect(box("Linked").querySelector(".jv-via")!.textContent).toMatch(/^meeting · anna · \d{4}-\d{2}-\d{2}$/); // who added it, as after a reload
     expect(box("Linked").querySelector("h4")!.textContent).toBe("Linked directly · 2");
     expect(box("Suggested").textContent).not.toContain("Finance weekly");
     expect(text(".toast")).toBe("Linked to Move billing");

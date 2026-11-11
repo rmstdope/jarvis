@@ -14,15 +14,15 @@ export interface SyncResult { remote: boolean; committed: number; committedEnric
 export interface PresentationSummary { id: string; slug: string; title: string; author: string; created_at: string; updated_at?: string; indexed: boolean; viewer: { status: string; launchUrl?: string }; }
 
 export interface InitiativeRef { id: string; title: string; }
-export interface InitiativeProgress { done: number; total: number; owner: string; status: "open" | "closed"; closed_at?: string; goal?: string; }
+export interface InitiativeProgress { done: number; total: number; owner: string; status: "open" | "closed"; closed_at?: string; goal?: string; updated_at?: string; }
 export interface TaskRow { id: string; title: string; status: "open" | "done"; owner: string; due?: string; initiative?: InitiativeRef; }
 export interface InitiativeSummary { id: string; title: string; owner: string; status: "open" | "closed"; done: number; total: number; created_at: string; closed_at?: string; closed_by?: string; }
 export interface InitiativeCard extends InitiativeSummary { goal: string; updated_at: string; }
-export interface TiedItem { id: string; title: string; source: string | null; created_at: string; via: string[]; }
+export interface TiedItem { id: string; title: string; source: string | null; author?: string | null; created_at: string; via: string[]; }
 export interface TiedSection { total: number; items: TiedItem[]; }
 export interface InitiativeTask extends TaskRow { created_at: string; completed_at?: string; completed_by?: string; author: string; links: number; }
 export interface InitiativeDetail { initiative: InitiativeSummary & { goal: string; updated_at?: string }; tasks: InitiativeTask[]; through: TiedSection; direct: TiedSection; }
-export interface InitiativeSuggestion { id: string; title: string; source: string; reason: string; }
+export interface InitiativeSuggestion { id: string; title: string; source: string; author?: string; reason: string; }
 
 export class ApiError extends Error {
   constructor(message: string, public status: number) { super(message); }

@@ -20,9 +20,8 @@ const card = (i: ItemSummary) => i.source === "initiative" && i.progress
   ? initiativeCard({ id: i.id, title: i.title, updated_at: i.updated_at ?? i.created_at, ...i.progress })
   : entryCard({ href: itemHref(i), title: i.title || "(untitled)", details: entryLine(i.source, i.author, fmtDate(i.created_at)), pill: i.initiative ? initiativeLabel(i.initiative) : null, summary: i.summary, tags: i.tags });
 const hitCard = (x: SearchHit) => {
-  const c = x.source === "initiative" && x.progress
-    ? initiativeCard({ id: x.docId, title: x.title, updated_at: undefined, ...x.progress })
-    : entryCard({ href: itemHref({ id: x.docId, source: x.source }), title: x.title || x.docId, details: entryLine(x.source, x.author, x.createdAt ? fmtDate(x.createdAt) : null), pill: x.initiative ? initiativeLabel(x.initiative) : null });
+  if (x.source === "initiative" && x.progress) return initiativeCard({ id: x.docId, title: x.title, ...x.progress }); // its goal is the summary: no snippet repeating it
+  const c = entryCard({ href: itemHref({ id: x.docId, source: x.source }), title: x.title || x.docId, details: entryLine(x.source, x.author, x.createdAt ? fmtDate(x.createdAt) : null), pill: x.initiative ? initiativeLabel(x.initiative) : null });
   c.append(h("div", { class: "jv-s jv-snip", html: highlightSnippet(x.snippet) }));
   return c;
 };

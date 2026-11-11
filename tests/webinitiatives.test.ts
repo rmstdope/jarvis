@@ -114,11 +114,13 @@ describe("which initiative a task belongs to, and initiatives in Browse & search
   });
   test("search hits use the same card for initiatives", async () => {
     await boot("#/browse");
-    env.routes.set("GET /api/search", () => ({ json: [{ docId: "IA", source: "initiative", title: "Move billing", snippet: "[billing] ledger", score: 1, progress: { done: 4, total: 4, owner: "anna", status: "open" } }] }));
+    env.routes.set("GET /api/search", () => ({ json: [{ docId: "IA", source: "initiative", title: "Move billing", snippet: "All [billing] on the new ledger", score: 1, progress: { done: 4, total: 4, owner: "anna", status: "open", goal: "All billing on the new ledger", updated_at: "2026-03-05T10:00:00Z" } }] }));
     localStorage.setItem("jv.browse", JSON.stringify({ q: "billing", mode: "hybrid", source: "", author: "", tag: "", days: "", addedOffset: 0, updatedOffset: 0 }));
     await go("#/search"); await go("#/browse");
     expect(q(".jv-card .jv-ct").getAttribute("href")).toBe("#/initiative/IA");
     expect(q(".jv-card").textContent).toContain("✓ All tasks done — close it?");
+    expect(q(".jv-card .jv-m").textContent).toContain("initiative · anna · updated 2026-03-05");
+    expect(qa(".jv-card .jv-s").map((s) => s.textContent)).toEqual(["All billing on the new ledger"]); // the goal once, not again as a snippet
   });
   test("a task's tab: the initiative line sits above the title, with progress; it opens the initiative's tab; a standalone task has no line", async () => {
     await boot("#/chat");
