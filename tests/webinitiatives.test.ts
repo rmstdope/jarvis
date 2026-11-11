@@ -150,3 +150,17 @@ describe("which initiative a task belongs to, and initiatives in Browse & search
     expect(qa(".jv-sg").map((b) => b.textContent)).toEqual(["What's left before we can close it?", "What's blocking it right now?", "Write a status update I can share"]);
   });
 });
+
+describe("initiative cards in Browse carry the goal, not the enrichment summary", () => {
+  test("goal comes from progress.goal; summary is ignored", async () => {
+    await boot("#/browse");
+    const page = (n: number) => ({ offset: 0, limit: 20, total: n, hasMore: false });
+    env.routes.set("GET /api/browse", () => ({ json: { added: [{ id: "IA", source: "initiative", title: "Move billing", author: "anna", created_at: "2026-03-01T00:00:00Z", updated_at: null, summary: "a model summary", tags: [], progress: { done: 1, total: 4, owner: "anna", status: "open", goal: "The real goal" } }], updated: [], pagination: { added: page(1), updated: page(0) }, facets: { sources: [], authors: [], tags: [] } } }));
+    await go("#/search"); await go("#/browse");
+    expect(q(".jv-card .jv-s").textContent).toBe("The real goal");
+  });
+  test("a done initiative's green pill sits in the details line", async () => {
+    await boot("#/initiatives", { list: [INI({ done: 3, total: 3 })] });
+    expect(q(".jv-card .jv-m .jv-status").textContent).toBe("✓ All tasks done — close it?");
+  });
+});

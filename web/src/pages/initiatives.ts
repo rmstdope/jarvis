@@ -7,10 +7,9 @@ import { type Ctx, emptyBox, entryCard, heading, type Page, progress, skeleton, 
 /** The card of one initiative (the list and Browse & search both use it). */
 export function initiativeCard(i: { id: string; title: string; goal?: string | null; owner: string; status: "open" | "closed"; done: number; total: number; updated_at?: string | null; closed_at?: string }, from?: "browse"): HTMLElement {
   const closed = i.status === "closed";
-  const card = entryCard({ href: `#/initiative/${encodeURIComponent(i.id)}${from ? `?from=${from}` : ""}`, title: i.title, details: entryLine("initiative", i.owner, closed ? `closed ${fmtDate(i.closed_at)}` : i.updated_at ? `updated ${fmtDate(i.updated_at)}` : null), summary: i.goal });
+  const card = entryCard({ href: `#/initiative/${encodeURIComponent(i.id)}${from ? `?from=${from}` : ""}`, title: i.title, details: entryLine("initiative", i.owner, closed ? `closed ${fmtDate(i.closed_at)}` : i.updated_at ? `updated ${fmtDate(i.updated_at)}` : null), summary: i.goal, pill: !closed && i.total > 0 && i.done === i.total ? statusPill("✓ All tasks done — close it?", "g") : null });
   card.classList.toggle("jv-dim", closed);
   card.append(progress(i.done, i.total));
-  if (!closed && i.total > 0 && i.done === i.total) card.append(statusPill("✓ All tasks done — close it?", "g"));
   return card;
 }
 

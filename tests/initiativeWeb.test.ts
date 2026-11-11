@@ -80,7 +80,7 @@ describe("which initiative a task or card belongs to", () => {
     const rows = [...b.added, ...b.updated];
     expect(rows.find((i: { id: string }) => i.id === t1.id).initiative).toEqual({ id: a.id, title: "Alpha" });
     expect(rows.find((i: { id: string }) => i.id === solo.id).initiative).toBeUndefined();
-    expect(rows.find((i: { id: string }) => i.id === a.id).progress).toMatchObject({ done: 1, total: 2, owner: "anna", status: "open" });
+    expect(rows.find((i: { id: string }) => i.id === a.id).progress).toMatchObject({ done: 1, total: 2, owner: "anna", status: "open", goal: "launch alpha" });
     const hits = await (await call("GET", "/api/search?q=alpha&mode=keyword")).json();
     expect(hits.find((h: { docId: string }) => h.docId === t1.id).initiative).toEqual({ id: a.id, title: "Alpha" });
     expect(hits.find((h: { docId: string }) => h.docId === a.id).progress).toMatchObject({ done: 1, total: 2 });

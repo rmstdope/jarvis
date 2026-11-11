@@ -14,7 +14,7 @@ export interface SyncResult { remote: boolean; committed: number; committedEnric
 export interface PresentationSummary { id: string; slug: string; title: string; author: string; created_at: string; updated_at?: string; indexed: boolean; viewer: { status: string; launchUrl?: string }; }
 
 export interface InitiativeRef { id: string; title: string; }
-export interface InitiativeProgress { done: number; total: number; owner: string; status: "open" | "closed"; closed_at?: string; }
+export interface InitiativeProgress { done: number; total: number; owner: string; status: "open" | "closed"; closed_at?: string; goal?: string; }
 export interface TaskRow { id: string; title: string; status: "open" | "done"; owner: string; due?: string; initiative?: InitiativeRef; }
 export interface InitiativeSummary { id: string; title: string; owner: string; status: "open" | "closed"; done: number; total: number; created_at: string; closed_at?: string; closed_by?: string; }
 export interface InitiativeCard extends InitiativeSummary { goal: string; updated_at: string; }

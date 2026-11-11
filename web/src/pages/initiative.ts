@@ -66,20 +66,21 @@ export async function viewInitiative(ctx: Ctx, id: string, from?: string): Page 
     const ask = h("button", { class: "primary jv-wide", onClick: () => ctx.chat.askAbout({ type: "initiative", ids: [id] }, i.title) }, "Ask about this");
     const blk = (name: string, ...body: (Node | string)[]) => h("div", { class: "jv-blk" }, h("h5", {}, name), ...body);
     const toggle = h("button", { class: "jv-wide jv-closebtn", "data-act": closed ? "reopen" : "close", onClick: () => void (closed ? reopen() : close()) }, closed ? "Reopen" : "Close initiative");
-    const panel = h("aside", { class: "jv-panel" }, ask, blk("Owner", i.owner), blk("Status", status), blk("Progress", progress(done, total, { small: true })), h("div", { class: "jv-blk" }, toggle));
+    const panel = h("aside", { class: "jv-panel" }, ask, blk("Owner", i.owner), blk("Status", status), h("div", { class: "jv-blk jv-pprog" }, h("h5", {}, "Progress"), progress(done, total, { small: true })), h("div", { class: "jv-blk" }, toggle));
     host.replaceChildren(
-      h("article", {},
+      h("header", { class: "jv-ihead" },
         h("h1", { class: "jv-title" }, i.title),
-        h("div", { class: "jv-meta" }, `${entryLine("initiative", i.owner)} · `, statusPill(closed ? "closed" : "open", closed ? "n" : "g")),
+        h("div", { class: "jv-meta" }, `${entryLine("initiative", i.owner)} · `, statusPill(closed ? "closed" : "open", "n")),
         progress(done, total),
         h("div", { class: "jv-goal" }, i.goal),
         closed ? h("div", { class: "jv-closednote muted small" }, `Closed ${fmtDate(i.closed_at)} by ${i.closed_by ?? "unknown"}.`) : null,
-        allDone ? h("div", { class: "jv-allnote" }, "✓ All tasks are done. It stays open until someone closes it, since more tasks may come.") : null,
+        allDone ? h("div", { class: "jv-allnote" }, "✓ All tasks are done. It stays open until someone closes it, since more tasks may come.") : null),
+      panel,
+      h("div", { class: "jv-iboxes" },
         ibox(`Tasks · ${total}`, null, total === 0 ? h("div", { class: "jv-empty" }, h("b", {}, "No tasks yet."), h("div", {}, "Add one with ", h("code", {}, `jarvis task add “<title>” --initiative ${id}`))) : h("div", { class: "jv-tasklist" }, ...d.tasks.map(taskRow))),
         ibox(`Through its tasks · ${d.through.total}`, null, ...(d.through.items.length ? folded("through", d.through.items.map((x) => tiedRow(x, true))) : [empty("Nothing is tied to it through its tasks yet.")])),
         ibox(`Linked directly · ${d.direct.total}`, null, ...(d.direct.items.length ? folded("direct", d.direct.items.map((x) => tiedRow(x, false))) : [empty("Nothing is linked to it directly yet.")])),
-        ibox(suggest.state === "loading" ? "Suggested" : `Suggested · ${sugRows.length}`, "— not part of it until you accept", ...suggestBody)),
-      panel);
+        ibox(suggest.state === "loading" ? "Suggested" : `Suggested · ${sugRows.length}`, "— not part of it until you accept", ...suggestBody)));
     if (focus === "reopen" || focus === "close") (host.querySelector(`[data-act="${focus}"]`) as HTMLElement | null)?.focus();
     else if (focus === "suggested") (host.querySelector(".jv-accept:not([disabled])") as HTMLElement ?? [...host.querySelectorAll("h4")].find((x) => x.textContent!.startsWith("Suggested")))?.focus();
     else if (focus?.startsWith("task:")) (host.querySelector(`[data-task="${focus.slice(5)}"]`) as HTMLElement | null)?.focus();
@@ -101,8 +102,9 @@ export async function viewInitiative(ctx: Ctx, id: string, from?: string): Page 
     }
   }
   async function tick(t: InitiativeTask): Promise<void> {
-    undoable.set(t.id, setTimeout(() => { undoable.delete(t.id); draw(); }, timing.undoMs));
-    if (!(await setTask(t, "done"))) clearTimeout(undoable.get(t.id));
+    const timer = setTimeout(() => { undoable.delete(t.id); draw(); }, timing.undoMs);
+    undoable.set(t.id, timer);
+    if (!(await setTask(t, "done"))) clearTimeout(timer);
   }
   async function untick(t: InitiativeTask): Promise<void> {
     clearTimeout(undoable.get(t.id));
@@ -128,12 +130,14 @@ export async function viewInitiative(ctx: Ctx, id: string, from?: string): Page 
   async function doClose(anyway: boolean): Promise<void> {
     try {
       await api.closeInitiative(id, anyway);
-      d = await api.initiative(id);
-      draw("reopen");
-      toast(`Closed: ${d.initiative.title}`);
     } catch {
       toast("Couldn't close this initiative.", "error");
+      return;
     }
+    // The close worked: a failed re-read only costs the exact "closed by", never a false error.
+    d = await api.initiative(id).catch(() => ({ ...d, initiative: { ...d.initiative, status: "closed" as const, closed_at: new Date().toISOString() } }));
+    draw("reopen");
+    toast(`Closed: ${d.initiative.title}`);
   }
   function close(): void {
     const { done, total } = counts();
@@ -146,12 +150,13 @@ export async function viewInitiative(ctx: Ctx, id: string, from?: string): Page 
   async function reopen(): Promise<void> {
     try {
       await api.reopenInitiative(id);
-      d = await api.initiative(id);
-      draw("close");
-      toast(`Reopened: ${d.initiative.title}`);
     } catch {
       toast("Couldn't reopen this initiative.", "error");
+      return;
     }
+    d = await api.initiative(id).catch(() => ({ ...d, initiative: { ...d.initiative, status: "open" as const, closed_at: undefined, closed_by: undefined } }));
+    draw("close");
+    toast(`Reopened: ${d.initiative.title}`);
   }
 
   draw();

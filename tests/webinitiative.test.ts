@@ -48,7 +48,7 @@ describe("an initiative's page", () => {
     expect(text(".jv-title")).toBe("Move billing");
     expect(text(".jv-meta")).toBe("initiative · anna · open");
     expect(text(".jv-goal")).toBe("All billing on the new ledger");
-    expect(text("article .jv-progress")).toBe("1 of 2 done");
+    expect(text(".jv-ihead .jv-progress")).toBe("1 of 2 done");
     expect(qa(".jv-ibox h4").map((h) => h.textContent)).toEqual(["Tasks · 2", "Through its tasks · 1", "Linked directly · 1", "Suggested · 0 — not part of it until you accept"]);
     expect(qa(".jv-panel button, .jv-panel .jv-wide").map((b) => b.textContent)).toEqual(["Ask about this", "Close initiative"]);
     expect(qa(".jv-panel h5").map((h) => h.textContent)).toEqual(["Owner", "Status", "Progress"]);
@@ -72,7 +72,7 @@ describe("an initiative's page", () => {
     await boot("#/initiative/IA", { detail: base({ tasks: [], through: { total: 0, items: [] }, direct: { total: 0, items: [] } }) });
     expect(box("Tasks").textContent).toContain("No tasks yet.");
     expect(box("Tasks").textContent).toContain("Add one with jarvis task add “<title>” --initiative IA");
-    expect(text("article .jv-progress")).toBe("No tasks yet");
+    expect(text(".jv-ihead .jv-progress")).toBe("No tasks yet");
     expect(box("Through").textContent).toContain("Nothing is tied to it through its tasks yet.");
     expect(box("Linked").textContent).toContain("Nothing is linked to it directly yet.");
   });
@@ -108,7 +108,7 @@ describe("ticking tasks", () => {
     const cb = qa(".jv-irow input")[1] as HTMLInputElement;
     cb.checked = true; change(cb);
     await env.tick(5);
-    expect(text("article .jv-progress")).toBe("2 of 2 done");
+    expect(text(".jv-ihead .jv-progress")).toBe("2 of 2 done");
     expect(q(".jv-panel").textContent).toContain("2 of 2 done");
     expect(qa(".jv-irow")[1].classList.contains("jv-irow-done")).toBe(true);
     expect(qa(".jv-irow")[1].textContent).toContain("Done · Undo");
@@ -122,7 +122,7 @@ describe("ticking tasks", () => {
     again.checked = false; change(again);
     await env.tick(5);
     expect(env.calls.some((c) => c.path === "/api/task/T2/reopen")).toBe(true);
-    expect(text("article .jv-progress")).toBe("1 of 2 done");
+    expect(text(".jv-ihead .jv-progress")).toBe("1 of 2 done");
     expect(q(".jv-allnote")).toBeNull();
   });
   test("Undo right after ticking reopens; a failed tick unticks and says so", async () => {
@@ -133,7 +133,7 @@ describe("ticking tasks", () => {
     click(btn("Undo"));
     await env.tick(5);
     expect(env.calls.filter((c) => c.path === "/api/task/T2/reopen").length).toBe(1);
-    expect(text("article .jv-progress")).toBe("1 of 2 done");
+    expect(text(".jv-ihead .jv-progress")).toBe("1 of 2 done");
     env.routes.set("POST /api/task/T2/done", () => ({ status: 500, json: { error: "x" } }));
     cb = qa(".jv-irow input")[1] as HTMLInputElement;
     cb.checked = true; change(cb);
@@ -218,7 +218,7 @@ describe("closing and reopening", () => {
     expect(env.calls.find((c) => c.path === "/api/initiative/IA/close")!.body).toEqual({ anyway: true });
     expect(text(".toast")).toBe("Closed: Move billing");
     expect(text(".jv-meta")).toBe("initiative · anna · closed");
-    expect(text("article")).toContain("Closed 2026-03-30 by mira.");
+    expect(text(".jv-ihead")).toContain("Closed 2026-03-30 by mira.");
     expect(q(".jv-panel").textContent).toContain("closed 2026-03-30 by mira");
     expect(document.activeElement).toBe(btn("Reopen"));
     closed = false;
@@ -250,6 +250,64 @@ describe("closing and reopening", () => {
     click(btn("Reopen"));
     await env.tick(20);
     expect(text(".toast")).toBe("Couldn't reopen this initiative.");
+    expect(btn("Reopen")).toBeDefined();
+  });
+});
+
+describe("review fixes", () => {
+  test("layout: header, panel, boxes are siblings in that order, so the tablet row can sit below the goal and before Tasks", async () => {
+    await boot("#/initiative/IA");
+    const kids = [...q(".jv-iread").children].map((c) => c.className.split(" ")[0]);
+    expect(kids).toEqual(["jv-ihead", "jv-panel", "jv-iboxes"]);
+    expect(q(".jv-panel .jv-pprog")).not.toBeNull(); // hidden by CSS in the tablet row
+  });
+  test("the page shows grey placeholders while it loads, with no Loading… text", async () => {
+    env = installWebEnv(1280);
+    let release!: () => void;
+    env.routes.set("GET /api/initiative/IA", async () => { await new Promise<void>((r) => (release = r)); return { json: base() }; });
+    env.routes.set("GET /api/initiative/IA/suggest", () => ({ json: { model: true, suggestions: [] } }));
+    env.routes.set("GET /api/me", () => ({ json: {} }));
+    env.routes.set("GET /api/chat/status", () => ({ json: { available: true } }));
+    env.routes.set("GET /api/tasks", () => ({ json: { tasks: [] } }));
+    document.body.innerHTML = '<div id="app"></div>';
+    location.hash = "#/initiative/IA";
+    mountApp(document.getElementById("app")!);
+    await env.tick(40);
+    expect(q(".jv-skel")).not.toBeNull();
+    expect(q(".jv-page").textContent).not.toContain("Loading");
+    release();
+    await env.tick(40);
+    expect(q(".jv-skel")).toBeNull();
+  });
+  test("Esc closes the close question and focus returns to Close initiative", async () => {
+    await boot("#/initiative/IA");
+    btn("Close initiative").focus();
+    click(btn("Close initiative"));
+    document.dispatchEvent(new env.win.KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true }) as unknown as Event);
+    expect(q(".modal")).toBeNull();
+    expect(document.activeElement!.textContent).toBe("Close initiative");
+  });
+  test("a failed tick leaves no stray timer: a later successful tick keeps its Undo for the whole window", async () => {
+    timing.undoMs = 120;
+    await boot("#/initiative/IA");
+    timing.undoMs = 120;
+    env.routes.set("POST /api/task/T2/done", () => ({ status: 500, json: { error: "x" } }));
+    let cb = qa(".jv-irow input")[1] as HTMLInputElement;
+    cb.checked = true; change(cb);
+    await env.tick(20);
+    env.routes.set("POST /api/task/T2/done", () => ({ json: {} }));
+    cb = qa(".jv-irow input")[1] as HTMLInputElement;
+    cb.checked = true; change(cb);
+    await env.tick(60); // the first (failed) tick's window would have ended by 120 - 20 = 100 ms from its start
+    await env.tick(50);
+    expect(qa(".jv-irow")[1].textContent).toContain("Done · Undo");
+  });
+  test("a close that worked is not reported as failed when only the re-read fails", async () => {
+    await boot("#/initiative/IA", { detail: base({ tasks: [task(1, { status: "done" })] }) });
+    env.routes.set("GET /api/initiative/IA", () => ({ status: 500, json: { error: "x" } }));
+    click(btn("Close initiative"));
+    await env.tick(30);
+    expect(text(".toast")).toBe("Closed: Move billing");
     expect(btn("Reopen")).toBeDefined();
   });
 });

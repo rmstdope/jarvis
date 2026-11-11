@@ -205,5 +205,6 @@ html, body { height:100%; } #app { height:100%; }
 .jv-showall { margin-top:8px; font-size:13px; }
 .jv-closebtn { display:block; width:100%; }
 .jv-panel .jv-progress { margin-top:4px; }
-@media (max-width:999px) { .jv-iread { display:flex; flex-direction:column; } .jv-iread .jv-panel { order:-1; display:flex; flex-wrap:wrap; gap:14px 20px; align-items:center; } .jv-iread .jv-panel .jv-blk { margin-top:0; } .jv-iread .jv-panel .jv-wide { width:auto; } }
+.jv-iread { grid-template-rows:auto 1fr; } .jv-iread .jv-ihead { grid-column:1; grid-row:1; min-width:0; } .jv-iread .jv-iboxes { grid-column:1; grid-row:2; min-width:0; } .jv-iread .jv-panel { grid-column:2; grid-row:1 / span 2; }
+@media (max-width:999px) { .jv-iread { grid-template-rows:none; } .jv-iread .jv-ihead, .jv-iread .jv-iboxes, .jv-iread .jv-panel { grid-column:1; grid-row:auto; } .jv-iread .jv-panel { display:flex; flex-wrap:wrap; gap:14px 20px; align-items:center; } .jv-iread .jv-panel .jv-blk { margin-top:0; } .jv-iread .jv-panel .jv-pprog { display:none; } .jv-iread .jv-panel .jv-wide { width:auto; } }
 @media (max-width:639px) { .jv-irow { flex-wrap:wrap; } .jv-irow .jv-ilabel { flex-basis:100%; margin-left:28px; } .jv-tasks .jv-task { flex-wrap:wrap; } .jv-tasks .jv-task .jv-ilabel { flex-basis:100%; margin-left:28px; } }

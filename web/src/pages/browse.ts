@@ -17,7 +17,7 @@ const KINDS: [string, string][] = [["hybrid", "Best match"], ["semantic", "By me
 const TIMES: [string, string][] = [["1", "Last day"], ["7", "Last 7 days"], ["30", "Last 30 days"], ["365", "Last year"]];
 
 const card = (i: ItemSummary) => i.source === "initiative" && i.progress
-  ? initiativeCard({ id: i.id, title: i.title, goal: i.summary, updated_at: i.updated_at ?? i.created_at, ...i.progress }, "browse")
+  ? initiativeCard({ id: i.id, title: i.title, updated_at: i.updated_at ?? i.created_at, ...i.progress }, "browse")
   : entryCard({ href: itemHref(i), title: i.title || "(untitled)", details: entryLine(i.source, i.author, fmtDate(i.created_at)), pill: i.initiative ? initiativeLabel(i.initiative) : null, summary: i.summary, tags: i.tags });
 const hitCard = (x: SearchHit) => {
   const c = x.source === "initiative" && x.progress
