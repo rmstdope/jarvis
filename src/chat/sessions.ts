@@ -288,6 +288,7 @@ export class ChatService {
             if (r.change && !r.change.ok) failed.push(r.text);
             if (r.change) {
               push({ type: "change", change: r.change });
+              for (const m of r.more) push({ type: "change", change: m });
               if (a.as && r.change.ok && r.change.items[0]) aliases[a.as] = r.change.items[0].id;
             }
           } catch { /* an unknown tool: nothing was attempted, so there is nothing to show */ }

@@ -260,6 +260,13 @@ describe("the agent acts (jv-oya.4)", () => {
     expect((await call("POST", `/api/chat/conversations/conv1/changes/${changes[0].id}/undo`)).status).toBe(200); // already undone: unchanged
     expect((await call("POST", "/api/chat/conversations/conv1/changes/undo-all")).status).toBe(200);
   });
+  test("a task created with a link streams a Created task row and a Linked row (jv-eit)", async () => {
+    const sid = await open("conv-eit");
+    const evs = await ndjson(await call("POST", `/api/chat/sessions/${sid}/messages`, { message: 'ACT jarvis_capture_note {"text":"zoom drift","title":"Zoom drift"} AS z ACT jarvis_create_task {"title":"Order spare Zoom cameras","link":["$z"]}' }));
+    const changes = evs.filter((e) => e.type === "change").map((e) => e.change);
+    expect(changes.map((c) => [c.kind, c.ok, c.undoable])).toEqual([["capture.note", true, true], ["task.create", true, true], ["link", true, true]]);
+    expect(changes[2].items.map((i: { title: string }) => i.title)).toEqual(["Order spare Zoom cameras", "Zoom drift"]);
+  });
   test("the change log outlives the chat session", async () => {
     const sid = await open("conv2");
     await ndjson(await call("POST", `/api/chat/sessions/${sid}/messages`, { message: 'ACT jarvis_capture_note {"text":"remember this","title":"Remember"}' }));

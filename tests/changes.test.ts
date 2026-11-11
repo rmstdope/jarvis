@@ -58,6 +58,20 @@ describe("change log (jv-oya.4)", () => {
     await log.undo(l.id);
     expect(existsSync(join(t.dir, "edges", `${a.items[0].id}.jsonl`))).toBe(false);
   });
+  test("a task created with a link shows a Created task row and a Linked row, each undoable on its own (jv-eit)", async () => {
+    const zoom = (await run("jarvis_capture_note", { text: "zoom drift", title: "Zoom drift" })).change.items[0].id;
+    const r = await run("jarvis_create_task", { title: "Order spare Zoom cameras", link: [zoom] });
+    expect(r.change).toMatchObject({ kind: "task.create", undoable: true });
+    const task = r.change.items[0].id;
+    const rows = log.list().slice(1);
+    expect(rows.map((c) => c.kind)).toEqual(["task.create", "link"]);
+    expect(rows[1]).toMatchObject({ ok: true, undoable: true, detail: { relation: "references" }, items: [{ id: task, title: "Order spare Zoom cameras", kind: "task" }, { id: zoom, title: "Zoom drift" }] });
+    await log.undo(rows[1].id);
+    expect(existsSync(join(t.dir, "edges", `${task}.jsonl`))).toBe(false);
+    expect(readDocFile(t.dir, task)).not.toBeNull();
+    await log.undo(rows[0].id);
+    expect(existsSync(join(t.dir, "docs", `${task}.md`))).toBe(false);
+  });
   test("a status that is neither done nor open is a failed row, not a reopen", async () => {
     const id = (await run("jarvis_create_task", { title: "S" })).change.items[0].id;
     const r = await runAny("jarvis_set_task_status", { task: id, status: "complete" });
