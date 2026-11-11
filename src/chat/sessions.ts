@@ -205,8 +205,10 @@ export class ChatService {
         try {
           const hits = keywordSearchRaw(db, terms.map((t) => ftsQuery(t)).join(" OR "), CHAT_RESULTS * 2);
           const allowed = loadTeamConfig(this.dataDir).privacy.transcriptsToCloud;
-          for (const h of hits.filter((x) => allowed || x.source !== "meeting").slice(0, CHAT_RESULTS)) { // a transcript the team keeps off cloud models never reaches the prompt
-            const part = `[${h.docId}] ${h.title} (${h.source})\n${h.snippet.replace(/[[\]]/g, "")}\n\n`;
+          for (const h of hits.slice(0, CHAT_RESULTS)) {
+            // a transcript the team keeps off cloud models never reaches the prompt; the meeting's id and title do, so it can be linked
+            const text = allowed || h.source !== "meeting" ? `${h.snippet.replace(/[[\]]/g, "")}\n` : "";
+            const part = `[${h.docId}] ${h.title} (${h.source})\n${text}\n`;
             if (ctx.length + part.length > CHAT_SNIPPET_CHARS) break;
             ctx += part;
             sources.push({ docId: h.docId, title: h.title, source: h.source });
