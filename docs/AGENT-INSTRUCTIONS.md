@@ -2,8 +2,8 @@
 
 You are operating a team knowledge base ("J.A.R.V.I.S.") on behalf of a human. Everything below is
 driven through the `jarvis` CLI and the local HTTP service on `http://127.0.0.1:7281`. If `jarvis` is
-not found, run `bun --cwd=<code repo> run jarvis …` instead, and tell the user to run `bun link` in that
-folder so the plain command works. Shared truth is files in the **content repo** (git); the SQLite index is
+not found, run `bun "<code repo>/src/cli.ts" …` instead, and tell the user to run `bun link` in
+`<code repo>` so the plain command works. Shared truth is files in the **content repo** (git); the SQLite index is
 local and disposable.
 
 ## Orientation (start of every session)
