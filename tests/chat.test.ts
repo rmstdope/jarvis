@@ -423,7 +423,8 @@ describe("the agent acts (jv-oya.4)", () => {
     const sid = await open("conv13");
     const evs = await ndjson(await call("POST", `/api/chat/sessions/${sid}/messages`, { message: 'ACT jarvis_set_task_status {"task":"Ship the firmware","status":"done"} ACT jarvis_move_task {"task":"ship the firmware","initiative":"Firmware 2"} ACT jarvis_create_task {"title":"Flash the bootloader","initiative":"Firmware 2","link":["Bootloader spec"]}' }));
     const changes = evs.filter((e) => e.type === "change").map((e) => e.change);
-    expect(changes.map((c) => [c.kind, c.ok, c.error])).toEqual([["task.done", true, undefined], ["task.move", true, undefined], ["task.create", true, undefined]]);
+    expect(changes.map((c) => [c.kind, c.ok, c.error])).toEqual([["task.done", true, undefined], ["task.move", true, undefined], ["task.create", true, undefined], ["link", true, undefined]]);
+    expect(changes[3].items[1].id).toBe(spec.id); // the link named by title is its own row (jv-eit)
     expect(changes[0].items[0].id).toBe(task.id);
     expect(readDocFile(t.dir, task.id)!.frontmatter.task!.initiative).toBe(ini.id);
     const created = readDocFile(t.dir, changes[2].items[0].id)!;
