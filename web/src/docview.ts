@@ -6,6 +6,7 @@ import type { Ctx } from "./pages/common.ts";
 import type { DocRef } from "./tabs.ts";
 import { kindLabel, speakerTurns } from "./transcript.ts";
 import { entryLine, fmtDate, h } from "./ui.ts";
+import { tagPills } from "./pages/common.ts";
 import { renderMarkdown } from "../../src/briefings/markdown.ts";
 import { renderBriefingHtml } from "../../src/briefings/render.ts";
 import type { Node as BriefingNode } from "../../src/briefings/parser.ts";
@@ -89,11 +90,11 @@ async function itemPage(id: string, ctx: DocCtx): Promise<Page> {
     h("div", { class: "muted small jv-meta" }, entryLine(item.source, item.author, fmtDate(item.created_at))),
     item.source === "pdf" ? h("p", { class: "jv-pdfnote small" }, `Text taken from ${filename ?? item.title} — the original layout and images aren't kept.`, item.source_url && /^https?:\/\//i.test(item.source_url) ? [" ", h("a", { href: safeHref(item.source_url), target: "_blank", rel: "noopener" }, "Open the original ↗")] : null) : null,
     item.source !== "pdf" && item.source_url ? h("p", { class: "small" }, h("a", { href: safeHref(item.source_url), target: "_blank", rel: "noopener" }, item.source_url)) : null,
-    item.tags?.length ? h("p", {}, ...item.tags.map((t) => h("span", { class: "tag" }, t))) : null,
-    item.summary ? h("p", { class: "card" }, item.summary) : null,
+    tagPills(item.tags),
+    item.summary ? h("blockquote", { class: "jv-summary" }, item.summary) : null,
     summary, text,
     h("h3", {}, `Links (${edges.length})`),
-    h("ul", { class: "edges" }, ...edges.map((e) => h("li", {}, h("span", { class: "pill" }, e.relation), " ", e.direction === "out" ? "→" : "←", " ", h("a", { href: `#/item/${encodeURIComponent(e.otherId)}` }, e.otherTitle ?? e.otherId), h("span", { class: "muted small" }, ` (${e.createdBy}${e.weight != null ? `, ${e.weight.toFixed(2)}` : ""})`))))));
+    h("ul", { class: "edges" }, ...edges.map((e) => h("li", {}, h("span", { class: "jv-rel" }, e.relation), " ", e.direction === "out" ? "→" : "←", " ", h("a", { href: `#/item/${encodeURIComponent(e.otherId)}` }, e.otherTitle ?? e.otherId), h("span", { class: "muted small" }, ` (${e.createdBy}${e.weight != null ? `, ${e.weight.toFixed(2)}` : ""})`))))));
   return { el, title: item.title, kind };
 }
 

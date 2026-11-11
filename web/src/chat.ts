@@ -9,7 +9,7 @@ import { h, modal, toast } from "./ui.ts";
 import { renderMarkdown } from "../../src/briefings/markdown.ts";
 
 export interface Scope { type: "jarvis" | "item" | "briefing"; ids: string[]; }
-type ChatEvent = { type: "change"; change: WebChange } | { type: "open"; docId: string; title?: string; source?: string } | { type: "source"; docId?: string; title?: string } | { type: "message"; text: string } | { type: "status"; text: string } | { type: "usage"; used: number; size: number } | { type: "done"; stopReason?: string } | { type: "error"; error: string };
+type ChatEvent = { type: "change"; change: WebChange } | { type: "open"; docId: string; title?: string; source?: string } | { type: "source"; docId?: string; title?: string; source?: string } | { type: "message"; text: string } | { type: "status"; text: string } | { type: "usage"; used: number; size: number } | { type: "done"; stopReason?: string } | { type: "error"; error: string };
 
 /** Split a byte stream into NDJSON objects; partial trailing lines carry over between chunks. */
 export function ndjsonDecoder(onEvent: (e: ChatEvent) => void): (chunk: string, final?: boolean) => void {
@@ -48,7 +48,7 @@ export function fileProblem(f: { name: string; size: number }): string | null {
   return f.size > MAX_FILE_BYTES ? `${f.name} — larger than 25 MB` : null;
 }
 interface Pending { file: File; problem: string | null }
-interface Msg { role: "user" | "assistant"; text: string; files?: { name: string; size: number }[]; changes?: WebChange[]; steps?: Step[]; sources?: { docId: string; title: string }[]; status?: "streaming" | "done" | "stopped" | "failed"; question?: string; cards?: { type: DocRef["type"]; id: string; title: string; kind: string }[] }
+interface Msg { role: "user" | "assistant"; text: string; files?: { name: string; size: number }[]; changes?: WebChange[]; steps?: Step[]; sources?: { docId: string; title: string; source?: string }[]; status?: "streaming" | "done" | "stopped" | "failed"; question?: string; cards?: { type: DocRef["type"]; id: string; title: string; kind: string }[] }
 interface Conv { conversationId?: string; sessionId?: string; scope: Scope; attached?: { id: string; title: string }; messages: Msg[] }
 
 /** "Good morning" before noon, "Good afternoon" until 18:00, "Good evening" after; with the name when known. */
@@ -175,7 +175,7 @@ export function createChat(opts: { navigate: (hash: string) => void; onChange?: 
       else if (m.status === "streaming" && !steps.length) parts.push(h("div", { class: "jv-answer muted" }, "…"));
       if (empty) parts.push(h("div", { class: "jv-noanswer" }, "I finished without writing an answer.", h("button", { class: "jv-retry", onClick: () => retry(m) }, "Try again")));
       if (m.status === "stopped") parts.push(h("div", { class: "jv-stopped muted small" }, "Stopped."));
-      if (m.sources?.length) parts.push(h("div", { class: "jv-chips" }, ...m.sources.map((s) => h("a", { class: "jv-chip", href: `#/item/${encodeURIComponent(s.docId)}`, title: s.title }, s.title))));
+      if (m.sources?.length) parts.push(h("div", { class: "jv-chips" }, ...m.sources.map((s) => h("a", { class: "jv-chip", href: `#/${docRefFor(s.source ?? "note", s.docId).type}/${encodeURIComponent(s.docId)}`, title: s.title }, s.title))));
     }
     for (const c of m.cards ?? []) {
       const ref: DocRef = { type: c.type, id: c.id };
@@ -258,7 +258,7 @@ export function createChat(opts: { navigate: (hash: string) => void; onChange?: 
         } else if (e.type === "open") {
           const ref = docRefFor(e.source ?? "note", e.docId), title = e.title ?? e.docId, kind = kindLabel(e.source ?? "note");
           if (!(a.cards ??= []).some((c) => c.id === ref.id && c.type === ref.type)) { a.cards.push({ ...ref, title, kind }); opts.openQuietly?.(ref, title, kind); }
-        } else if (e.type === "source" && e.docId && !a.sources!.some((s) => s.docId === e.docId)) a.sources!.push({ docId: e.docId, title: e.title ?? e.docId });
+        } else if (e.type === "source" && e.docId && !a.sources!.some((s) => s.docId === e.docId)) a.sources!.push({ docId: e.docId, title: e.title ?? e.docId, source: e.source });
         else if (e.type === "error") a.status = "failed";
         persist(); render(); toBottom();
       });

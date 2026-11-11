@@ -7,7 +7,7 @@ const q = (sel: string) => document.querySelector(sel) as HTMLElement;
 const qa = (sel: string) => [...document.querySelectorAll(sel)] as HTMLElement[];
 const item = (id: string, title: string, over: Record<string, unknown> = {}) => ({ id, source: "note", title, author: "mia", created_at: "2026-01-01T00:00:00Z", updated_at: null, updated_by: null, source_url: null, starred: false, summary: null, tags: [], metadata: null, body: `Body of ${title}`, proc_version: 1, file_path: null, ...over });
 const EMPTY_BROWSE = { added: [], updated: [], pagination: { added: { offset: 0, limit: 20, total: 0, hasMore: false }, updated: { offset: 0, limit: 20, total: 0, hasMore: false } }, facets: { sources: [], authors: [], tags: [] } };
-async function boot(o: { hash?: string; width?: number; available?: boolean; store?: Record<string,string>; answer?: (p: (l: unknown) => void) => Promise<void>; keep?: boolean } = {}) {
+async function boot(o: { hash?: string; width?: number; available?: boolean; store?: Record<string,string>; answer?: (p: (l: unknown) => void) => Promise<void>; keep?: boolean; settle?: boolean } = {}) {
   if (!o.keep) { env = installWebEnv(o.width ?? 1280); }
   for (const [id, t] of [["A", "Alpha"], ["B", "Bravo"], ["C", "Charlie"]]) env.routes.set(`GET /api/item/${id}`, () => ({ json: { item: item(id, t), edges: [] } }));
   env.routes.set("GET /api/me", () => ({ json: { name: "Mia" } }));
@@ -20,6 +20,7 @@ async function boot(o: { hash?: string; width?: number; available?: boolean; sto
   document.body.innerHTML = '<div id="app"></div>';
   for (const [k, v] of Object.entries(o.store ?? {})) localStorage.setItem(k, v);
   if (o.hash) location.hash = o.hash;
+  if (o.settle) await env.tick(30); // a real browser fires no hashchange for a cold load
   mountApp(document.getElementById("app")!);
   await env.tick(40);
 }
@@ -128,6 +129,26 @@ describe("a real browser fires no hashchange for replaceState", () => {
     key("O", { ctrlKey: true, shiftKey: true });
     await env.tick(80);
     expect(q(".jv-chat").hidden).toBe(false);
+  });
+});
+
+describe("a cold load at a document link", () => {
+  test("opens the tab, and the first Ask about this still switches to the chat", async () => {
+    await boot({ hash: "#/item/A", settle: true });
+    expect(q(".jv-doc h1").textContent).toBe("Alpha");
+    qa("button").find((b) => b.textContent === "Ask about this")!.click();
+    await env.tick(80);
+    expect(q(".jv-chat").hidden).toBe(false);
+    expect(q(".jv-doc-host").hidden).toBe(true);
+  });
+});
+
+describe("source chips", () => {
+  test("a chip of a presentation or briefing opens that kind of tab, not an item", async () => {
+    await boot({ answer: async (p) => { p({ type: "source", docId: "deck-one", title: "Deck one", source: "presentation" }); p({ type: "source", docId: "B9", title: "Plan", source: "briefing" }); p({ type: "message", text: "ok" }); p({ type: "done" }); } });
+    q(".jv-sg").click();
+    await env.tick(80);
+    expect(qa(".jv-chip").map((c) => c.getAttribute("href"))).toEqual(["#/presentation/deck-one", "#/briefing/B9"]);
   });
 });
 

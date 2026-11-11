@@ -95,7 +95,7 @@ function syncView(focusDoc = false): void {
     if (focusDoc) void v.ready.then(() => { if (tabs.shown() === key) v.el.querySelector<HTMLElement>("[data-doc-title]")?.focus(); });
   } else if (onChat) {
     page.hidden = true;
-    chat.show();
+    if (chat.el.hidden) chat.show();
     shell.setActive("chat");
     shell.setChatDot(false);
   } else {
@@ -158,6 +158,7 @@ async function render() {
     // A document route: the click that opens a tab. The address goes back to where the person was.
     const id = r.id.split("#")[0];
     const ref: DocRef = { type, id };
+    firstRender = false;
     const had = tabs.list().find((t) => t.type === type && t.id === id);
     window.history.replaceState(null, "", lastPageHash);
     openDoc(ref, had?.title ?? id, had?.kind ?? guessKind(type), true);
