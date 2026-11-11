@@ -265,6 +265,17 @@ describe("leaving phone width", () => {
     expect(q(".jv-more-btn")?.textContent).toBe("⌄ 2 more");
     expect(tabs()).toEqual(["Chat", "Charlie"]);
   });
+  test("folding the sidebar re-fits the strip with no resize at all", async () => {
+    await boot();
+    for (const id of ["A", "B", "C"]) await go(`#/item/${id}`);
+    Object.defineProperty(q(".jv-tabstrip"), "clientWidth", { configurable: true, get: () => (q(".jv-tabstrip").closest(".jv-folded") ? 400 : 300) });
+    key("S", { ctrlKey: true, shiftKey: true });
+    await env.tick(20);
+    expect(q(".jv-more-btn")?.textContent).toBe("⌄ 1 more");
+    key("S", { ctrlKey: true, shiftKey: true });
+    await env.tick(20);
+    expect(q(".jv-more-btn")?.textContent).toBe("⌄ 2 more");
+  });
 });
 
 describe("the agent opens a document", () => {
