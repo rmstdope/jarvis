@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import type { WebEnv } from "./webEnv.ts";
-import { boot, button, go, q, qa, text, type } from "./webBoot.ts";
+import { readFileSync } from "node:fs";
+import { boot, button, go, ITEM, q, qa, text, type } from "./webBoot.ts";
 
 let env: WebEnv;
 afterEach(() => env.restore());
@@ -148,4 +149,27 @@ describe("a briefing", () => {
     await env.tick(60);
     expect(text(".toast")).toBe("Comment added");
   });
+});
+
+describe("a briefing tab's side margin (jv-zlb)", () => {
+  /** How far `el`'s content sits from the tab body's left edge: the left padding of it and every ancestor inside the doc host. */
+  const inset = (el: HTMLElement) => {
+    let s = 0;
+    for (let e: HTMLElement | null = el; e && !e.classList.contains("jv-doc-host"); e = e.parentElement) s += parseFloat(env.win.getComputedStyle(e as never).paddingLeft) || 0;
+    return s;
+  };
+  const withStyles = () => { const st = document.createElement("style"); st.textContent = readFileSync("web/src/styles.css", "utf8"); document.head.append(st); };
+  for (const width of [390, 1280]) {
+    test(`at ${width} px the briefing keeps the same side padding as an item tab`, async () => {
+      env = await boot("#/item/I1", { width, setup: (e) => { setup()(e); e.routes.set("GET /api/item/I1", () => ({ json: { item: ITEM, edges: [] } })); } });
+      withStyles();
+      const itemHead = inset(q(".jv-dhead")), itemBody = inset(q(".jv-dbody"));
+      expect(itemHead).toBeGreaterThan(0);
+      await go(env, "#/briefing/B1");
+      expect(inset(q(".jv-bgrid"))).toBe(itemBody);
+      // at phone width an item tab's header and body share one inset, and so does the briefing's title row;
+      // wider, the item header sits a little left of its body and the briefing has one column, aligned to the body
+      if (width < 640) expect(inset(q(".jv-titlerow"))).toBe(itemHead);
+    });
+  }
 });
