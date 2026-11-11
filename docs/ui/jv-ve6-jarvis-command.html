@@ -1,0 +1,72 @@
+<!doctype html><html><head><meta charset="utf-8"><title>jarvis from any folder</title>
+<style>body{font-family:-apple-system,system-ui,sans-serif;background:#f4f4f2;color:#222;max-width:860px;margin:24px auto;padding:0 16px}
+h1{font-size:20px}p.note{color:#555}h2{font-size:14px;margin:22px 0 6px;color:#333}
+pre{background:#1e1f22;color:#d8d8d8;padding:14px 16px;border-radius:8px;font:13px/1.5 ui-monospace,Menlo,monospace;white-space:pre-wrap;margin:0}
+.ok{color:#7ec27e}.w{color:#e3b552}.f{color:#e36f6f}.d{color:#888}.c{color:#8fb8ff}.new{background:#3a3520;outline:1px dashed #e3b552}</style></head><body>
+<style>h1.v{font-size:16px;margin-top:36px;border-top:1px solid #ccc;padding-top:18px}</style></head><body><h1>jv-ve6 — the jarvis command from any folder (agreed)</h1><p class="note">Chosen variants from the design session: README install line, doctor warning with an exact fix per state, agent instructions with a fallback, two-folder workspace advice dropped.</p>
+<h1 class="v">Option A — a separate install line in the README</h1><p class="note">Setup stays as today, with one extra line right after bun install. Highlighted lines are new.</p>
+<h2>README · 1. Install and set up (once per machine)</h2><pre>
+git clone &lt;this repo&gt; jarvis &amp;&amp; cd jarvis
+bun install
+<span class="new">bun link                       # installs the jarvis command, so it works from any folder</span>
+jarvis init                    # six-step wizard: content repo, author, embeddings, model preset, first index, doctor
+jarvis doctor                  # anything that fails prints an exact fix
+</pre>
+<h2>Terminal · what the user sees when they run it</h2><pre>
+$ bun link
+<span class="d">bun link v1.4.2
+Success! Registered "jarvis"</span>
+$ jarvis init
+Step 1/6 · content repo
+…
+</pre>
+
+<h1 class="v">Option A — every doctor state gets its own exact fix line</h1><p class="note">The doctor line chosen in round 1 (a warning), walked through every state it can be in. Highlighted lines are new.</p>
+<h2>1 · Installed and working</h2><pre>
+<span class="ok">✓</span> jarvis-command     jarvis on PATH
+</pre>
+<h2>2 · Never installed</h2><pre>
+<span class="w">⚠</span> jarvis-command     jarvis is not on PATH, so agents in the content repo cannot run it
+    fix: cd /Users/you/repos/jarvis &amp;&amp; bun link
+</pre>
+<h2>3 · Installed, but bun's install folder is not on PATH (common on a fresh machine)</h2><pre>
+<span class="w">⚠</span> jarvis-command     jarvis is installed in ~/.bun/bin, but that folder is not on PATH
+    fix: echo 'export PATH="$HOME/.bun/bin:$PATH"' &gt;&gt; ~/.zshrc   then open a new terminal
+<span class="d">     (the fix names the user's own shell file: ~/.zshrc, ~/.bashrc, or the fish equivalent)</span>
+</pre>
+<h2>4 · Installed from a different copy of the code (an old clone)</h2><pre>
+<span class="w">⚠</span> jarvis-command     jarvis on PATH runs /Users/you/old/jarvis, not /Users/you/repos/jarvis
+    fix: cd /Users/you/repos/jarvis &amp;&amp; bun link
+</pre>
+
+<h1 class="v">Option B — plain jarvis, plus a one-line fallback with this machine's code folder filled in</h1><p class="note">What jarvis skill prints into AGENTS.md. The path is the real one from the machine that ran jarvis skill. Highlighted lines changed.</p>
+<h2>jarvis skill · opening paragraph</h2><pre>
+# J.A.R.V.I.S. — operating instructions
+
+You work in a team knowledge base … driven through the <span class="new">`jarvis` CLI</span> and the local HTTP service on
+http://127.0.0.1:7281.
+
+<span class="new">If `jarvis` is not found, run `bun --cwd /Users/you/repos/jarvis run jarvis …` instead, and tell the
+user to run `bun link` in that folder so the plain command works.</span>
+…
+</pre>
+
+<h1 class="v">Option A — step 2 drops the two-folder workspace advice</h1><p class="note">README · 2. Point your agent at J.A.R.V.I.S. Struck-through text is removed, highlighted text is new.</p>
+<h2>README · 2. Point your agent at J.A.R.V.I.S.</h2><pre>
+Give the agent the operating instructions:
+
+<span class="new">jarvis skill &gt; &lt;content-repo&gt;/AGENTS.md   # or CLAUDE.md, or .github/copilot-instructions.md</span>
+
+Then open a session in the content repo:
+
+cd &lt;content-repo&gt;
+copilot            # or: claude, or your agent of choice
+
+<span class="d"><s>(a VS Code multi-root workspace with this code repo and the content repo works well, so the agent's file tools can see both)</s></span>
+
+Optionally start the local service so the web UI and the browser extension work too:
+
+<span class="new">jarvis serve</span>                   # http://127.0.0.1:7281 (run `bun run web:build` once first)
+</pre>
+
+</body></html>
