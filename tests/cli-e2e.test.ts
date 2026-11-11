@@ -108,6 +108,7 @@ describe("cli end to end (subprocess)", () => {
     expect(jarvis("task", "move", lone, "--initiative", id).out).toContain("is already in Move billing");
     const own = `${lone}  Standalone  is already a task in Move billing — nothing linked`;
     expect(jarvis("link", id, lone).out.trim()).toBe(own);
+    expect(jarvis("link", id, lone).code).toBe(0);
     expect(jarvis("link", lone, id, "--relation", "follows_up").out.trim()).toBe(own);
     const loose = jarvis("task", "add", "Loose").out.match(/task ([0-9A-Z]{26})/)![1];
     expect(jarvis("link", id, `${lone},${loose}`).out.trim()).toBe(`${own}\nlinked: ${id} → ${loose} [references]`);

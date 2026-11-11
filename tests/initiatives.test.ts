@@ -204,6 +204,8 @@ describe("linking an initiative to its own task", () => {
     }
     expect(existsSync(join(t.dir, "edges", `${ini.id}.jsonl`))).toBe(false);
     expect(existsSync(join(t.dir, "edges", `${own.id}.jsonl`))).toBe(false);
+    const filed = await addTask(t.dir, { title: "Filed and linked", initiative: ini.id, links: [ini.id] });
+    expect(existsSync(join(t.dir, "edges", `${filed.id}.jsonl`))).toBe(false);
     expect(link(t.dir, ini.id, [own.id, foreign.id, loose.id]).map((r) => r.status)).toEqual(["member", "linked", "linked"]);
   });
 });
