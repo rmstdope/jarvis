@@ -252,6 +252,32 @@ describe("phone", () => {
   });
 });
 
+describe("leaving phone width", () => {
+  test("widening from phone re-fits the strip into '⌄ n more' without a second resize (jv-xsn)", async () => {
+    await boot({ width: 400 });
+    for (const id of ["A", "B", "C"]) await go(`#/item/${id}`);
+    // happy-dom has no layout: the strip measures 300 px, and 0 while the phone hides it (display:none).
+    Object.defineProperty(q(".jv-tabstrip"), "clientWidth", { configurable: true, get: () => (q(".jv-tabstrip").closest(".jv-phone") ? 0 : 300) });
+    // A real browser runs the resize steps before it reports media query changes.
+    window.dispatchEvent(new env.win.Event("resize") as unknown as Event);
+    env.setWidth(900);
+    await env.tick(20);
+    expect(q(".jv-more-btn")?.textContent).toBe("⌄ 2 more");
+    expect(tabs()).toEqual(["Chat", "Charlie"]);
+  });
+  test("folding the sidebar re-fits the strip with no resize at all", async () => {
+    await boot();
+    for (const id of ["A", "B", "C"]) await go(`#/item/${id}`);
+    Object.defineProperty(q(".jv-tabstrip"), "clientWidth", { configurable: true, get: () => (q(".jv-tabstrip").closest(".jv-folded") ? 400 : 300) });
+    key("S", { ctrlKey: true, shiftKey: true });
+    await env.tick(20);
+    expect(q(".jv-more-btn")?.textContent).toBe("⌄ 1 more");
+    key("S", { ctrlKey: true, shiftKey: true });
+    await env.tick(20);
+    expect(q(".jv-more-btn")?.textContent).toBe("⌄ 2 more");
+  });
+});
+
 describe("the agent opens a document", () => {
   test("quietly: a dot on the tab, a card in the answer, the chat stays shown; clicking the card shows it", async () => {
     await boot({ answer: async (p) => { p({ type: "message", text: "I opened it." }); p({ type: "open", docId: "A", title: "Alpha", source: "note" }); p({ type: "done" }); } });

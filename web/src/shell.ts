@@ -83,6 +83,9 @@ export function createShell(opts: { onNewChat: () => void; onSync: () => void; n
     foldBtn.title = `${label} (${shortcut("S")})`;
     foldBtn.setAttribute("aria-label", label);
     menuBtn.setAttribute("aria-expanded", String(phone && menu));
+    // The layout classes change the strip's width without a resize (folding), or after the resize event (a browser
+    // reports media query changes after it, so the strip may have been measured while the phone layout hid it).
+    opts.strip?.refit();
   };
   const paintSync = () => {
     syncBtn.toggleAttribute("disabled", sync.kind === "syncing");
