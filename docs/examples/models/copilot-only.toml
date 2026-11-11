@@ -3,7 +3,7 @@ preference = ["copilot", "openai-compat"]
 
 [[model]]
 provider = "copilot"
-id = "gpt-4.1"   # replace with a model id your Copilot entitlement offers (`copilot --help`)
+id = "default"   # Copilot's own default model; or a model id your Copilot entitlement offers (`copilot --help`)
 quality = "high"
 bestFor = ["tag", "summary", "entities", "edge-judge", "cleanup", "synthesis"]
-# reasoningEffort = "high"   # only with a model that supports it; gpt-4.1 refuses any reasoning effort
+# reasoningEffort = "high"   # only with a named model that supports it; Copilot refuses it for one that does not

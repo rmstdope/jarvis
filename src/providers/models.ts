@@ -2,6 +2,7 @@ import { existsSync, readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { configHome } from "../core/config.ts";
 import { OMLX_EMBED_MODEL, OMLX_URL, PROBE_TIMEOUT_MS } from "../core/constants.ts";
+import { COPILOT_CLI_DEFAULT } from "./copilot.ts";
 import { OPENAI_DEFAULTS } from "./openaiCompat.ts";
 import { ollamaModels } from "./local.ts";
 import { REASONING_EFFORTS, TASK_KINDS, type Quality, type ReasoningEffort, type TaskKind } from "./types.ts";
@@ -10,10 +11,11 @@ export type ProviderName = "local" | "copilot" | "openai-compat";
 export const PROVIDER_NAMES: ProviderName[] = ["local", "copilot", "openai-compat"];
 export const DEFAULT_PREFERENCE: ProviderName[] = ["local", "openai-compat", "copilot"];
 /**
- * Copilot model id used by live detection; override with JARVIS_COPILOT_MODEL. Must be an id your entitlement offers (`copilot --help`).
- * Detection sets no reasoning effort: the Copilot CLI refuses one for a model that lacks it (gpt-4.1 does).
+ * Copilot model id used by live detection: `default`, which lets the Copilot CLI pick the account's own
+ * default model; override with JARVIS_COPILOT_MODEL (an id your entitlement offers, `copilot --help`).
+ * Detection sets no reasoning effort: the Copilot CLI refuses one for a model that lacks it.
  */
-export const COPILOT_DEFAULT_MODEL = () => process.env.JARVIS_COPILOT_MODEL ?? "gpt-4.1";
+export const COPILOT_DEFAULT_MODEL = (): string => process.env.JARVIS_COPILOT_MODEL || COPILOT_CLI_DEFAULT;
 /** Model id used when OPENAI_API_KEY is detected; override with JARVIS_OPENAI_MODEL. */
 export const OPENAI_DEFAULT_MODEL = () => process.env.JARVIS_OPENAI_MODEL ?? "gpt-4o";
 

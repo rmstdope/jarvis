@@ -242,8 +242,10 @@ is hardcoded to a particular product or port.
 
 ### 2.10 Model ids are configuration
 
-No model id is pinned in code for a third-party service. Live detection uses `gpt-4.1` for the Copilot
-CLI and OpenAI unless `JARVIS_COPILOT_MODEL` / `JARVIS_OPENAI_MODEL` say otherwise, the
+No model id is pinned in code for a third-party service. For the Copilot CLI, live detection and the
+shipped presets use the reserved id `default`, which passes no `--model` so Copilot picks the
+account's own default model (a named id is refused on an account that does not offer it); live
+detection uses `gpt-4o` for OpenAI. `JARVIS_COPILOT_MODEL` / `JARVIS_OPENAI_MODEL` override them; the
 Chat model comes from `chatModel` in `config.toml` or `JARVIS_CHAT_MODEL`; with neither, chat lets
 the Copilot CLI pick its own default model and forces no reasoning effort. The shipped
 presets carry a comment reminding you to use an id your entitlement offers.
