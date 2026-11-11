@@ -33,6 +33,7 @@ describe("web", () => {
         expect(contrast("#d6e6f5", bg!)).toBeGreaterThanOrEqual(4.5);
       }
     }
+    expect(css).toContain(":root { --jv-tint-accent:#eef4ff; --jv-tint-warn:#fff7e6; --jv-tint-good:#e8f8ef; --jv-tint-bad:#fdecec; --jv-tint-neutral:#f3f4f6; --jv-tint-investigate:#f3eefe; --jv-code-bg:#f8fafc; --jv-head-bg:#f3f4f6; --jv-row-hl:#e3fcef; }");
     for (const token of ["--bg:#faf7f2", "--accent:#b4532a", "--bg:#0a1220", "--accent:#22d3ee"]) expect(css).toContain(token);
   }, 30000);
   test("helpers", () => {
