@@ -65,7 +65,7 @@ describe("http api", () => {
     r = await call("GET", "/api/search?q=firmware&mode=keyword");
     const hit = (await r.json())[0];
     expect(hit.docId).toBe(cap.id);
-    expect(typeof hit.author).toBe("string");
+    expect(hit.author).toBe(item.item.author);
     expect(hit.createdAt).toMatch(/^\d{4}-\d{2}-\d{2}/);
     expect((await call("GET", "/api/search")).status).toBe(400);
   });

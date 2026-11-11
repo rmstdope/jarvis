@@ -68,6 +68,13 @@ describe("Browse & search", () => {
     await env.tick(60);
     expect(text(".jv-pager")).toContain("21–40 of 45");
   });
+  test("a search hit without author or date shows just its kind", async () => {
+    env = await boot("#/browse", { setup: (e) => e.routes.set("GET /api/search", () => ({ json: [{ docId: "I1", title: "T", snippet: "s", score: 1, source: "note" }] })) });
+    type(q(".jv-searchbar input"), "t");
+    q(".jv-searchbar").dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+    await env.tick(60);
+    expect(q(".jv-card .jv-m").textContent).toBe("note");
+  });
   test("a search shows one list, no score, highlighted words, '<n> results'; ✕ clears it", async () => {
     env = await boot("#/browse", { setup: (e) => e.routes.set("GET /api/search", () => ({ json: [{ docId: "I1", title: "On-call rollout", snippet: "the [rollout] plan <b>", score: 0.91234, source: "note", author: "mia", createdAt: "2026-01-05T10:00:00Z" }] })) });
     type(q(".jv-searchbar input"), "rollout");
