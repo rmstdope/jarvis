@@ -1,5 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { readDocFile } from "../src/core/docs.ts";
 import { spawnBunAcp, AcpClient, copilotAcpArgs } from "../src/chat/acp.ts";
 import { ChatService, retrievalTerms, chatModel } from "../src/chat/sessions.ts";
 import { ingest } from "../src/core/ingest.ts";
@@ -390,5 +392,43 @@ describe("the agent acts (jv-oya.4)", () => {
     const sid = await open("conv10");
     const evs = await ndjson(await call("POST", `/api/chat/sessions/${sid}/messages`, { message: "PERMISSION please" }));
     expect(evs.some((e) => e.type === "status" && e.text === "permission cancelled")).toBe(true);
+  });
+  test("an action may name an existing task or note by its title when its id is not in context (jv-zyp)", async () => {
+    const task = await addTask(t.dir, { title: "Ship the firmware", author: "me" });
+    const sync = await ingest(t.dir, { source: "note", title: "Weekly sync", body: "agenda", author: "me" });
+    const drift = await ingest(t.dir, { source: "note", title: "Zoom drift", body: "clock drift seen", author: "me" });
+    const sid = await open("conv11");
+    const evs = await ndjson(await call("POST", `/api/chat/sessions/${sid}/messages`, { message: 'ACT jarvis_capture_note {"text":"new","title":"Fresh"} ACT jarvis_set_task_status {"task":"Ship the firmware","status":"done"} ACT jarvis_link {"src":"weekly sync","dst":"Zoom drift"}' }));
+    const changes = evs.filter((e) => e.type === "change").map((e) => e.change);
+    expect(changes.map((c) => [c.kind, c.ok, c.error])).toEqual([["capture.note", true, undefined], ["task.done", true, undefined], ["link", true, undefined]]);
+    expect(changes[1].items[0].id).toBe(task.id);
+    expect(changes[2].items.map((i: { id: string }) => i.id)).toEqual([sync.id, drift.id]);
+  });
+  test("a title two tasks share is refused rather than guessed (jv-zyp)", async () => {
+    const a = await addTask(t.dir, { title: "Review", author: "me" });
+    const b = await addTask(t.dir, { title: "review", author: "me" });
+    const sid = await open("conv12");
+    const evs = await ndjson(await call("POST", `/api/chat/sessions/${sid}/messages`, { message: 'ACT jarvis_set_task_status {"task":"Review","status":"done"}' }));
+    const c = evs.find((e) => e.type === "change").change;
+    expect(c.ok).toBe(false);
+    expect(c.error).toStartWith('more than one item is called "Review": ');
+    for (const id of [a.id, b.id]) expect(c.error).toContain(`[${id}]`); // the agent can pick one by id, or ask
+  });
+  test("a title is matched among the kind of item the action takes: a task among tasks, an initiative among initiatives (jv-zyp)", async () => {
+    await ingest(t.dir, { source: "note", title: "Ship the firmware", body: "the plan", author: "me" });
+    const task = await addTask(t.dir, { title: "Ship the firmware", author: "me" });
+    await ingest(t.dir, { source: "note", title: "Firmware 2", body: "a note of the same name", author: "me" });
+    const ini = await addInitiative(t.dir, { title: "Firmware 2", goal: "v2 shipped", author: "me" });
+    const spec = await ingest(t.dir, { source: "note", title: "Bootloader spec", body: "spec", author: "me" });
+    const sid = await open("conv13");
+    const evs = await ndjson(await call("POST", `/api/chat/sessions/${sid}/messages`, { message: 'ACT jarvis_set_task_status {"task":"Ship the firmware","status":"done"} ACT jarvis_move_task {"task":"ship the firmware","initiative":"Firmware 2"} ACT jarvis_create_task {"title":"Flash the bootloader","initiative":"Firmware 2","link":["Bootloader spec"]}' }));
+    const changes = evs.filter((e) => e.type === "change").map((e) => e.change);
+    expect(changes.map((c) => [c.kind, c.ok, c.error])).toEqual([["task.done", true, undefined], ["task.move", true, undefined], ["task.create", true, undefined], ["link", true, undefined]]);
+    expect(changes[3].items[1].id).toBe(spec.id); // the link named by title is its own row (jv-eit)
+    expect(changes[0].items[0].id).toBe(task.id);
+    expect(readDocFile(t.dir, task.id)!.frontmatter.task!.initiative).toBe(ini.id);
+    const created = readDocFile(t.dir, changes[2].items[0].id)!;
+    expect(created.frontmatter.task!.initiative).toBe(ini.id);
+    expect(readFileSync(join(t.dir, "edges", `${created.frontmatter.id}.jsonl`), "utf8")).toContain(spec.id);
   });
 });
