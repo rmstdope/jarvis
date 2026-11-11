@@ -52,19 +52,33 @@ const kindOfDoc = (dataDir: string, id: string): ChangeItem["kind"] => {
   return s === "task" ? "task" : s === "initiative" ? "initiative" : "doc";
 };
 const item = (dataDir: string, id: string): ChangeItem => ({ id, title: titleOf(dataDir, id), kind: kindOfDoc(dataDir, id) });
+/** Kind words a person may put after an item's name when saying it ("the Weekly sync meeting"). */
+const KIND_WORDS = "note|meeting|task|initiative|briefing|presentation|deck|doc|document|item|page|article|video|file|transcript";
+/** The forms of a reference to try in turn: as given, without a trailing kind word, then also without a leading "the" ("The roadmap" stays findable as "the roadmap doc"). */
+const titleForms = (ref: string): string[] => {
+  const asGiven = ref.trim();
+  const noKind = asGiven.replace(new RegExp(`\\s+(?:${KIND_WORDS})$`, "i"), "").trim();
+  const strip = (s: string): string => s.replace(/^the\s+/i, "").trim();
+  return [...new Set([asGiven, noKind, strip(noKind), strip(asGiven)])].filter(Boolean);
+};
 /**
  * The id an action's reference names: the reference itself when it is an id, else the one indexed
  * item of `source` (any source when omitted) whose title matches it, ignoring the case of ASCII
- * letters (SQLite NOCASE). Several matches are refused, listing each id so the agent can choose. The agent sees
+ * letters (SQLite NOCASE). A title is tried as given first, then as a person says it with "the" and
+ * a kind word around it ("the Weekly sync meeting" finds "Weekly sync"), so a title that itself ends
+ * in a kind word still wins. Several matches are refused, listing each id so the agent can choose. The agent sees
  * ids only for what retrieval put in its context, so it names everything else by title (jv-zyp).
  * No match leaves the reference as it is, for the action to report as not found.
  */
 const resolveRef = (dataDir: string, ref: string, source?: string): string => {
   if (readDocFile(dataDir, ref)) return ref;
-  const found = withDb(dataDir, (db) =>
-    db.query<{ id: string; title: string; created_at: string }, [string, string | null]>("SELECT id, title, created_at FROM documents WHERE title = ?1 COLLATE NOCASE AND (?2 IS NULL OR source = ?2) ORDER BY created_at DESC").all(ref.trim(), source ?? null));
-  if (found.length > 1) throw new Error(`more than one item is called "${ref}": ${found.map((f) => `${f.title} [${f.id}] from ${f.created_at.slice(0, 10)}`).join(", ")}; pass one of these ids, or ask the user which`);
-  return found[0]?.id ?? ref;
+  for (const title of titleForms(ref)) {
+    const found = withDb(dataDir, (db) =>
+      db.query<{ id: string; title: string; created_at: string }, [string, string | null]>("SELECT id, title, created_at FROM documents WHERE title = ?1 COLLATE NOCASE AND (?2 IS NULL OR source = ?2) ORDER BY created_at DESC").all(title, source ?? null));
+    if (found.length > 1) throw new Error(`more than one item is called "${title}": ${found.map((f) => `${f.title} [${f.id}] from ${f.created_at.slice(0, 10)}`).join(", ")}; pass one of these ids, or ask the user which`);
+    if (found[0]) return found[0].id;
+  }
+  return ref;
 };
 const slugify = (s: string): string => s.toLowerCase().normalize("NFKD").replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 48) || "deck";
 
