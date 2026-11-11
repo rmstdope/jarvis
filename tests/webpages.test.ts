@@ -102,7 +102,42 @@ describe("Browse & search", () => {
     await env.tick(60);
     expect(env.calls.find((c) => c.path.startsWith("/api/search"))!.path).toContain("mode=keyword");
     expect(text(".jv-empty")).toContain("No matches for “zzz”.");
-    expect(text(".jv-empty")).toContain("Try fewer or different words, or switch the search to Exact words.");
+    expect(text(".jv-empty")).toContain("Try fewer or different words, or switch the search to Best match.");
+  });
+  describe("an empty search", () => {
+    const stored = (o: object) => localStorage.setItem("jv.browse", JSON.stringify({ q: "zoom drift", mode: "hybrid", source: "", author: "", tag: "", days: "", ...o }));
+    const empty = (e: typeof env) => e.routes.set("GET /api/search", () => ({ json: [] }));
+    for (const mode of ["hybrid", "semantic", "keyword"]) {
+      test(`with filters set on ${mode} it says the filters are why and offers Clear filters`, async () => {
+        env = await boot("#/capture", { setup: empty });
+        stored({ mode, source: "note" });
+        await go(env, "#/browse");
+        expect(text(".jv-empty")).toContain("No matches for “zoom drift” with these filters.");
+        expect(text(".jv-empty")).toContain("Clear the filters to search everything.");
+        expect(text(".jv-empty")).not.toContain("switch the search");
+        expect(button("Clear filters")).toBeTruthy();
+      });
+    }
+    test("Clear filters keeps the text and kind, searches again and focuses the search box", async () => {
+      env = await boot("#/capture", { setup: empty });
+      stored({ mode: "keyword", source: "note", days: "7" });
+      await go(env, "#/browse");
+      button("Clear filters")!.click();
+      await env.tick(60);
+      const last = new URL("http://x" + env.calls.filter((c) => c.path.startsWith("/api/search")).at(-1)!.path).searchParams;
+      expect([last.get("q"), last.get("mode"), last.get("source"), last.get("since")]).toEqual(["zoom drift", "keyword", null, null]);
+      expect(JSON.parse(localStorage.getItem("jv.browse")!)).toMatchObject({ q: "zoom drift", mode: "keyword", source: "", days: "" });
+      expect(document.activeElement).toBe(q(".jv-searchbar input"));
+      expect(text(".jv-empty")).toContain("No matches for “zoom drift”.");
+      expect(text(".jv-empty")).toContain("switch the search to Best match.");
+      expect(button("Clear filters")).toBeFalsy();
+    });
+    test("with no filters on Best match it still suggests Exact words", async () => {
+      env = await boot("#/capture", { setup: empty });
+      stored({});
+      await go(env, "#/browse");
+      expect(text(".jv-empty")).toContain("switch the search to Exact words.");
+    });
   });
   test("a search with filters in use sends every filter, so only matching results come back", async () => {
     env = await boot("#/browse", { setup: (e) => e.routes.set("GET /api/search", () => ({ json: [] })) });
