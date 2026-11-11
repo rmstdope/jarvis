@@ -286,6 +286,16 @@ describe("the agent acts (jv-oya.4)", () => {
     expect(changes.map((c) => [c.kind, c.ok, c.undoable])).toEqual([["capture.note", true, true], ["task.create", true, true], ["link", true, true]]);
     expect(changes[2].items.map((i: { title: string }) => i.title)).toEqual(["Order spare Zoom cameras", "Zoom drift"]);
   });
+  test("undoing a created task settles its Linked rows as undone at once (jv-a9b)", async () => {
+    const sid = await open("conv-a9b");
+    const evs = await ndjson(await call("POST", `/api/chat/sessions/${sid}/messages`, { message: 'ACT jarvis_capture_note {"text":"zoom drift","title":"Zoom drift"} AS z ACT jarvis_create_task {"title":"Order spare Zoom cameras","link":["$z"]}' }));
+    const [note, made, linked] = evs.filter((e) => e.type === "change").map((e) => e.change);
+    const r = await (await call("POST", `/api/chat/conversations/conv-a9b/changes/${made.id}/undo`)).json();
+    expect(r.change.undone).toBe(true);
+    const listed = (await (await call("GET", "/api/chat/conversations/conv-a9b/changes")).json()).changes as { id: string; undone: boolean }[];
+    expect(listed.map((c) => [c.id, c.undone])).toEqual([[note.id, false], [made.id, true], [linked.id, true]]);
+    expect(r.changes).toEqual(listed); // the Undo answer carries every row it settled, so the card updates at once
+  });
   test("the change log outlives the chat session", async () => {
     const sid = await open("conv2");
     await ndjson(await call("POST", `/api/chat/sessions/${sid}/messages`, { message: 'ACT jarvis_capture_note {"text":"remember this","title":"Remember"}' }));
