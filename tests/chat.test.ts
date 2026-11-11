@@ -209,6 +209,23 @@ describe("chat service", () => {
     expect(svc.buildPrompt(s, "more").prompt).toBe("more");
     await svc.shutdown();
   });
+  test("a meeting kept off cloud models still reaches the prompt by title and id, never its transcript (jv-9z6)", async () => {
+    const meeting = await ingest(t.dir, { source: "meeting", title: "Weekly sync", body: "zebrafish rollout decided by Sam", author: "me" });
+    const note = await ingest(t.dir, { source: "note", title: "Zoom drift", body: "audio drifts after an hour", author: "me" });
+    const svc = new ChatService(t.dir, { spawn });
+    const s = await svc.create({ type: "jarvis", ids: [] });
+    const r = svc.buildPrompt(s, "Link the Weekly sync meeting to the Zoom drift note.");
+    expect(r.prompt).toContain(`[${meeting.id}] Weekly sync (meeting)`);
+    expect(r.prompt).toContain(`[${note.id}] Zoom drift (note)`);
+    expect(r.prompt).not.toContain("zebrafish");
+    expect(r.prompt).not.toContain("Sam");
+    expect(r.sources.map((x) => x.docId)).toContain(meeting.id);
+    const { mkdirSync, writeFileSync } = await import("node:fs");
+    mkdirSync(join(t.dir, "config"), { recursive: true });
+    writeFileSync(join(t.dir, "config", "team.toml"), "[privacy]\ntranscripts_to_cloud = true\n");
+    expect(svc.buildPrompt(s, "Link the Weekly sync meeting to the Zoom drift note.").prompt).toContain("zebrafish");
+    await svc.shutdown();
+  });
   test("HTTP routes stream NDJSON and map errors", async () => {
     const ctx = { dataDir: t.dir, chatDeps: { spawn } };
     const call = (method: string, path: string, body?: unknown) => handle(new Request(`http://127.0.0.1:7281${path}`, { method, body: body === undefined ? undefined : JSON.stringify(body), headers: { "content-type": "application/json" } }), ctx);
@@ -317,7 +334,7 @@ describe("the agent acts (jv-oya.4)", () => {
     expect(said).not.toContain("secret txt line");
     expect(said).toContain("buy milk");
   });
-  test("a captured meeting never reaches the prompt through retrieval unless allowed", async () => {
+  test("a captured meeting's transcript never reaches the prompt through retrieval unless allowed", async () => {
     const { ingest } = await import("../src/core/ingest.ts");
     await ingest(t.dir, { source: "meeting", title: "Standup", body: "zebrafish rollout decision", author: "me" });
     const sid = await open("conv7");
