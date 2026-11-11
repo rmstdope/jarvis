@@ -73,6 +73,7 @@ export function highlightSnippet(s: string): string {
 }
 export function itemHref(i: { id: string; source: string }): string {
   if (i.source === "briefing") return `#/briefing/${i.id}`;
+  if (i.source === "initiative") return `#/initiative/${i.id}`;
   if (i.source === "presentation") return `#/presentation/${i.id}`;
   return `#/item/${i.id}`;
 }

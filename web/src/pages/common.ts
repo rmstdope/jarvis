@@ -62,3 +62,14 @@ export function errorBox(what: string, reason: string, retry?: () => void, after
 export function notFound(backLabel: string, backHref: string): HTMLElement[] {
   return [trail(backLabel, backHref), emptyBox("We couldn't find that.", "It may have been removed or renamed.", h("div", {}, h("a", { href: backHref }, `Back to ${backLabel}`)))];
 }
+
+/** The progress bar with "<d> of <n> done" (or "No tasks yet") beside it. */
+export function progress(done: number, total: number, o: { small?: boolean } = {}): HTMLElement {
+  const pct = total === 0 ? 0 : Math.round((done / total) * 100);
+  const bar = h("span", { class: "jv-bar-track", role: "progressbar", "aria-valuemin": "0", "aria-valuemax": String(total), "aria-valuenow": String(done) }, h("span", { class: "jv-bar-fill", style: `width:${pct}%` }));
+  return h("div", { class: `jv-progress${o.small ? " jv-small" : ""}` }, bar, h("span", { class: "jv-ptext" }, total === 0 ? "No tasks yet" : `${done} of ${total} done`));
+}
+/** The small outlined "◎ <initiative title>" link a task in an initiative carries. */
+export function initiativeLabel(i: { id: string; title: string }): HTMLElement {
+  return h("a", { class: "jv-ilabel", href: `#/initiative/${encodeURIComponent(i.id)}`, title: i.title }, `◎ ${i.title}`);
+}

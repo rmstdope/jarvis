@@ -7,6 +7,8 @@ import { createShell, type Shell } from "./shell.ts";
 import { type Ctx, errorBox, notFound, skeleton } from "./pages/common.ts";
 import { resetBrowse, viewBrowse } from "./pages/browse.ts";
 import { viewCapture } from "./pages/capture.ts";
+import { viewInitiative } from "./pages/initiative.ts";
+import { viewInitiatives } from "./pages/initiatives.ts";
 import { viewItem } from "./pages/item.ts";
 import { viewBriefing, viewBriefings } from "./pages/briefings.ts";
 import { viewPresentation, viewPresentations } from "./pages/presentations.ts";
@@ -47,11 +49,13 @@ async function runSync() {
 
 // ---- router ----
 /** Where "Back to …" goes when an item, briefing or presentation is missing. */
-const BACK: Record<string, [string, string]> = { item: ["Browse & search", "#/browse"], briefing: ["Briefings", "#/briefings"], presentation: ["Presentations", "#/presentations"] };
+const BACK: Record<string, [string, string]> = { initiative: ["Initiatives", "#/initiatives"], item: ["Browse & search", "#/browse"], briefing: ["Briefings", "#/briefings"], presentation: ["Presentations", "#/presentations"] };
 let renderSeq = 0;
 async function render() {
   const r = parseRoute(location.hash);
-  shell.setActive(r.name);
+  const [rid, rquery] = (r.id ?? "").split("?");
+  const from = new URLSearchParams(rquery ?? "").get("from") ?? undefined;
+  shell.setActive(r.name === "initiative" && from === "browse" ? "browse" : r.name);
   if (r.name === "chat") {
     page.hidden = true;
     chat.show();
@@ -76,7 +80,9 @@ async function render() {
       case "briefing": if (r.id) after = await viewBriefing(ctx, r.id.split("#")[0]); break;
       case "presentations": after = await viewPresentations(ctx); break;
       case "presentation": if (r.id) after = await viewPresentation(ctx, r.id); break;
-      case "item": if (r.id) after = await viewItem(ctx, r.id); break;
+      case "initiative": if (rid) after = await viewInitiative(ctx, rid, from); break;
+      case "initiatives": after = await viewInitiatives(ctx); break;
+      case "item": if (rid) after = await viewItem(ctx, rid, from); break;
       default: view.append(h("p", {}, "Not found. ", h("a", { href: "#/chat" }, "Back to chat")));
     }
   } catch (e) {

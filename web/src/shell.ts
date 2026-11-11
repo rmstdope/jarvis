@@ -8,9 +8,10 @@ const isMac = () => /Mac|iPhone|iPad/.test(navigator.platform || navigator.userA
 /** "⌘⇧S" on a Mac, "Ctrl+Shift+S" elsewhere. */
 export function shortcut(key: string): string { return isMac() ? `⌘⇧${key}` : `Ctrl+Shift+${key}`; }
 
-/** [route, sidebar label, rail name, icon] for the four pages under "Your knowledge". */
+/** [route, sidebar label, rail name, icon] for the pages under "Your knowledge". */
 export const PAGES: [string, string, string, string][] = [
   ["browse", "Browse & search", "Browse", "⌕"],
+  ["initiatives", "Initiatives", "Initiatives", "◎"],
   ["capture", "Capture", "Capture", "✎"],
   ["briefings", "Briefings", "Briefings", "▤"],
   ["presentations", "Presentations", "Slides", "▣"],
@@ -18,6 +19,7 @@ export const PAGES: [string, string, string, string][] = [
 /** Which sidebar entry a route lights up. */
 export function navFor(route: string): string {
   if (route === "item" || route === "search" || route === "tasks") return "browse";
+  if (route === "initiative") return "initiatives";
   if (route === "briefing") return "briefings";
   if (route === "presentation") return "presentations";
   return route;
