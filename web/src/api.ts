@@ -10,7 +10,9 @@ export interface BrowseResult { added: ItemSummary[]; updated: ItemSummary[]; pa
 export interface BriefingSummary { id: string; title: string; subtitle?: string; createdAt: string; updatedAt: string; kind: string; trail?: string; status?: string; tags?: string[]; author?: string; }
 export interface BriefingDetail extends BriefingSummary { frontmatter: Record<string, unknown>; tree: unknown[]; toc: { level: number; text: string; slug: string }[] | null; html?: string; }
 export interface Comment { id: string; status: string; author?: string; comment: string; createdAt: string; }
-export interface SyncResult { remote: boolean; committed: number; committedEnriched: number; pulled: boolean; pushed: boolean; conflicted: string[]; reindexed?: { docsIndexed: number; chunksEmbedded: number }; collisions: { source_url: string; ids: string[] }[]; notes: string[]; }
+export interface SyncResult { remote: boolean; committed: number; committedEnriched: number; pulled: boolean; pushed: boolean; conflicted: string[]; reindexed?: { docsIndexed: number; chunksEmbedded: number }; collisions: { source_url: string; ids: string[] }[]; notes: string[]; failures: SyncStepFailure[]; }
+/** A model step a sync ran that failed for `failed` units (items for enrich, batches for refine). */
+export interface SyncStepFailure { step: string; failed: number; reason: string; }
 export interface PresentationSummary { id: string; slug: string; title: string; author: string; created_at: string; updated_at?: string; indexed: boolean; viewer: { status: string; launchUrl?: string }; }
 
 export interface InitiativeRef { id: string; title: string; }

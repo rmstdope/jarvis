@@ -151,7 +151,9 @@ export async function handle(req: Request, ctx: ServerContext, webDist?: string)
 }
 
 export function startServer(ctx: ServerContext, port: number, webDist?: string) {
-  const server = Bun.serve({ hostname: "127.0.0.1", port, fetch: (req) => handle(req, ctx, webDist) });
+  // idleTimeout 0: a sync, an ask or a briefing waits on model calls far longer than Bun's 10 s default, which
+  // dropped the answer while the work went on (jv-m9l). The service listens on loopback only.
+  const server = Bun.serve({ hostname: "127.0.0.1", port, idleTimeout: 0, fetch: (req) => handle(req, ctx, webDist) });
   return server;
 }
 

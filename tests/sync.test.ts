@@ -3,9 +3,11 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { ingest } from "../src/core/ingest.ts";
 import { git, gitOk } from "../src/core/git.ts";
-import { dedupScan, sync } from "../src/core/sync.ts";
+import { dedupScan, isSyncRunning, sync } from "../src/core/sync.ts";
 import { withDb } from "../src/core/db.ts";
 import { clearEmbedder, tmpDataDir, useFakeEmbedder } from "./helpers.ts";
+import { fakeRouter } from "./fakeRouter.ts";
+import { startServer } from "../src/server.ts";
 
 let root: ReturnType<typeof tmpDataDir>;
 let a: string, b: string, origin: string;
@@ -119,4 +121,31 @@ describe("sync across two clones", () => {
     expect(s.committed).toBe(1);
     expect(s.pushed).toBe(false);
   });
+
+  test("a sync whose model step fails still pushes, and says which step failed and why", async () => {
+    await ingest(a, { source: "note", title: "Zoom drift", body: "alpha", author: "a" });
+    const refused = fakeRouter(() => { throw new Error('Model "gpt-4.1" from --model flag is not available.'); });
+    const s = await sync(a, { router: refused });
+    expect(s.pushed).toBe(true);
+    expect(s.failures).toEqual([{ step: "enrich", failed: 1, reason: 'Model "gpt-4.1" from --model flag is not available.' }]);
+  });
+});
+
+describe("POST /api/sync through the running service", () => {
+  // jv-m9l: Bun.serve closes a request idle for 10 s by default, so a sync slower than that lost its answer:
+  // the server committed and pushed while the browser saw a dropped socket and said "Sync failed".
+  test("a sync slower than ten seconds still answers with what it did", async () => {
+    await ingest(a, { source: "note", title: "Slow", body: "alpha", author: "a" });
+    const slow = fakeRouter(async () => { await Bun.sleep(14_000); throw new Error("refused"); });
+    const server = startServer({ dataDir: a, router: slow }, 0);
+    try {
+      const r = await fetch(`http://127.0.0.1:${server.port}/api/sync`, { method: "POST" });
+      const body = (await r.json()) as { pushed: boolean; failures: unknown[] };
+      expect(body.pushed).toBe(true);
+      expect(body.failures).toEqual([{ step: "enrich", failed: 1, reason: "refused" }]);
+    } finally {
+      while (isSyncRunning()) await Bun.sleep(100); // the server goes on when the socket drops; let it finish
+      server.stop(true);
+    }
+  }, 30_000);
 });

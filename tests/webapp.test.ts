@@ -131,7 +131,7 @@ describe("keyboard", () => {
 });
 
 describe("sync", () => {
-  const syncOk = { committed: 1, committedEnriched: 0, pulled: true, pushed: true, conflicted: [], collisions: [], notes: [], remote: true };
+  const syncOk = { committed: 1, committedEnriched: 0, pulled: true, pushed: true, conflicted: [], collisions: [], notes: [], failures: [], remote: true };
   test("asks first, reports in a toast, shows the status line, and remembers Do not show again", async () => {
     await boot();
     expect(q(".jv-syncline").textContent).toBe("Not synced yet");
@@ -148,6 +148,17 @@ describe("sync", () => {
     q(".jv-sync").click();
     expect(document.querySelector(".modal")).toBeNull(); // skipped now
     await env.tick(30);
+  });
+  test("a sync that pushed but whose model step failed says it was shared and names the step (jv-m9l)", async () => {
+    await boot();
+    localStorage.setItem("sb.sync.noconfirm", "1");
+    const reason = 'Model "gpt-4.1" from --model flag is not available.';
+    env.routes.set("POST /api/sync", () => ({ json: { ...syncOk, committed: 7, failures: [{ step: "enrich", failed: 7, reason }] } }));
+    q(".jv-sync").click();
+    await env.tick(30);
+    expect(q(".toast").textContent).toBe(`Shared with the team, but enrichment failed for 7 item(s): ${reason} Run \`jarvis doctor\` for the fix.`);
+    expect(q(".jv-syncline").textContent).toBe("Synced just now · enrichment failed");
+    expect(q(".jv-syncline").classList.contains("jv-err")).toBe(true);
   });
   test("a failed sync says so in the line; a running one is reported as today", async () => {
     await boot();

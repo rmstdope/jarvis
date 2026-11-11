@@ -28,6 +28,13 @@ export function dedupScan(dataDir: string): Collision[] {
   return [...byUrl.entries()].filter(([, ids]) => ids.length > 1).map(([source_url, ids]) => ({ source_url, ids: ids.sort() }));
 }
 
+/** A model step that ran and failed for some of its work: which step, how many units, and the first reason. */
+export interface StepFailure {
+  step: string;
+  failed: number;
+  reason: string;
+}
+
 /** Pluggable authoring passes (enrich, edges, refine) registered by later modules. */
 export interface ProcessContext {
   dataDir: string;
@@ -36,6 +43,7 @@ export interface ProcessContext {
   router?: unknown;
   counts: Record<string, unknown>;
   notes: string[];
+  failures: StepFailure[];
 }
 export type ProcessPass = { name: string; needsRouter?: boolean; authoring?: boolean; run: (ctx: ProcessContext) => Promise<{ changedFiles?: boolean } | void> };
 const passes: ProcessPass[] = [];
@@ -54,6 +62,7 @@ export interface ProcessResult {
   collisions: Collision[];
   counts: Record<string, unknown>;
   notes: string[];
+  failures: StepFailure[];
   enrichedFiles: boolean;
 }
 
@@ -62,7 +71,7 @@ export async function processContent(dataDir: string, opts: { router?: unknown; 
   const db = opts.db ?? openDb(dataDir);
   const consumer = isConsumer(dataDir);
   const router = opts.router === undefined && !consumer ? await getRouter() : opts.router;
-  const ctx: ProcessContext = { dataDir, db, consumer, router: router ?? undefined, counts: {}, notes: [] };
+  const ctx: ProcessContext = { dataDir, db, consumer, router: router ?? undefined, counts: {}, notes: [], failures: [] };
   try {
     const reindexed = await reindex(dataDir, { db });
     if (reindexed.embedError) ctx.notes.push(reindexed.embedError);
@@ -78,7 +87,7 @@ export async function processContent(dataDir: string, opts: { router?: unknown; 
       }
     }
     const collisions = dedupScan(dataDir);
-    return { reindexed, reindexedAgain, collisions, counts: ctx.counts, notes: ctx.notes, enrichedFiles };
+    return { reindexed, reindexedAgain, collisions, counts: ctx.counts, notes: ctx.notes, failures: ctx.failures, enrichedFiles };
   } finally {
     if (!opts.db) db.close();
   }
@@ -94,6 +103,8 @@ export interface SyncResult {
   reindexed?: { docsIndexed: number; chunksEmbedded: number };
   collisions: Collision[];
   notes: string[];
+  /** Model steps that failed; the sync still committed, pulled and pushed around them. */
+  failures: StepFailure[];
   counts: Record<string, unknown>;
 }
 
@@ -149,7 +160,7 @@ export class SyncBusyError extends Error {
 async function syncInner(dataDir: string, opts: { push?: boolean; router?: unknown }): Promise<SyncResult> {
   if (!isWorkTree(dataDir)) throw new Error(`${dataDir} is not a git work tree`);
   const remote = hasRemote(dataDir);
-  const res: SyncResult = { remote, committed: 0, committedEnriched: 0, pulled: false, pushed: false, conflicted: [], collisions: [], notes: [], counts: {} };
+  const res: SyncResult = { remote, committed: 0, committedEnriched: 0, pulled: false, pushed: false, conflicted: [], collisions: [], notes: [], failures: [], counts: {} };
   ensureRepoHygiene(dataDir);
 
   const conflicts = unresolvedConflicts(dataDir);
@@ -182,6 +193,7 @@ async function syncInner(dataDir: string, opts: { push?: boolean; router?: unkno
   res.collisions = p.collisions;
   res.counts = p.counts;
   res.notes.push(...p.notes);
+  res.failures = p.failures;
   if (p.collisions.length) res.notes.push(`${p.collisions.length} source_url collision(s): run \`jarvis dedup\``);
 
   if (!isConsumer(dataDir)) res.committedEnriched = commitAuthored(dataDir, (n) => `jarvis: enrich ${n} item(s)`);

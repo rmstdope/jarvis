@@ -117,6 +117,7 @@ register("sync", "sync [--no-push]", async ({ dataDir, flags }) => {
   for (const [k, v] of Object.entries(r.counts)) console.log(`${k}: ${JSON.stringify(v)}`);
   for (const c of r.collisions) console.log(`⚠ collision ${c.source_url}: ${c.ids.join(", ")}`);
   for (const n of r.notes) console.log(`note: ${n}`);
+  for (const f of r.failures) console.log(`⚠ ${f.step} failed for ${f.failed}: ${f.reason}   (jarvis doctor shows the fix)`);
 });
 
 const processCmd: Parameters<typeof register>[2] = async ({ dataDir }) => {

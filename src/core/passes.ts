@@ -13,6 +13,7 @@ registerProcessPass({
   async run(ctx) {
     const r = await enrich(ctx.dataDir, ctx.router as Router, { db: ctx.db });
     ctx.counts.enrich = { enriched: r.enriched, skipped: r.skipped, failed: r.failed, model: r.model, stubsCreated: r.stubsCreated };
+    if (r.failed) ctx.failures.push({ step: "enrich", failed: r.failed, reason: r.details.find((d) => d.status === "failed")?.reason ?? "" });
     return { changedFiles: r.enriched > 0 };
   },
 });
@@ -40,6 +41,7 @@ registerProcessPass({
   async run(ctx) {
     const r = await refine(ctx.dataDir, ctx.router as Router, { db: ctx.db });
     ctx.counts.refine = { candidates: r.candidates, kept: r.kept, dropped: r.dropped, malformedBatches: r.malformedBatches, hallucinated: r.hallucinated, model: r.model };
+    if (r.malformedBatches) ctx.failures.push({ step: "refine", failed: r.malformedBatches, reason: r.firstError ?? "" });
     return { changedFiles: r.kept + r.dropped > 0 };
   },
 });
