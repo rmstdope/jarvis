@@ -3,15 +3,16 @@ import { importClosure, listTests, planFromChanges } from "../scripts/ci-plan.ts
 
 describe("ci planner", () => {
   test("docs-only changes run nothing; agent instructions are not docs-only", () => {
-    const p = planFromChanges(["README.md", "docs/ARCHITECTURE.md", "IMPLEMENTATION-PLAN.md"]);
+    const p = planFromChanges(["docs/ARCHITECTURE.md", "IMPLEMENTATION-PLAN.md"]);
     expect(p.docsOnly).toBe(true);
     expect(p.tests).toEqual([]);
     expect(planFromChanges(["docs/AGENT-INSTRUCTIONS.md"]).tests).toContain("tests/extension.test.ts");
     expect(planFromChanges([]).docsOnly).toBe(true);
+    expect(planFromChanges(["README.md"]).tests).toContain("tests/cli-e2e.test.ts");
   });
   test("the fleet's own files (cerebro, beads, agent and skill links) run nothing", () => {
     const fleet = [".cerebro/project.conf", ".cerebro/cerebro", ".gitmodules", ".beads/config.yaml", ".claude/skills/write-bead", ".github/agents/producer.md", ".github/skills/write-bead", ".github/hooks/cerebro.json", "CLAUDE.md"];
-    const p = planFromChanges([...fleet, "README.md"]);
+    const p = planFromChanges([...fleet, "docs/ARCHITECTURE.md"]);
     expect(p.docsOnly).toBe(true);
     expect(p.full).toBe(false);
     expect(p.tests).toEqual([]);

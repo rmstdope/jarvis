@@ -17,8 +17,9 @@ one-time setup below.
 ```
 git clone <this repo> jarvis && cd jarvis
 bun install
-bun run jarvis init            # six-step wizard: content repo, author, embeddings, model preset, first index, doctor
-bun run jarvis doctor          # anything that fails prints an exact fix
+bun link                       # installs the jarvis command, so it works from any folder
+jarvis init                    # six-step wizard: content repo, author, embeddings, model preset, first index, doctor
+jarvis doctor                  # anything that fails prints an exact fix
 ```
 
 `init` clones or creates the team's **content repo**, which is where the knowledge lives; you choose
@@ -27,14 +28,13 @@ this code repo. Below, `<content-repo>` stands for whatever path you chose.
 
 ### 2. Point your agent at J.A.R.V.I.S.
 
-Give the agent the operating instructions and access to both repositories:
+Give the agent the operating instructions:
 
 ```
-bun run jarvis skill > <content-repo>/AGENTS.md   # or CLAUDE.md, or .github/copilot-instructions.md
+jarvis skill > <content-repo>/AGENTS.md   # or CLAUDE.md, or .github/copilot-instructions.md
 ```
 
-Then open a session **in the content repo** (a VS Code multi-root workspace with this code repo and
-the content repo works well, so the agent's file tools can see both):
+Then open a session **in the content repo**:
 
 ```
 cd <content-repo>
@@ -44,7 +44,7 @@ copilot            # or: claude, or your agent of choice
 Optionally start the local service so the web UI and the browser extension work too:
 
 ```
-bun run jarvis serve           # http://127.0.0.1:7281 (run `bun run web:build` once first)
+jarvis serve                   # http://127.0.0.1:7281 (run `bun run web:build` once first)
 ```
 
 ### 3. Talk to J.A.R.V.I.S.
@@ -66,7 +66,7 @@ indexes and searches.
 
 ## Commands (what the agent runs)
 
-`bun run jarvis help` lists everything. Humans rarely need these directly, but this is what the agent
+`jarvis help` lists everything. Humans rarely need these directly, but this is what the agent
 is working with:
 
 | Command | What it does |
@@ -86,7 +86,7 @@ is working with:
 
 | Part | Where | Build / run |
 |---|---|---|
-| Core library + CLI | `src/core`, `src/cli.ts` | `bun run jarvis <command>` |
+| Core library + CLI | `src/core`, `src/cli.ts` | `jarvis <command>` |
 | LLM providers + router | `src/providers` | `~/.jarvis/models.toml`, `jarvis config preset` |
 | Briefings + Confluence | `src/briefings` | `jarvis briefing …` |
 | HTTP service | `src/server.ts`, `src/http.ts`, `src/chat` | `jarvis serve` |

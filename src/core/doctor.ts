@@ -1,6 +1,6 @@
-import { existsSync, mkdtempSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { existsSync, mkdtempSync, realpathSync, rmSync } from "node:fs";
+import { homedir, tmpdir } from "node:os";
+import { basename, dirname, join } from "node:path";
 import { Database } from "bun:sqlite";
 import * as sqliteVec from "sqlite-vec";
 import { configIsMalformed, configPath, loadConfig, resolveDataDir } from "./config.ts";
@@ -31,6 +31,44 @@ export interface DoctorOpts {
   dataDir?: string;
   which?: (b: string) => string | null;
   embedProbe?: () => Promise<number>; // returns dims
+  /** Absolute path of the code repo doctor runs from (seam for tests). */
+  codeRepo?: string;
+  /** The user's home directory (seam for tests). */
+  home?: string;
+  /** The user's login shell, e.g. `/bin/zsh` (seam for tests). */
+  shell?: string;
+}
+
+/** Probes for {@link checkJarvisCommand}; all injectable so every state is unit-tested. */
+export interface JarvisCommandProbe {
+  /** Where `jarvis` resolves on PATH, or null. */
+  found: string | null;
+  codeRepo: string;
+  home: string;
+  shell: string;
+  exists: (p: string) => boolean;
+  realpath: (p: string) => string;
+}
+
+/** Checks that a plain `jarvis` command on PATH runs this copy of the code; always a warning, never a failure. */
+export function checkJarvisCommand(o: JarvisCommandProbe): Check {
+  const name = "jarvis-command";
+  const link = `cd ${o.codeRepo} && bun link`;
+  if (o.found) {
+    let target = "";
+    try {
+      target = o.realpath(o.found);
+    } catch {}
+    if (target === join(o.codeRepo, "src", "cli.ts")) return ok(name, false, "jarvis on PATH");
+    const other = target ? dirname(dirname(target)) : o.found;
+    return warn(name, `jarvis on PATH runs ${other}, not ${o.codeRepo}`, link);
+  }
+  if (o.exists(join(o.home, ".bun", "bin", "jarvis"))) {
+    const sh = basename(o.shell);
+    const fix = sh === "fish" ? "fish_add_path ~/.bun/bin" : `echo 'export PATH="$HOME/.bun/bin:$PATH"' >> ${sh === "zsh" ? "~/.zshrc" : sh === "bash" ? "~/.bashrc" : "~/.profile"}`;
+    return warn(name, "jarvis is installed in ~/.bun/bin, but that folder is not on PATH", `${fix}   then open a new terminal`);
+  }
+  return warn(name, "jarvis is not on PATH, so agents in the content repo cannot run it", link);
 }
 
 const ok = (name: string, required: boolean, detail: string): Check => ({ name, required, status: "ok", detail });
@@ -65,6 +103,7 @@ export async function doctor(opts: DoctorOpts = {}): Promise<DoctorReport> {
   checks.push(which("bun") ? ok("bun", true, `bun ${Bun.version}`) : bad("bun", true, "bun not on PATH", "curl -fsSL https://bun.sh/install | bash"));
   checks.push(which("git") ? ok("git", true, "git on PATH") : bad("git", true, "git not on PATH", process.platform === "darwin" ? "xcode-select --install" : "install git with your package manager"));
   checks.push(checkSqliteVec());
+  checks.push(checkJarvisCommand({ found: which("jarvis"), codeRepo: opts.codeRepo ?? join(import.meta.dir, "..", ".."), home: opts.home ?? homedir(), shell: opts.shell ?? process.env.SHELL ?? "", exists: existsSync, realpath: realpathSync }));
 
   const embedder = getEmbedder();
   if (await embedder.available()) {

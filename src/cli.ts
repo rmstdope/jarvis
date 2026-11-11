@@ -445,7 +445,8 @@ register("summarize", "summarize <docId> [--commit]", async ({ dataDir, position
 // ---- M10: agent instructions ----
 register("skill", "skill  (print the agent instructions; `jarvis skill > AGENTS.md`)", async () => {
   const { readFileSync: rf } = await import("node:fs");
-  process.stdout.write(rf(_join(import.meta.dir, "..", "docs", "AGENT-INSTRUCTIONS.md"), "utf8"));
+  const codeRepo = _join(import.meta.dir, "..");
+  process.stdout.write(rf(_join(codeRepo, "docs", "AGENT-INSTRUCTIONS.md"), "utf8").replaceAll("<code repo>", codeRepo));
 });
 
 // ---- entrypoint (must stay last so every register() above has run) ----

@@ -96,9 +96,9 @@ export function planFromChanges(changed: string[], opts: { full?: boolean; root?
     plan.reasons.push("no changed files");
     return plan;
   }
-  // Documentation and fleet files never affect tests, except the agent instructions which a test reads.
+  // Documentation and fleet files never affect tests, except the agent instructions and the README, which tests read.
   const isFleet = (f: string) => FLEET_RE.test(f);
-  const isDoc = (f: string) => isFleet(f) || (DOC_RE.test(f) && !f.startsWith("tests/fixtures/") && f !== "docs/AGENT-INSTRUCTIONS.md");
+  const isDoc = (f: string) => isFleet(f) || (DOC_RE.test(f) && !f.startsWith("tests/fixtures/") && f !== "docs/AGENT-INSTRUCTIONS.md" && f !== "README.md");
   if (files.every(isDoc)) {
     plan.docsOnly = true;
     plan.reasons.push("documentation-only change");
