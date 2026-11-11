@@ -159,14 +159,14 @@ export async function doctor(opts: DoctorOpts = {}): Promise<DoctorReport> {
   if (router) {
     // A named Copilot id outside the CLI's catalog is refused at run time (`--model … is not available`).
     const named = router.entries.filter((e) => e.available && e.entry.provider === "copilot" && e.entry.id !== COPILOT_CLI_DEFAULT && e.entry.id !== "auto");
-    const catalog = named.length ? await (opts.copilotCatalog ?? readCopilotModelCatalog)() : null;
+    const catalog = named.length ? await (opts.copilotCatalog ?? (() => readCopilotModelCatalog(undefined, which)))() : null;
     const refused = catalog ? named.filter((e) => !catalog.includes(e.entry.id)) : [];
-    if (catalog) checks.push(refused.length ? bad("copilot-model", true, `Copilot does not offer model ${refused.map((e) => `"${e.entry.id}"`).join(", ")} to this account`, `set id = "${COPILOT_CLI_DEFAULT}" for ${refused.map((e) => e.entry.id).join(", ")} in ${mp}   or   jarvis config preset <name>`) : ok("copilot-model", false, `${named.map((e) => e.entry.id).join(", ")} offered by Copilot`));
+    if (catalog) checks.push(refused.length ? bad("copilot-model", true, `the Copilot CLI does not offer model ${refused.map((e) => `"${e.entry.id}"`).join(", ")}`, `set id = "${COPILOT_CLI_DEFAULT}" for ${refused.map((e) => e.entry.id).join(", ")} in ${mp}   or   jarvis config preset <name>`) : ok("copilot-model", false, `${named.map((e) => e.entry.id).join(", ")} offered by Copilot`));
     const avail = router.entries.filter((e) => e.available && !refused.includes(e));
-    // When only refused ids remain, the copilot-model failure above is the whole story.
+    // When only refused ids remain, the copilot-model failure above is the whole story: every task would route to them.
     if (avail.length || !refused.length) checks.push(router.entries.length === 0 ? warn("models-available", "no chat models configured (Tier 0: capture/search only)", "jarvis config preset <name>") : avail.length ? ok("models-available", false, avail.map((e) => `${e.entry.provider}:${e.entry.id}`).join(", ")) : warn("models-available", "no configured model is reachable", "start Ollama / install the Copilot CLI / set OPENAI_API_KEY (or the key env named in models.toml)"));
     const missing = unresolvedKinds(router);
-    checks.push(missing.length ? warn("models-tasks", `no model for: ${missing.join(", ")}`, "add a model with quality >= the task's minimum to models.toml") : ok("models-tasks", false, "every task kind resolves"));
+    if (avail.length || !refused.length) checks.push(missing.length ? warn("models-tasks", `no model for: ${missing.join(", ")}`, "add a model with quality >= the task's minimum to models.toml") : ok("models-tasks", false, "every task kind resolves"));
   }
 
   if (!opts.coreOnly) {

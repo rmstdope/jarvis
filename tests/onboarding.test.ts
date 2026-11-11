@@ -159,13 +159,19 @@ describe("doctor: a Copilot model id the account refuses (jv-5el)", () => {
     setRouterForTests(await copilotRouter(["gpt-4.1"]));
     const r = await doctor({ coreOnly: true, which: (b) => `/bin/${b}`, copilotCatalog: async () => ["gpt-5-mini", "gpt-5.4"] });
     const c = r.checks.find((x) => x.name === "copilot-model");
-    expect(c).toMatchObject({ status: "fail", detail: 'Copilot does not offer model "gpt-4.1" to this account' });
+    expect(c).toMatchObject({ status: "fail", detail: 'the Copilot CLI does not offer model "gpt-4.1"' });
     expect(c!.fix).toBe(`set id = "default" for gpt-4.1 in ${modelsPath()}   or   jarvis config preset <name>`);
-    expect(r.checks.find((x) => x.name === "models-available")).toBeUndefined();
-    setRouterForTests(await copilotRouter(["gpt-4.1", "gpt-5-mini"]));
-    const both = await doctor({ coreOnly: true, which: (b) => `/bin/${b}`, copilotCatalog: async () => ["gpt-5-mini"] });
-    expect(both.checks.find((x) => x.name === "models-available")).toMatchObject({ status: "ok", detail: "copilot:gpt-5-mini" });
     expect(r.summary.healthy).toBe(false);
+    // Only refused ids: no line that says a model is reachable or that every task resolves.
+    expect(r.checks.find((x) => x.name === "models-available")).toBeUndefined();
+    expect(r.checks.find((x) => x.name === "models-tasks")).toBeUndefined();
+  });
+
+  test("beside an offered id, only the refused one is failed and the offered one is listed", async () => {
+    setRouterForTests(await copilotRouter(["gpt-4.1", "gpt-5-mini"]));
+    const r = await doctor({ coreOnly: true, which: (b) => `/bin/${b}`, copilotCatalog: async () => ["gpt-5-mini"] });
+    expect(r.checks.find((x) => x.name === "copilot-model")!.detail).toBe('the Copilot CLI does not offer model "gpt-4.1"');
+    expect(r.checks.find((x) => x.name === "models-available")).toMatchObject({ status: "ok", detail: "copilot:gpt-5-mini" });
   });
 
   test("default, auto and catalog ids pass; an unreadable catalog checks nothing", async () => {
