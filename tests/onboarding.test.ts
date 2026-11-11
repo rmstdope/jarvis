@@ -196,6 +196,53 @@ describe("doctor: a Copilot model id the account refuses (jv-5el)", () => {
   });
 });
 
+describe("doctor: an openai-compat model id the server refuses (jv-6sk)", () => {
+  // A server that lists models fine (GET /models is 200) but refuses the configured id at chat time.
+  let server: ReturnType<typeof Bun.serve>;
+  beforeEach(() => {
+    server = Bun.serve({
+      hostname: "127.0.0.1",
+      port: 0,
+      async fetch(req) {
+        const url = new URL(req.url);
+        if (url.pathname === "/v1/models") return Response.json({ data: [{ id: "gpt-5-mini" }] });
+        const { model } = (await req.json()) as { model: string };
+        if (model === "gpt-5-mini") return Response.json({ choices: [{ message: { content: "ok" }, finish_reason: "stop" }] });
+        return Response.json({ error: { message: `Model "${model}" is not available` } }, { status: 400 });
+      },
+    });
+  });
+  afterEach(() => {
+    setRouterForTests(null);
+    server.stop(true);
+  });
+  const compatRouter = (ids: string[]) =>
+    createRouter({ config: { preference: ["openai-compat"], models: ids.map((id) => ({ provider: "openai-compat" as const, id, quality: "high" as const, bestFor: [], baseUrl: `http://127.0.0.1:${server.port}/v1` })), source: "file" } });
+
+  test("a refused id fails with the model, the server's reason and an exact fix line", async () => {
+    setRouterForTests(await compatRouter(["gpt-9"]));
+    const r = await doctor({ coreOnly: true, which: (b) => `/bin/${b}` });
+    const c = r.checks.find((x) => x.name === "openai-model");
+    expect(c).toMatchObject({ status: "fail", detail: 'the server refuses model "gpt-9": Model "gpt-9" is not available' });
+    expect(c!.fix).toBe(`set id for gpt-9 in ${modelsPath()} to a model the server offers   or   jarvis config preset <name>`);
+    expect(r.summary.healthy).toBe(false);
+    expect(r.checks.find((x) => x.name === "models-available")).toBeUndefined();
+  });
+
+  test("beside an accepted id, only the refused one fails and the accepted one is listed", async () => {
+    setRouterForTests(await compatRouter(["gpt-9", "gpt-5-mini"]));
+    const r = await doctor({ coreOnly: true, which: (b) => `/bin/${b}` });
+    expect(r.checks.find((x) => x.name === "openai-model")!.detail).toBe('the server refuses model "gpt-9": Model "gpt-9" is not available');
+    expect(r.checks.find((x) => x.name === "models-available")).toMatchObject({ status: "ok", detail: "openai-compat:gpt-5-mini" });
+  });
+
+  test("an accepted id passes", async () => {
+    setRouterForTests(await compatRouter(["gpt-5-mini"]));
+    const r = await doctor({ coreOnly: true, which: (b) => `/bin/${b}` });
+    expect(r.checks.find((x) => x.name === "openai-model")).toMatchObject({ status: "ok", detail: "gpt-5-mini accepted by the server" });
+  });
+});
+
 describe("init", () => {
   test("non-interactive init creates repo, config, preset and indexes existing docs", async () => {
     const data = join(t.dir, "content");
