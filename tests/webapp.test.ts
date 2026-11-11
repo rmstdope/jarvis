@@ -23,6 +23,8 @@ async function boot(hash = "", stored: Record<string, string> = {}) {
   await env.tick(40);
 }
 afterEach(() => env.restore());
+/** Everything this page stored in localStorage, to carry into a fresh `boot` that stands for a reload. */
+const snapshotStorage = () => Object.fromEntries(Array.from({ length: localStorage.length }, (_, i) => localStorage.key(i)!).map((k) => [k, localStorage.getItem(k)!]));
 const key = (k: string, mods: Record<string, boolean> = {}, target: Element | Document = document) => target.dispatchEvent(new env.win.KeyboardEvent("keydown", { key: k, bubbles: true, cancelable: true, ...mods }) as unknown as Event);
 const go = async (hash: string) => { location.hash = hash; await env.tick(40); };
 
@@ -168,7 +170,7 @@ describe("sync", () => {
     q(".jv-sync").click();
     await env.tick(30);
     expect(q(".jv-syncline").textContent).toBe("Synced just now · enrichment failed");
-    const stored = Object.fromEntries(Array.from({ length: localStorage.length }, (_, i) => localStorage.key(i)!).map((k) => [k, localStorage.getItem(k)!]));
+    const stored = snapshotStorage();
     env.restore();
     await boot("", stored); // the reload: a fresh page over the same browser storage
     expect(q(".jv-syncline").textContent).toBe("Synced just now · enrichment failed");
@@ -178,7 +180,7 @@ describe("sync", () => {
     q(".jv-sync").click();
     await env.tick(30);
     expect(q(".jv-syncline").textContent).toBe("Synced just now");
-    const stored2 = Object.fromEntries(Array.from({ length: localStorage.length }, (_, i) => localStorage.key(i)!).map((k) => [k, localStorage.getItem(k)!]));
+    const stored2 = snapshotStorage();
     env.restore();
     await boot("", stored2);
     expect(q(".jv-syncline").textContent).toBe("Synced just now");
