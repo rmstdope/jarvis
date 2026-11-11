@@ -8,6 +8,9 @@ import { loadConfig, loadTeamConfig, resolvePort } from "../core/config.ts";
 import { ftsQuery, keywordSearchRaw } from "../core/search.ts";
 import { openDb } from "../core/db.ts";
 import { readDocFile } from "../core/docs.ts";
+import { readInitiative } from "../core/initiatives.ts";
+import { requireInitiative } from "../core/initiativeRef.ts";
+import { formatInitiativeShow, PLAIN } from "../core/initiativeView.ts";
 import { readBriefing } from "../briefings/store.ts";
 
 export const CHAT_GROUNDED_BODY_CHARS = 60_000;
@@ -16,7 +19,7 @@ export const CHAT_RESULTS = 6;
 export const CHAT_MAX_TERMS = 8;
 export const CHAT_IDLE_MS = 60 * 60_000;
 
-export type ChatScope = { type: "jarvis" | "item" | "briefing"; ids: string[] };
+export type ChatScope = { type: "jarvis" | "item" | "briefing" | "initiative"; ids: string[] };
 export type ChatEvent =
   | { type: "source"; docId: string; title: string; source: string }
   | { type: "message"; text: string }
@@ -128,7 +131,7 @@ export class ChatService {
   }
   async create(scope: ChatScope, conversationId?: string): Promise<ChatSession> {
     this.expire();
-    if (!["jarvis", "item", "briefing"].includes(scope?.type)) throw new Error("scope.type must be jarvis|item|briefing");
+    if (!["jarvis", "item", "briefing", "initiative"].includes(scope?.type)) throw new Error("scope.type must be jarvis|item|briefing|initiative");
     const ids = Array.isArray(scope.ids) ? scope.ids : [];
     if (scope.type !== "jarvis" && ids.length !== 1) throw new Error(`scope ${scope.type} requires exactly one id`);
     const sources: ChatSession["sources"] = [];
@@ -136,6 +139,9 @@ export class ChatService {
       const d = readDocFile(this.dataDir, ids[0]);
       if (!d) throw new Error(`item ${ids[0]} not found`);
       sources.push({ docId: ids[0], title: d.frontmatter.title, source: d.frontmatter.source });
+    } else if (scope.type === "initiative") {
+      try { requireInitiative(this.dataDir, ids[0]); } catch { throw new Error(`initiative ${ids[0]} not found`); }
+      sources.push({ docId: ids[0], title: readDocFile(this.dataDir, ids[0])!.frontmatter.title, source: "initiative" });
     } else if (scope.type === "briefing") {
       const b = readBriefing(this.dataDir, ids[0]);
       if (!b) throw new Error(`briefing ${ids[0]} not found`);
@@ -199,6 +205,10 @@ export class ChatService {
         const d = readDocFile(this.dataDir, id)!;
         title = d.frontmatter.title;
         body = d.body;
+      } else if (s.scope.type === "initiative") {
+        const d = readInitiative(this.dataDir, id, { all: true });
+        title = d.initiative.title;
+        body = formatInitiativeShow(d, null, PLAIN);
       } else {
         const b = readBriefing(this.dataDir, id)!;
         title = b.title;
