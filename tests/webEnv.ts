@@ -35,6 +35,11 @@ export function installWebEnv(width = 1280): WebEnv {
     return mql;
   };
   (win as unknown as { matchMedia: unknown }).matchMedia = matchMedia;
+  // Real browsers (Chrome, Safari, WKWebView) fire no hashchange for history.replaceState; happy-dom does, so swallow it.
+  let replacing = false;
+  const origReplace = win.history.replaceState.bind(win.history);
+  win.history.replaceState = ((a: unknown, b: string, u?: string | URL) => { replacing = true; origReplace(a, b, u); }) as typeof win.history.replaceState;
+  win.addEventListener("hashchange", (e) => { if (replacing) { replacing = false; e.stopImmediatePropagation(); } });
   const routes = new Map<string, Handler>();
   const calls: WebEnv["calls"] = [];
   const fakeFetch = async (input: string | URL | Request, init?: RequestInit): Promise<Response> => {

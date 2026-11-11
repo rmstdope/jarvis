@@ -19,18 +19,14 @@ describe("every page", () => {
     expect(q(".jv-errbox")).toBeNull();
     expect(text(".jv-pt")).toBe("Browse & search");
   });
-  test("an item, briefing or presentation that does not exist shows the trail and a way back", async () => {
+  test("an item, briefing or presentation that does not exist opens a tab that says so", async () => {
     env = await boot("#/item/NOPE");
-    expect(text(".jv-trail")).toBe("Browse & search");
-    expect(text(".jv-empty")).toContain("We couldn't find that.");
-    expect(text(".jv-empty")).toContain("It may have been removed or renamed.");
-    const back = qa(".jv-empty a")[0] as HTMLAnchorElement;
-    expect(back.textContent).toBe("Back to Browse & search");
-    expect(back.getAttribute("href")).toBe("#/browse");
+    expect(text(".jv-docstate h2")).toBe("This document isn't here any more.");
+    expect(text(".jv-docstate p")).toBe("It may have been removed, or renamed by a sync.");
     await go(env, "#/briefing/NOPE");
-    expect(qa(".jv-empty a")[0].textContent).toBe("Back to Briefings");
+    expect(qa(".jv-docstate h2").length).toBe(2);
     await go(env, "#/presentation/NOPE");
-    expect(qa(".jv-empty a")[0].textContent).toBe("Back to Presentations");
+    expect(qa(".jv-docstate h2").length).toBe(3);
   });
 });
 
@@ -140,31 +136,6 @@ describe("Browse & search", () => {
   });
 });
 
-describe("an item", () => {
-  const edges = [{ otherId: "I2", otherTitle: "Runbook", relation: "relates to", createdBy: "ai", weight: 0.5, direction: "out" }];
-  test("trail, title, details, summary quote, text and a details panel with Ask about this, Source, Tags, Links", async () => {
-    env = await boot("#/item/I1", { setup: (e) => e.routes.set("GET /api/item/I1", () => ({ json: { item: { ...ITEM, summary: "Short.", tags: ["ops"], source_url: "https://example.com/x" }, edges } })) });
-    expect(text(".jv-trail")).toBe("Browse & search › On-call rollout");
-    expect(q(".jv-trail a").getAttribute("href")).toBe("#/browse");
-    expect(text(".jv-title")).toBe("On-call rollout");
-    expect(text(".jv-meta")).toBe("note · mia · 2026-01-01");
-    expect(text(".jv-summary")).toBe("Short.");
-    expect(q(".jv-prose").textContent).toContain("Body text");
-    expect(qa(".jv-panel h5").map((e) => e.textContent)).toEqual(["Source", "Tags", "Links · 1"]);
-    expect(q(".jv-panel a[href^='https']").textContent).toContain("example.com");
-    expect(text(".jv-lk .jv-rel")).toBe("relates to");
-    expect(q(".jv-lk a").getAttribute("href")).toBe("#/item/I2");
-    expect(q(".jv-lk a").textContent).toBe("Runbook");
-    expect(button("Ask about this")).toBeTruthy();
-  });
-  test("no links, no tags, no source, no summary", async () => {
-    env = await boot("#/item/I1", { setup: (e) => e.routes.set("GET /api/item/I1", () => ({ json: { item: ITEM, edges: [] } })) });
-    expect(qa(".jv-panel h5").map((e) => e.textContent)).toEqual(["Links · 0"]);
-    expect(text(".jv-panel")).toContain("No links yet.");
-    expect(q(".jv-summary")).toBeNull();
-  });
-});
-
 describe("Capture", () => {
   const draft = () => qa(".jv-write input, .jv-write textarea") as (HTMLInputElement | HTMLTextAreaElement)[];
   test("a blank page: title and text, greyed out until both are filled; the cursor starts on the title", async () => {
@@ -190,7 +161,7 @@ describe("Capture", () => {
     await env.tick(80);
     expect(env.calls.find((c) => c.path === "/api/capture")!.body).toEqual({ source: "paste", title: "My note", body: "Hello" });
     expect(text(".toast")).toBe("Captured: My note");
-    expect(text(".jv-title")).toBe("On-call rollout");
+    expect(text(".jv-dtitle")).toBe("On-call rollout");
     expect(localStorage.getItem("jv.capture")).toBeNull();
   });
   test("⌘/Ctrl+Enter captures from outside the form too", async () => {

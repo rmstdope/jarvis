@@ -2,12 +2,14 @@
 import { api } from "./api.ts";
 import { getPref, setPref } from "./prefs.ts";
 import { createTasks } from "./tasks.ts";
+import { docRefFor, tabKey, type DocRef } from "./tabs.ts";
+import { kindLabel } from "./transcript.ts";
 import { drawCard, keptCount, type WebChange } from "./changes.ts";
 import { h, modal, toast } from "./ui.ts";
 import { renderMarkdown } from "../../src/briefings/markdown.ts";
 
 export interface Scope { type: "jarvis" | "item" | "briefing"; ids: string[]; }
-type ChatEvent = { type: "change"; change: WebChange } | { type: "source"; docId?: string; title?: string } | { type: "message"; text: string } | { type: "status"; text: string } | { type: "usage"; used: number; size: number } | { type: "done"; stopReason?: string } | { type: "error"; error: string };
+type ChatEvent = { type: "change"; change: WebChange } | { type: "open"; docId: string; title?: string; source?: string } | { type: "source"; docId?: string; title?: string } | { type: "message"; text: string } | { type: "status"; text: string } | { type: "usage"; used: number; size: number } | { type: "done"; stopReason?: string } | { type: "error"; error: string };
 
 /** Split a byte stream into NDJSON objects; partial trailing lines carry over between chunks. */
 export function ndjsonDecoder(onEvent: (e: ChatEvent) => void): (chunk: string, final?: boolean) => void {
@@ -46,7 +48,7 @@ export function fileProblem(f: { name: string; size: number }): string | null {
   return f.size > MAX_FILE_BYTES ? `${f.name} — larger than 25 MB` : null;
 }
 interface Pending { file: File; problem: string | null }
-interface Msg { role: "user" | "assistant"; text: string; files?: { name: string; size: number }[]; changes?: WebChange[]; steps?: Step[]; sources?: { docId: string; title: string }[]; status?: "streaming" | "done" | "stopped" | "failed"; question?: string }
+interface Msg { role: "user" | "assistant"; text: string; files?: { name: string; size: number }[]; changes?: WebChange[]; steps?: Step[]; sources?: { docId: string; title: string }[]; status?: "streaming" | "done" | "stopped" | "failed"; question?: string; cards?: { type: DocRef["type"]; id: string; title: string; kind: string }[] }
 interface Conv { conversationId?: string; sessionId?: string; scope: Scope; attached?: { id: string; title: string }; messages: Msg[] }
 
 /** "Good morning" before noon, "Good afternoon" until 18:00, "Good evening" after; with the name when known. */
@@ -68,10 +70,12 @@ export interface Chat {
   isAnswering(): boolean;
   stop(): void;
   focusInput(): void;
+  /** Redraw (the cards outline the document whose tab is shown). */
+  redraw(): void;
 }
 
 /** Build the chat view. `navigate` changes the hash; `onChange` fires when the conversation changes. */
-export function createChat(opts: { navigate: (hash: string) => void; onChange?: () => void; now?: () => Date; undoMs?: number }): Chat {
+export function createChat(opts: { navigate: (hash: string) => void; onChange?: () => void; openQuietly?: (ref: DocRef, title: string, kind: string) => void; showDoc?: (ref: DocRef, title: string, kind: string) => void; shownKey?: () => string | null; now?: () => Date; undoMs?: number }): Chat {
   const now = opts.now ?? (() => new Date());
   const newId = (): string => `c${Date.now().toString(36)}${Math.random().toString(36).slice(2, 10)}`;
   let conv = restore();
@@ -173,6 +177,12 @@ export function createChat(opts: { navigate: (hash: string) => void; onChange?: 
       if (m.status === "stopped") parts.push(h("div", { class: "jv-stopped muted small" }, "Stopped."));
       if (m.sources?.length) parts.push(h("div", { class: "jv-chips" }, ...m.sources.map((s) => h("a", { class: "jv-chip", href: `#/item/${encodeURIComponent(s.docId)}`, title: s.title }, s.title))));
     }
+    for (const c of m.cards ?? []) {
+      const ref: DocRef = { type: c.type, id: c.id };
+      parts.push(h("button", { class: `jv-docard${opts.shownKey?.() === tabKey(ref) ? " jv-on" : ""}`, onClick: () => opts.showDoc?.(ref, c.title, c.kind) },
+        h("span", { class: "jv-docard-i" }, c.type === "briefing" ? "▤" : c.type === "presentation" ? "▣" : "▫"),
+        h("span", { class: "jv-docard-b" }, h("span", { class: "jv-docard-t" }, c.title), h("span", { class: "jv-docard-s" }, `${c.kind} · opened in a tab`))));
+    }
     return h("div", { class: "jv-msg jv-a" }, ...parts);
   }
   function drawComposer(): void {
@@ -245,6 +255,9 @@ export function createChat(opts: { navigate: (hash: string) => void; onChange?: 
           if (last?.text === e.text) return;
           if (last) last.done = true;
           a.steps!.push({ text: e.text, done: false });
+        } else if (e.type === "open") {
+          const ref = docRefFor(e.source ?? "note", e.docId), title = e.title ?? e.docId, kind = kindLabel(e.source ?? "note");
+          if (!(a.cards ??= []).some((c) => c.id === ref.id && c.type === ref.type)) { a.cards.push({ ...ref, title, kind }); opts.openQuietly?.(ref, title, kind); }
         } else if (e.type === "source" && e.docId && !a.sources!.some((s) => s.docId === e.docId)) a.sources!.push({ docId: e.docId, title: e.title ?? e.docId });
         else if (e.type === "error") a.status = "failed";
         persist(); render(); toBottom();
@@ -344,5 +357,6 @@ export function createChat(opts: { navigate: (hash: string) => void; onChange?: 
     isAnswering: () => answering,
     stop,
     focusInput: () => input.focus(),
+    redraw: () => render(),
   };
 }

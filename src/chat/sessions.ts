@@ -9,6 +9,8 @@ import { ftsQuery, keywordSearchRaw } from "../core/search.ts";
 import { openDb } from "../core/db.ts";
 import { readDocFile } from "../core/docs.ts";
 import { readBriefing } from "../briefings/store.ts";
+import { readPresentation } from "../core/presentations.ts";
+import { OpenFilter } from "./open.ts";
 
 export const CHAT_GROUNDED_BODY_CHARS = 60_000;
 export const CHAT_SNIPPET_CHARS = 8_000;
@@ -19,6 +21,7 @@ export const CHAT_IDLE_MS = 60 * 60_000;
 export type ChatScope = { type: "jarvis" | "item" | "briefing"; ids: string[] };
 export type ChatEvent =
   | { type: "source"; docId: string; title: string; source: string }
+  | { type: "open"; docId: string; title: string; source: string }
   | { type: "message"; text: string }
   | { type: "change"; change: Change }
   | { type: "status"; text: string }
@@ -37,7 +40,7 @@ export const TRANSCRIPT_NOTICE = "I saved the transcript, but your team doesn't 
 /** A file sent with a message. */
 export interface ChatFile { name: string; bytes: Uint8Array }
 /** The tool rules every conversation starts with. */
-export const CHAT_RULES = "You can act on the knowledge base with the jarvis_* tools: capture notes, links and attached files; create and update tasks; create initiatives and file tasks under them; link items; draft briefings and presentations. When the user asks for a change, make it straight away without asking first; every change can be undone. Never publish or approve anything: a briefing or presentation you make is a draft, and you say so. Capture an attached file only when the user asks. If a tool fails, say so plainly in your answer. Report each item by title.";
+export const CHAT_RULES = "You can act on the knowledge base with the jarvis_* tools: capture notes, links and attached files; create and update tasks; create initiatives and file tasks under them; link items; draft briefings and presentations. When the user asks for a change, make it straight away without asking first; every change can be undone. Never publish or approve anything: a briefing or presentation you make is a draft, and you say so. Capture an attached file only when the user asks. If a tool fails, say so plainly in your answer. Report each item by title. To open a document for the user in a tab beside the chat, write <<open:ID>> with its id in your answer.";
 
 export interface ChatSession {
   id: string;
@@ -133,9 +136,9 @@ export class ChatService {
     if (scope.type !== "jarvis" && ids.length !== 1) throw new Error(`scope ${scope.type} requires exactly one id`);
     const sources: ChatSession["sources"] = [];
     if (scope.type === "item") {
-      const d = readDocFile(this.dataDir, ids[0]);
+      const d = this.readItem(ids[0]);
       if (!d) throw new Error(`item ${ids[0]} not found`);
-      sources.push({ docId: ids[0], title: d.frontmatter.title, source: d.frontmatter.source });
+      sources.push({ docId: ids[0], title: d.title, source: d.source });
     } else if (scope.type === "briefing") {
       const b = readBriefing(this.dataDir, ids[0]);
       if (!b) throw new Error(`briefing ${ids[0]} not found`);
@@ -150,6 +153,13 @@ export class ChatService {
     const s: ChatSession = { id, conversationId: conversationId ?? id, turn: "", attachments: {}, scope: { type: scope.type, ids }, acpSessionId, createdAt: this.now(), lastActive: this.now(), turns: 0, busy: false, sources };
     this.sessions.set(s.id, s);
     return s;
+  }
+  /** An item the chat can be about: a captured doc, or a presentation (kept as a bundle, not under docs/). */
+  private readItem(id: string): { title: string; body: string; source: string } | null {
+    const d = readDocFile(this.dataDir, id);
+    if (d) return { title: d.frontmatter.title, body: d.body, source: d.frontmatter.source };
+    const p = readPresentation(this.dataDir, id);
+    return p ? { title: p.frontmatter.title, body: p.body, source: "presentation" } : null;
   }
   /** The prompt of a turn: tool rules on the first turn, the question, and a line per attached file. */
   buildPrompt(s: ChatSession, message: string, files: ChatFile[] = []): { prompt: string; sources: ChatSession["sources"] } {
@@ -188,7 +198,7 @@ export class ChatService {
           db.close();
         }
       }
-      const prompt = ctx ? `You are discussing a team knowledge base. Relevant captured items (cite ids in square brackets when you use them):\n\n${ctx}\nUser: ${message}` : message;
+      const prompt = ctx ? `You are discussing a team knowledge base. Relevant captured items (cite ids in square brackets when you use them; to open one for the user write <<open:ID>> after it):\n\n${ctx}\nUser: ${message}` : message;
       return { prompt, sources };
     }
     if (s.turns === 0) {
@@ -196,8 +206,8 @@ export class ChatService {
       let title = "";
       let body = "";
       if (s.scope.type === "item") {
-        const d = readDocFile(this.dataDir, id)!;
-        title = d.frontmatter.title;
+        const d = this.readItem(id)!;
+        title = d.title;
         body = d.body;
       } else {
         const b = readBriefing(this.dataDir, id)!;
@@ -240,11 +250,21 @@ export class ChatService {
       queue.push(e);
       wake?.();
     };
+    const filter = new OpenFilter();
+    const opened = new Set<string>();
+    const pushText = (r: { text: string; opens: string[] }) => {
+      if (r.text) push({ type: "message", text: r.text });
+      for (const id of r.opens) {
+        if (opened.has(id)) continue;
+        const doc = this.resolveDoc(id);
+        if (doc) { opened.add(id); push({ type: "open", ...doc }); }
+      }
+    };
     this.updateHandlers.set(s.acpSessionId, (u) => {
       const kind = String(u.sessionUpdate ?? "");
       if (kind === "agent_message_chunk") {
         const c = u.content as { type?: string; text?: string } | undefined;
-        if (c?.type === "text" && c.text) push({ type: "message", text: c.text });
+        if (c?.type === "text" && c.text) pushText(filter.push(c.text));
       } else if (kind === "usage_update") {
         const used = Number(u.used ?? (u.usage as { used?: number })?.used ?? 0), size = Number(u.size ?? (u.usage as { size?: number })?.size ?? 0);
         push({ type: "usage", used, size });
@@ -257,7 +277,7 @@ export class ChatService {
       for (const src of sources) push({ type: "source", ...src });
       const agent = await this.agent();
       let finished = false;
-      const done = agent.prompt(s.acpSessionId, prompt).then((r) => { push({ type: "done", stopReason: r?.stopReason }); finished = true; }, (e: Error) => { push({ type: "error", error: e.message }); finished = true; });
+      const done = agent.prompt(s.acpSessionId, prompt).then((r) => { const rest = filter.end(); if (rest) push({ type: "message", text: rest }); push({ type: "done", stopReason: r?.stopReason }); finished = true; }, (e: Error) => { const rest = filter.end(); if (rest) push({ type: "message", text: rest }); push({ type: "error", error: e.message }); finished = true; });
       while (!finished || queue.length) {
         if (queue.length) {
           yield queue.shift()!;
@@ -288,6 +308,18 @@ export class ChatService {
   /** The change log of a conversation (it outlives chat sessions). */
   changes(conversationId: string): ChangeLog {
     return new ChangeLog(this.dataDir, conversationId);
+  }
+  /** The document an `<<open:ID>>` marker names, or null when there is none. */
+  private resolveDoc(id: string): { docId: string; title: string; source: string } | null {
+    try { return this.lookupDoc(id); } catch { return null; } // a broken file must never take the agent connection down
+  }
+  private lookupDoc(id: string): { docId: string; title: string; source: string } | null {
+    const d = readDocFile(this.dataDir, id);
+    if (d) return { docId: id, title: d.frontmatter.title, source: d.frontmatter.source };
+    const b = readBriefing(this.dataDir, id);
+    if (b) return { docId: id, title: b.title, source: "briefing" };
+    const p = readPresentation(this.dataDir, id);
+    return p ? { docId: p.slug, title: p.frontmatter.title, source: "presentation" } : null;
   }
   async cancel(id: string): Promise<void> {
     const s = this.sessions.get(id);

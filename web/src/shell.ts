@@ -1,5 +1,6 @@
 /** The app shell: sidebar (foldable to a rail, a slide-in menu on phones), look switch and sync line. */
 import { ago, append, h } from "./ui.ts";
+import type { Strip } from "./strip.ts";
 import { getPref, getTheme, KEY_FOLDED, setPref, setTheme, type Theme } from "./prefs.ts";
 
 export const TABLET_MAX = 999;
@@ -40,7 +41,7 @@ export interface Shell {
 }
 
 /** Build the shell. `onNewChat` and `onSync` are the two actions the sidebar owns. */
-export function createShell(opts: { onNewChat: () => void; onSync: () => void; now?: () => number }): Shell {
+export function createShell(opts: { onNewChat: () => void; onSync: () => void; now?: () => number; strip?: Strip; onNav?: () => void }): Shell {
   const now = opts.now ?? (() => Date.now());
   let userFolded = getPref(KEY_FOLDED) === "1";
   let tablet = false, phone = false, menu = false;
@@ -52,7 +53,7 @@ export function createShell(opts: { onNewChat: () => void; onSync: () => void; n
   const dot = h("span", { class: "jv-dot", title: "Conversation in progress", hidden: "" });
   dot.hidden = true;
   const entry = (route: string, label: string, rail: string, icon: string, extra?: Node) =>
-    h("a", { class: "jv-nav", href: `#/${route}`, "data-route": route, title: label, onClick: () => closeMenu() }, h("span", { class: "ic" }, icon), h("span", { class: "lbl" }, label), h("span", { class: "rl" }, rail), extra);
+    h("a", { class: "jv-nav", href: `#/${route}`, "data-route": route, title: label, onClick: () => { closeMenu(); opts.onNav?.(); } }, h("span", { class: "ic" }, icon), h("span", { class: "lbl" }, label), h("span", { class: "rl" }, rail), extra);
   const chatEntry = entry("chat", "Chat", "Chat", "◈", dot);
   const nav = h("nav", { class: "jv-navlist", "aria-label": "Main" }, chatEntry, h("div", { class: "jv-sec" }, "Your knowledge"), ...PAGES.map(([r, l, rl, ic]) => entry(r, l, rl, ic)));
   const syncLine = h("span", { class: "jv-syncline lbl" });
@@ -64,10 +65,10 @@ export function createShell(opts: { onNewChat: () => void; onSync: () => void; n
     newBtn, nav, h("div", { class: "jv-grow" }),
     h("div", { class: "jv-foot" }, syncLine, syncBtn, themeSwitch));
   const menuBtn = h("button", { class: "jv-menu", "aria-label": "Menu", "aria-expanded": "false", onClick: () => (menu ? closeMenu() : openMenu()) }, "☰");
-  const phoneBar = h("header", { class: "jv-phonebar" }, menuBtn, h("span", { class: "jv-name" }, "J.A.R.V.I.S."), h("button", { class: "jv-pnew", title: `New chat (${shortcut("O")})`, "aria-label": "New chat", onClick: () => opts.onNewChat() }, "＋"));
+  const phoneBar = h("header", { class: "jv-phonebar" }, menuBtn, h("span", { class: "jv-name" }, "J.A.R.V.I.S."), opts.strip?.phoneBtn ?? null, h("button", { class: "jv-pnew", title: `New chat (${shortcut("O")})`, "aria-label": "New chat", onClick: () => opts.onNewChat() }, "＋"));
   const backdrop = h("div", { class: "jv-backdrop", onClick: () => closeMenu() });
   const main = h("main", { class: "jv-main", id: "jv-main" });
-  append(root, [side, backdrop, h("div", { class: "jv-content" }, phoneBar, main)]);
+  append(root, [side, backdrop, h("div", { class: "jv-content" }, phoneBar, opts.strip?.phoneList ?? null, opts.strip?.el ?? null, main)]);
 
   const paintTheme = () => { const t = getTheme(); for (const b of themeBtns) b.setAttribute("aria-pressed", String(b.getAttribute("data-theme-choice") === t)); };
   const paintFold = () => {

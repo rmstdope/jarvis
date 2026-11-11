@@ -49,7 +49,7 @@ describe("Briefings list", () => {
 describe("a briefing", () => {
   test("trail, title row, three columns with counts and states", async () => {
     env = await boot("#/briefing/B1", { setup: setup() });
-    expect(text(".jv-trail")).toBe("Briefings › Q3 plan");
+    expect(q(".jv-trail")).toBeNull(); // the tab is the whole page
     expect(text(".jv-titlerow .jv-title")).toBe("Q3 plan");
     expect(text(".jv-titlerow .jv-status")).toBe("draft");
     expect(button("Ask about this")).toBeTruthy();
