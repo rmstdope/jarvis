@@ -12,13 +12,16 @@ export interface SearchHit {
   score: number;
   source: string;
 }
-/** The Browse filters a search can be narrowed by; an item matches when it matches every one given. */
+/**
+ * The Browse filters a search can be narrowed by. An item matches when either "Recently" column on
+ * Browse would show it under the same filters: created by `author` at or after `since`, or last
+ * updated by `author` at or after `since` (each part applying only when given).
+ */
 export interface SearchFilter {
   source?: string;
-  /** Matches the item's author or its last editor, as either "Recently" column on Browse would. */
   author?: string;
   tag?: string;
-  /** ISO time: matches an item created or updated at or after it. */
+  /** ISO time. */
   since?: string;
 }
 export interface SearchOpts {
@@ -33,9 +36,17 @@ function filterSql(f: SearchFilter = {}): { sql: string; params: string[] } | nu
   const where: string[] = [];
   const params: string[] = [];
   if (f.source) { where.push("d.source = ?"); params.push(f.source); }
-  if (f.author) { where.push("(d.author = ? OR d.updated_by = ?)"); params.push(f.author, f.author); }
   if (f.tag) { where.push("EXISTS (SELECT 1 FROM json_each(d.tags) WHERE json_each.value = ?)"); params.push(f.tag); }
-  if (f.since) { where.push("(d.created_at >= ? OR d.updated_at >= ?)"); params.push(f.since, f.since); }
+  if (f.author || f.since) {
+    // Who and when pair up per column: the author with the creation time, the last editor with the update time.
+    const column = (who: string, when: string) => {
+      const c: string[] = [];
+      if (f.author) { c.push(`d.${who} = ?`); params.push(f.author); }
+      if (f.since) { c.push(`d.${when} >= ?`); params.push(f.since); }
+      return `(${c.join(" AND ")})`;
+    };
+    where.push(`(${column("author", "created_at")} OR ${column("updated_by", "updated_at")})`);
+  }
   return where.length ? { sql: where.join(" AND "), params } : null;
 }
 

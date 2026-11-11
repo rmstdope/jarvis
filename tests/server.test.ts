@@ -1,6 +1,8 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { handle } from "../src/server.ts";
 import { ingest } from "../src/core/ingest.ts";
+import { openDb } from "../src/core/db.ts";
+import { link } from "../src/core/links.ts";
 import { clearEmbedder, tmpDataDir, useFakeEmbedder } from "./helpers.ts";
 
 let t: ReturnType<typeof tmpDataDir>;
@@ -83,6 +85,29 @@ describe("http api", () => {
       expect(await ids(`mode=${mode}&since=2000-01-01T00:00:00Z`)).toHaveLength(3);
       expect(await ids(`mode=${mode}&since=2999-01-01T00:00:00Z`)).toEqual([]);
     }
+  });
+
+  test("a filtered search pairs each contributor with their own date, as the Recently columns do", async () => {
+    const old = await ingest(t.dir, { source: "web", source_url: "https://ex.test/old", title: "Old", body: "zoom drift old", author: "bob" });
+    await ingest(t.dir, { source: "web", source_url: "https://ex.test/old", title: "Old", body: "zoom drift old, edited", author: "mia" });
+    const db = openDb(t.dir);
+    db.query("UPDATE documents SET created_at = '2020-01-01T00:00:00Z' WHERE id = ?").run(old.id);
+    db.close();
+    const ids = async (qs: string) => ((await (await call("GET", `/api/search?q=zoom%20drift&mode=keyword&${qs}`)).json()) as { docId: string }[]).map((h) => h.docId);
+    const week = new Date(Date.now() - 7 * 86_400_000).toISOString();
+    expect(await ids("author=mia")).toEqual([old.id]); // the last editor counts as a contributor
+    expect(await ids(`author=mia&since=${week}`)).toEqual([old.id]); // mia edited it this week
+    expect(await ids(`author=bob&since=${week}`)).toEqual([]); // bob only created it, in 2020
+    expect(await ids("author=bob&since=2019-01-01T00:00:00Z")).toEqual([old.id]);
+  });
+
+  test("Best match's widening along links leaves out linked items the filters exclude", async () => {
+    const note = await ingest(t.dir, { source: "note", title: "Note", body: "zoom drift in the note" });
+    const other = await ingest(t.dir, { source: "meeting", title: "Standup", body: "nothing about it" });
+    link(t.dir, note.id, [other.id]);
+    const ids = async (qs: string) => ((await (await call("GET", `/api/search?q=zoom%20drift&mode=hybrid&limit=2&${qs}`)).json()) as { docId: string }[]).map((h) => h.docId);
+    expect(await ids("")).toContain(other.id);
+    expect(await ids("source=note")).toEqual([note.id]);
   });
 
   test("tags, context and filters", async () => {
