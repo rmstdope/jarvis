@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
+import { addInitiative } from "../src/core/initiatives.ts";
 import { addTask, listTasks, showTask, setTaskStatus, suggestLinks, updateTask } from "../src/core/tasks.ts";
 import { link, unlink } from "../src/core/links.ts";
 import { ingest } from "../src/core/ingest.ts";
@@ -69,6 +70,13 @@ describe("tasks", () => {
     expect(ids).toContain(d3.id);
     expect(ids.indexOf(d3.id)).toBeLessThan(ids.indexOf(d2.id) < 0 ? 99 : ids.indexOf(d2.id));
     expect(s.every((x) => /edge|search match|keyword match/.test(x.reason))).toBe(true);
+  });
+
+  test("suggest: never offers the initiative the task already belongs to", async () => {
+    const ini = await addInitiative(t.dir, { title: "Camera firmware", goal: "camera firmware zoom fix shipped", author: "me" });
+    const task = await addTask(t.dir, { title: "Ship camera firmware zoom fix", author: "me", initiative: ini.id });
+    await reindex(t.dir);
+    expect((await suggestLinks(t.dir, task.id, { limit: 5 })).map((x) => x.id)).not.toContain(ini.id);
   });
 });
 

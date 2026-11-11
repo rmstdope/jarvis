@@ -199,6 +199,7 @@ export async function suggestLinks(dataDir: string, id: string, opts: { limit?: 
     const tasks = new Set((db.query("SELECT id FROM documents WHERE source = 'task'").all() as { id: string }[]).map((r) => r.id));
     const out: Suggestion[] = [];
     const seen = new Set<string>([id]);
+    if (doc.frontmatter.task?.initiative) seen.add(doc.frontmatter.task.initiative); // already a member, nothing to link
     const push = (cand: { id: string; title: string; source: string }, reason: string) => {
       if (seen.has(cand.id) || linked.has(cand.id) || tasks.has(cand.id) || out.length >= limit) return;
       seen.add(cand.id);
