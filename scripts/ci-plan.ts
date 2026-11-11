@@ -1,6 +1,6 @@
 /**
  * Change-aware CI planner. Given the list of changed paths, decides what CI must run:
- *   - docs-only changes run nothing,
+ *   - docs-only changes, and changes to the Cerebro fleet's own files, run nothing,
  *   - otherwise only the test files whose transitive import graph touches a changed file,
  *     plus builds/typechecks for the trees that changed.
  * Global files (lockfile, tsconfig, workflow, test helpers) force the full suite.
@@ -24,6 +24,9 @@ export interface Plan {
 
 const ROOT = resolve(import.meta.dir, "..");
 const DOC_RE = /\.(md|txt)$/i;
+// The Cerebro fleet's declarations, its submodule, the bead board and the agent/skill/hook links
+// the fleet syncs: none of them is read by the code or the tests.
+const FLEET_RE = /^(\.cerebro\/|\.beads\/|\.claude\/|\.gitmodules$|\.github\/(agents|skills|hooks)\/)/;
 const GLOBAL = ["package.json", "bun.lock", "tsconfig.json", "bunfig.toml", ".github/workflows/ci.yml", "tests/helpers.ts", "tests/fakeRouter.ts", "scripts/ci-plan.ts"];
 
 export function listTests(root = ROOT): string[] {
@@ -70,7 +73,7 @@ function dataDeps(test: string, closure: Set<string>, root: string): ((changed: 
   if (closure.has("scripts/build-web.ts")) deps.push((c) => c.startsWith("web/"));
   if (closure.has("scripts/build-extension.ts")) deps.push((c) => c.startsWith("extension/"));
   if (/fixtures/.test(src)) deps.push((c) => c.startsWith("tests/fixtures/"));
-  // Any non-TypeScript file whose name the test mentions literally (AGENTS.md, a fixture, a preset…).
+  // Any non-TypeScript file whose name the test mentions literally (AGENT-INSTRUCTIONS.md, a fixture, a preset…).
   deps.push((c) => !c.endsWith(".ts") && src.includes(c.split("/").pop()!));
   return deps;
 }
@@ -93,14 +96,15 @@ export function planFromChanges(changed: string[], opts: { full?: boolean; root?
     plan.reasons.push("no changed files");
     return plan;
   }
-  // Documentation files never affect tests, except the agent instructions which a test reads.
-  const isDoc = (f: string) => DOC_RE.test(f) && !f.startsWith("tests/fixtures/") && f !== "AGENTS.md" && f !== "docs/AGENT-INSTRUCTIONS.md";
+  // Documentation and fleet files never affect tests, except the agent instructions which a test reads.
+  const isFleet = (f: string) => FLEET_RE.test(f);
+  const isDoc = (f: string) => isFleet(f) || (DOC_RE.test(f) && !f.startsWith("tests/fixtures/") && f !== "docs/AGENT-INSTRUCTIONS.md");
   if (files.every(isDoc)) {
     plan.docsOnly = true;
     plan.reasons.push("documentation-only change");
     return plan;
   }
-  const globalHit = files.find((f) => GLOBAL.includes(f) || f.startsWith(".github/"));
+  const globalHit = files.find((f) => GLOBAL.includes(f) || f.startsWith(".github/workflows/"));
   if (globalHit) {
     plan.full = true;
     plan.tests = allTests;
@@ -110,10 +114,11 @@ export function planFromChanges(changed: string[], opts: { full?: boolean; root?
     return plan;
   }
   const changedSet = new Set(files);
+  const code = files.filter((f) => !isFleet(f));
   for (const t of allTests) {
     const closure = testClosure(t, root);
-    const viaImport = files.find((f) => closure.has(f));
-    const viaData = viaImport ? undefined : dataDeps(t, closure, root).some((dep) => files.some(dep)) ? "data dependency" : undefined;
+    const viaImport = code.find((f) => closure.has(f));
+    const viaData = viaImport ? undefined : dataDeps(t, closure, root).some((dep) => code.some(dep)) ? "data dependency" : undefined;
     if (viaImport || viaData) {
       plan.tests.push(t);
       plan.reasons.push(`${t}: ${viaImport ?? viaData}`);

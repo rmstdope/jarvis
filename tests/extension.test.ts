@@ -32,6 +32,5 @@ describe("extension", () => {
   test("agent instructions ship with the repo", () => {
     const doc = readFileSync(join(import.meta.dir, "..", "docs", "AGENT-INSTRUCTIONS.md"), "utf8");
     expect(doc).toContain("brain tasks");
-    expect(readFileSync(join(import.meta.dir, "..", "AGENTS.md"), "utf8")).toBe(doc);
   });
 });

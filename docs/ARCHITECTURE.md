@@ -24,7 +24,7 @@ The system rests on four design bets:
    GitHub Copilot CLI or any OpenAI-compatible API. Every model step is optional: "no model" means
    *skip*, never *fail*.
 4. **Agent-driven use.** The normal way to use the brain is through a coding agent that drives the
-   CLI and the local HTTP service. `AGENTS.md` (also printed by `brain skill`) tells the agent how.
+   CLI and the local HTTP service. `docs/AGENT-INSTRUCTIONS.md` (printed by `brain skill`) tells the agent how.
 
 The knowledge loop is **Capture → Understand → Use**:
 
@@ -288,7 +288,7 @@ web/                    web UI sources → web/dist via scripts/build-web.ts
 extension/              MV3 extension sources + static → extension/dist via scripts/build-extension.ts
 second-brain-app/       Swift launcher + bundle.sh
 docs/examples/models/   shipped model presets
-docs/AGENT-INSTRUCTIONS.md, AGENTS.md   how agents should operate the brain (`brain skill`)
+docs/AGENT-INSTRUCTIONS.md   how agents should operate the brain (`brain skill`)
 scripts/                build-web, build-extension, eval-model
 tests/                  bun test suites and fixtures (fake ACP agent, PDF, VTT)
 ```
