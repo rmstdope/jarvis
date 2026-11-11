@@ -164,6 +164,14 @@ describe("cli end to end (subprocess)", () => {
     expect(rep.checks.find((c: { name: string }) => c.name === "data-dir").status).toBe("ok");
     expect(jarvis("skill").out).toContain("jarvis tasks");
   });
+  test("doctor exits 1 when a required check fails (jv-ccr)", () => {
+    const p = Bun.spawnSync(["bun", "run", CLI, "doctor", "--core-only", "--data", join(t.dir, "no-such-content-repo")], {
+      stdout: "pipe", stderr: "pipe",
+      env: { ...process.env, JARVIS_HOME: home, JARVIS_MODELS: join(home, "models.toml"), JARVIS_EMBED_FAKE: "1", JARVIS_INBOX: join(home, "inbox") },
+    });
+    expect(p.stdout.toString()).toContain("fix the failures above");
+    expect(p.exitCode).toBe(1);
+  });
   test("skill uses the plain command and names this code repo for the fallback", () => {
     const out = jarvis("skill").out.replace(/\s+/g, " ");
     const repo = join(import.meta.dir, "..");
