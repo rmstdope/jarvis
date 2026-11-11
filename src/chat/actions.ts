@@ -54,11 +54,12 @@ const kindOfDoc = (dataDir: string, id: string): ChangeItem["kind"] => {
 const item = (dataDir: string, id: string): ChangeItem => ({ id, title: titleOf(dataDir, id), kind: kindOfDoc(dataDir, id) });
 /** Kind words a person may put after an item's name when saying it ("the Weekly sync meeting"). */
 const KIND_WORDS = "note|meeting|task|initiative|briefing|presentation|deck|doc|document|item|page|article|video|file|transcript";
-/** The forms of a reference to try in turn: as given, then without a leading "the" and a trailing kind word. */
+/** The forms of a reference to try in turn: as given, without a trailing kind word, then also without a leading "the" ("The roadmap" stays findable as "the roadmap doc"). */
 const titleForms = (ref: string): string[] => {
   const asGiven = ref.trim();
-  const bare = asGiven.replace(/^the\s+/i, "").replace(new RegExp(`\\s+(?:${KIND_WORDS})$`, "i"), "").trim();
-  return bare && bare !== asGiven ? [asGiven, bare] : [asGiven];
+  const noKind = asGiven.replace(new RegExp(`\\s+(?:${KIND_WORDS})$`, "i"), "").trim();
+  const strip = (s: string): string => s.replace(/^the\s+/i, "").trim();
+  return [...new Set([asGiven, noKind, strip(noKind), strip(asGiven)])].filter(Boolean);
 };
 /**
  * The id an action's reference names: the reference itself when it is an id, else the one indexed

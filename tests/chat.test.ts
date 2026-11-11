@@ -410,13 +410,16 @@ describe("the agent acts (jv-oya.4)", () => {
     const task = await addTask(t.dir, { title: "Ship the firmware", author: "me" });
     await ingest(t.dir, { source: "note", title: "Standup", body: "a shorter title", author: "me" });
     const standup = await ingest(t.dir, { source: "note", title: "Standup meeting", body: "a title that ends in a kind word", author: "me" });
+    const roadmap = await ingest(t.dir, { source: "note", title: "The roadmap", body: "a title that starts with The", author: "me" });
+    await ingest(t.dir, { source: "note", title: "Roadmap", body: "a title without it", author: "me" });
     const sid = await open("conv14");
-    const evs = await ndjson(await call("POST", `/api/chat/sessions/${sid}/messages`, { message: 'ACT jarvis_link {"src":"Weekly sync meeting","dst":"the Zoom drift note"} ACT jarvis_set_task_status {"task":"the Ship the firmware task","status":"done"} ACT jarvis_link {"src":"Standup meeting","dst":"Zoom drift"}' }));
+    const evs = await ndjson(await call("POST", `/api/chat/sessions/${sid}/messages`, { message: 'ACT jarvis_link {"src":"Weekly sync meeting","dst":"the Zoom drift note"} ACT jarvis_set_task_status {"task":"the Ship the firmware task","status":"done"} ACT jarvis_link {"src":"Standup meeting","dst":"Zoom drift"} ACT jarvis_link {"src":"the roadmap doc","dst":"Zoom drift"}' }));
     const changes = evs.filter((e) => e.type === "change").map((e) => e.change);
-    expect(changes.map((c) => [c.kind, c.ok, c.error])).toEqual([["link", true, undefined], ["task.done", true, undefined], ["link", true, undefined]]);
+    expect(changes.map((c) => [c.kind, c.ok, c.error])).toEqual([["link", true, undefined], ["task.done", true, undefined], ["link", true, undefined], ["link", true, undefined]]);
     expect(changes[0].items.map((i: { id: string }) => i.id)).toEqual([sync.id, drift.id]);
     expect(changes[1].items[0].id).toBe(task.id);
     expect(changes[2].items[0].id).toBe(standup.id); // the title as given wins over the one without its kind word
+    expect(changes[3].items[0].id).toBe(roadmap.id); // "the" is kept while only the kind word is dropped
   });
   test("a title two tasks share is refused rather than guessed (jv-zyp)", async () => {
     const a = await addTask(t.dir, { title: "Review", author: "me" });
