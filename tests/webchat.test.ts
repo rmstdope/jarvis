@@ -100,6 +100,31 @@ describe("open tasks", () => {
     expect(qa(".jv-task").length).toBe(2);
     expect(q(".jv-task").classList.contains("jv-done")).toBe(false);
   });
+  test("Undo before the tick is confirmed wins: the row stays", async () => {
+    await setup({ tasks: tasks(2), undoMs: 20 });
+    let release!: () => void;
+    const gate = new Promise<void>((r) => (release = r));
+    env.routes.set("POST /api/task/T1/done", async () => { await gate; return { json: {} }; });
+    (q(".jv-task input") as HTMLInputElement).click();
+    await env.tick(5);
+    (q(".jv-undo") as HTMLElement).click();
+    await env.tick(5);
+    release();
+    await env.tick(60);
+    expect(qa(".jv-task").length).toBe(2);
+    expect(q(".jv-task").classList.contains("jv-done")).toBe(false);
+  });
+  test("a failed Undo still lets the row leave", async () => {
+    await setup({ tasks: tasks(2), undoMs: 30 });
+    env.routes.set("POST /api/task/T1/reopen", () => ({ status: 500, json: { error: "x" } }));
+    (q(".jv-task input") as HTMLInputElement).click();
+    await env.tick(5);
+    (q(".jv-undo") as HTMLElement).click();
+    await env.tick(10);
+    expect(q(".toast.error").textContent).toBe("Couldn't reopen the task.");
+    await env.tick(80);
+    expect(qa(".jv-task").length).toBe(1);
+  });
   test("a failed tick unticks the row and says so", async () => {
     await setup({ tasks: tasks(1) });
     env.routes.set("POST /api/task/T1/done", () => ({ status: 500, json: { error: "boom" } }));
@@ -238,6 +263,17 @@ describe("one conversation that survives", () => {
     expect(box.scrollTop).toBe(123);
     expect(q(".jv-user").textContent).toBe("hello");
   });
+  test("hiding twice (page to page) keeps the saved scroll position", async () => {
+    const chat = await setup();
+    await ask("hello");
+    const box = q(".jv-scroll");
+    box.scrollTop = 123;
+    chat.hide();
+    box.scrollTop = 0; // a hidden element reads 0 in a real browser
+    chat.hide();
+    chat.show();
+    expect(box.scrollTop).toBe(123);
+  });
   test("onChange tells the shell whether a conversation exists (for the dot)", async () => {
     const seen: boolean[] = [];
     env.routes.set("GET /api/me", () => ({ json: {} }));
@@ -331,6 +367,16 @@ describe("ask about this and new chat", () => {
     await env.tick(5);
     expect(document.querySelector(".modal")).toBeNull();
     expect(document.activeElement).toBe(input());
+  });
+  test("New chat on an empty chat with an attached item drops the attachment without asking", async () => {
+    const chat = await setup({ name: "Mia" });
+    chat.askAbout({ type: "item", ids: ["I1"] }, "Doc");
+    await env.tick(10);
+    chat.newChat();
+    await env.tick(5);
+    expect(document.querySelector(".modal")).toBeNull();
+    expect(document.querySelector(".jv-attach")).toBeNull();
+    expect(q(".jv-hello").textContent).toBe("Good afternoon, Mia.");
   });
   test("New chat with a conversation asks, and confirming clears it", async () => {
     const chat = await setup({ name: "Mia" });

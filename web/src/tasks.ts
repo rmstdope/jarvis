@@ -31,12 +31,16 @@ export function createTasks(opts: { undoMs?: number } = {}): Tasks {
       rows.length > TASKS_SHOWN ? h("a", { class: "jv-tasks-more small", href: "#/tasks" }, `+ ${rows.length - TASKS_SHOWN} more`) : null,
     ]);
   };
+  function scheduleRemoval(r: Row): void {
+    clearTimeout(r.timer);
+    r.timer = setTimeout(() => { rows = rows.filter((x) => x !== r); draw(); }, undoMs);
+  }
   async function tick(r: Row): Promise<void> {
     r.done = true;
     draw();
     try {
       await api.taskDone(r.id);
-      r.timer = setTimeout(() => { rows = rows.filter((x) => x !== r); draw(); }, undoMs);
+      if (r.done) scheduleRemoval(r);
     } catch {
       r.done = false;
       draw();
@@ -51,6 +55,7 @@ export function createTasks(opts: { undoMs?: number } = {}): Tasks {
       r.done = false;
     } catch {
       toast("Couldn't reopen the task.", "error");
+      scheduleRemoval(r);
     }
     draw();
   }

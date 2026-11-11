@@ -12,6 +12,7 @@ describe("web", () => {
     for (const c of ["StepFlow", "BlockDiagram", "SequenceDiagram", "Callout", "ItemCard"]) expect(js).toContain(`"${c}"`);
     expect(js).not.toContain("bun:sqlite");
     const css = readFileSync(join(out, "app.css"), "utf8");
+    expect(css).toMatch(/prefers-color-scheme: dark\) \{ :root:not\(\[data-theme=light\]\) \{[^}]*--nav-on-bg:#0f2a3c[^}]*--composer-shadow/);
     for (const token of ["--bg:#faf7f2", "--accent:#b4532a", "--bg:#0a1220", "--accent:#22d3ee"]) expect(css).toContain(token);
   }, 30000);
   test("helpers", () => {

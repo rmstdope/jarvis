@@ -138,9 +138,8 @@ export function createChat(opts: { navigate: (hash: string) => void; onChange?: 
     attachRow.replaceChildren();
     if (conv.attached) attachRow.append(h("span", { class: "jv-attach", title: conv.attached.title }, h("span", { class: "jv-attach-t" }, conv.attached.title), h("button", { "aria-label": "Remove", title: "Remove", onClick: detach }, "×")));
     const action = answering
-      ? h("button", { class: "jv-stop", title: `Stop (Esc)`, onClick: () => stop() }, "■")
+      ? h("button", { class: "jv-stop", title: "Stop", "aria-label": "Stop", onClick: () => stop() }, "■")
       : h("button", { class: "jv-send", title: "Send", "aria-label": "Send", disabled: off ? "" : null, onClick: () => void send(input.value) }, "↑");
-    if (answering) action.title = "Stop";
     bar.replaceChildren(h("span", { class: "jv-hint" }, answering ? "Esc to stop" : "Enter to send · Shift+Enter for a new line"), action);
   }
   function render(): void {
@@ -244,14 +243,14 @@ export function createChat(opts: { navigate: (hash: string) => void; onChange?: 
   return {
     el, ready,
     show() { el.hidden = false; scroll.scrollTop = savedTop; void refresh(); input.focus(); },
-    hide() { savedTop = scroll.scrollTop; el.hidden = true; },
+    hide() { if (!el.hidden) savedTop = scroll.scrollTop; el.hidden = true; },
     askAbout(scope, title) {
       const go = () => begin(scope, { id: scope.ids[0], title });
       if (conv.messages.length) confirmNew(go); else go();
     },
     newChat() {
       if (conv.messages.length) confirmNew(() => begin(GENERAL));
-      else { opts.navigate("#/chat"); input.focus(); }
+      else { if (conv.attached) detach(); opts.navigate("#/chat"); input.focus(); }
     },
     hasConversation: () => conv.messages.length > 0,
     isAnswering: () => answering,

@@ -101,6 +101,17 @@ describe("keyboard", () => {
     key("/", {}, ta);
     expect(ta.value).toBe("");
   });
+  test("a briefing page offers Ask about this too", async () => {
+    await boot();
+    env.routes.set("GET /api/briefing/B1", () => ({ json: { id: "B1", title: "Q3 plan", kind: "briefing", createdAt: "2026-01-01", updatedAt: "2026-01-01", frontmatter: {}, tree: [], toc: null } }));
+    env.routes.set("GET /api/briefing/B1/comments", () => ({ json: [] }));
+    await go("#/briefing/B1");
+    expect(qa("button").some((b) => b.textContent === "Discuss")).toBe(false);
+    qa("button").find((b) => b.textContent === "Ask about this")!.click();
+    await env.tick(40);
+    expect(q(".jv-hello").textContent).toBe("Ask about “Q3 plan”.");
+    expect(q(".jv-input").getAttribute("placeholder")).toBe("Ask about this briefing…");
+  });
   test("Esc stops an answer in progress and closes the phone menu", async () => {
     await boot();
     env.routes.set("POST /api/chat/sessions/S1/messages", () => ({ stream: async (p, signal) => { p({ type: "message", text: "Part" }); await new Promise<void>((r) => signal.addEventListener("abort", () => r())); } }));
@@ -145,6 +156,10 @@ describe("sync", () => {
     q(".jv-sync").click();
     await env.tick(30);
     expect(q(".toast").textContent).toBe("A sync is already running.");
+    expect(q(".jv-syncline").textContent).toBe("Not synced yet"); // busy is not a failure
+    env.routes.set("POST /api/sync", () => ({ status: 500, json: { error: "disk" } }));
+    q(".jv-sync").click();
+    await env.tick(30);
     expect(q(".jv-syncline").textContent).toBe("Sync failed");
   });
 });

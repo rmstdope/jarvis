@@ -39,8 +39,8 @@ async function runSync() {
     else { setPref(KEY_LAST_SYNC, String(Date.now())); toast(`Synced: ${r.committed} captured, ${r.committedEnriched} enriched, ${r.pulled ? "pulled" : "no pull"}, ${r.pushed ? "pushed" : "not pushed"}${r.collisions.length ? `, ${r.collisions.length} collision(s)` : ""}`); }
     if (parseRoute(location.hash).name === "browse") void render();
   } catch (e) {
-    failed = true;
-    toast(e instanceof ApiError && e.status === 409 ? "A sync is already running." : `Sync failed: ${(e as Error).message}`, "error", 6000);
+    if (e instanceof ApiError && e.status === 409) toast("A sync is already running.", "error", 6000);
+    else { failed = true; toast(`Sync failed: ${(e as Error).message}`, "error", 6000); }
   } finally {
     shell.setSync(failed ? { kind: "failed" } : lastSyncState());
   }
@@ -207,7 +207,7 @@ function onKey(e: KeyboardEvent) {
   const k = e.key.toLowerCase();
   if (mod && e.shiftKey && k === "o") { e.preventDefault(); chat.newChat(); }
   else if (mod && e.shiftKey && k === "s") { e.preventDefault(); shell.toggleFold(); }
-  else if (e.key === "Escape") { if (chat.isAnswering()) chat.stop(); else if (shell.menuOpen()) shell.closeMenu(); }
+  else if (e.key === "Escape") { if (shell.menuOpen()) shell.closeMenu(); else if (chat.isAnswering()) chat.stop(); }
   else if (e.key === "/" && !mod && !typing(e.target)) { e.preventDefault(); if (parseRoute(location.hash).name !== "chat") location.hash = "#/chat"; chat.focusInput(); }
 }
 
