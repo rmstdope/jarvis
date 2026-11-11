@@ -381,7 +381,7 @@ register("task", 'task add "<title>" [--body --due YYYY-MM-DD --link id[,id] --r
         where = `  in ${i.title} (${i.total - i.done} of ${i.total} tasks)`;
       }
       console.log(`task ${r.id}  ${title}${where}${r.linked ? `  (${r.linked} link(s))` : ""}`);
-      const sug = await suggestLinks(dir, r.id, { limit: 3 });
+      const sug = (await suggestLinks(dir, r.id, { limit: 4 })).filter((s) => s.id !== initiative).slice(0, 3); // the task is already in its initiative
       if (sug.length) console.log("link suggestions:\n" + sug.map((s) => `  jarvis link ${r.id} ${s.id}   # ${s.title} — ${s.reason}`).join("\n"));
       return;
     }
