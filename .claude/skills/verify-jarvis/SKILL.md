@@ -165,8 +165,11 @@ PATH="$V/bin:/usr/bin:/bin" bun run jarvis serve --port <port>   # on the first 
 # a look the navigator approved for a real model: the same command with the normal PATH
 ```
 
-For a no-model look, open the chat once and confirm it shows its no-model notice rather than a
-reply; a reply means copilot was reachable, which is a blocker to report.
+For a no-model look, before opening any tab, run `curl -s http://127.0.0.1:<port>/api/chat/status`:
+it must print `{"available":false}` (the running server found no copilot); anything else is a
+blocker, stop the service and report it. Sending a chat message to find out would already have
+sent content to a cloud model. Then open the chat once and confirm it shows its no-model notice.
+If `$V/bin/bun --version` fails (a version-manager shim), link the real bun binary instead.
 
 - **Never use 7281 for a web UI look.** 7281 belongs to the navigator's own service or macOS app
   (against their real content repo), and their browser extension sends captures to whatever holds
@@ -183,7 +186,7 @@ reply; a reply means copilot was reachable, which is a blocker to report.
   `http://127.0.0.1:<port>/api/health` (a same-origin page that is not the app: the app rewrites
   `jv.tabs` on unload, which undoes a clear made from its own page), run `localStorage.clear(); sessionStorage.clear();
   [localStorage.length, sessionStorage.length]` in the page (javascript_tool) and confirm `[0, 0]`,
-  then open `http://127.0.0.1:<port>/`. The page writes its own empty tab-strip key on load, so after the reload check
+  then open `http://127.0.0.1:<port>/`. The page writes its own empty tab-strip key on load, so once it has loaded check
   `localStorage.getItem("jv.chat") === null` and that the chat shows the unscoped first screen with
   no scope chip, not a length of 0. Do this once per batch, again before a bead kept apart in its
   own look, and again before a bead whose criteria open on the chat first screen or depend on chat
