@@ -65,6 +65,7 @@ function printIngest(r: { id: string; status: string; title: string; chunks: num
   if (r.embedError) console.log(`⚠ ${r.embedError} — run \`jarvis reindex\` later to embed`);
 }
 
+/** Runs one command and returns its exit status: 1 on a throw, else the `process.exitCode` the command set (0 if none). */
 export async function main(argv: string[]): Promise<number> {
   const { positional, flags } = parseArgs(argv);
   const [cmd, ...rest] = positional;
@@ -80,7 +81,7 @@ export async function main(argv: string[]): Promise<number> {
   }
   try {
     await c.run({ dataDir: () => resolveDataDir(flagStr(flags, "data")), positional: rest, flags });
-    return 0;
+    return Number(process.exitCode ?? 0); // the entrypoint's process.exit() would otherwise discard it
   } catch (e) {
     console.error(`error: ${(e as Error).message}`);
     return 1;

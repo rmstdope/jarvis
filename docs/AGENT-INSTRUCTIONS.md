@@ -8,7 +8,8 @@ local and disposable.
 
 ## Orientation (start of every session)
 
-1. `jarvis doctor --core-only` — fix any failure it prints before doing anything else.
+1. `jarvis doctor --core-only` — fix any failure it prints before doing anything else (it exits 1
+   when a check fails).
 2. `jarvis tasks` — the user's open tasks. Use these instead of a session to-do list.
    `jarvis initiative list` — the long-running work those tasks belong to.
 3. `jarvis sync --no-push` when the user wants fresh teammate knowledge (pulls, indexes, enriches).

@@ -1,9 +1,10 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { cpSync, mkdirSync, readFileSync, symlinkSync, writeFileSync } from "node:fs";
+import { cpSync, mkdirSync, readFileSync, readdirSync, symlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { commands } from "../src/cli.ts";
 import { listRoutes } from "../src/http.ts";
 import "../src/server.ts";
+import { ingest } from "../src/core/ingest.ts";
 import { tmpDataDir } from "./helpers.ts";
 
 /**
@@ -163,6 +164,25 @@ describe("cli end to end (subprocess)", () => {
     const rep = JSON.parse(d.out.slice(d.out.indexOf("{")));
     expect(rep.checks.find((c: { name: string }) => c.name === "data-dir").status).toBe("ok");
     expect(jarvis("skill").out).toContain("jarvis tasks");
+  });
+  test("doctor exits 1 when a required check fails (jv-ccr)", () => {
+    const p = Bun.spawnSync(["bun", "run", CLI, "doctor", "--core-only", "--data", join(t.dir, "no-such-content-repo")], {
+      stdout: "pipe", stderr: "pipe",
+      env: { ...process.env, JARVIS_HOME: home, JARVIS_MODELS: join(home, "models.toml"), JARVIS_EMBED_FAKE: "1", JARVIS_INBOX: join(home, "inbox") },
+    });
+    expect(p.stdout.toString()).toContain("fix the failures above");
+    expect(p.exitCode).toBe(1);
+  });
+  test("dedup exits 1 when two captures share a source_url (jv-ccr)", async () => {
+    const dup = join(t.dir, "dup-content");
+    mkdirSync(dup);
+    const a = await ingest(dup, { source: "web", title: "Page", body: "x", source_url: "https://same.test/p", author: "a" });
+    const docs = join(dup, "docs");
+    const file = readdirSync(docs).find((f) => f.endsWith(".md"))!;
+    writeFileSync(join(docs, `copy-${file}`), readFileSync(join(docs, file), "utf8").replace(a.id, "01JVCCRDUP0000000000000000"));
+    const p = Bun.spawnSync(["bun", "run", CLI, "dedup", "--data", dup], { stdout: "pipe", stderr: "pipe", env: { ...process.env, JARVIS_HOME: home, JARVIS_EMBED_FAKE: "1" } });
+    expect(p.stdout.toString()).toContain("https://same.test/p");
+    expect(p.exitCode).toBe(1);
   });
   test("skill uses the plain command and names this code repo for the fallback", () => {
     const out = jarvis("skill").out.replace(/\s+/g, " ");
