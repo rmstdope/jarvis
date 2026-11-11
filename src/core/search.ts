@@ -12,10 +12,31 @@ export interface SearchHit {
   score: number;
   source: string;
 }
+/** The Browse filters a search can be narrowed by; an item matches when it matches every one given. */
+export interface SearchFilter {
+  source?: string;
+  /** Matches the item's author or its last editor, as either "Recently" column on Browse would. */
+  author?: string;
+  tag?: string;
+  /** ISO time: matches an item created or updated at or after it. */
+  since?: string;
+}
 export interface SearchOpts {
   limit?: number;
   mode?: SearchMode;
   db?: Database;
+  filter?: SearchFilter;
+}
+
+/** The SQL condition (over `documents d`) and its parameters for a filter; null when nothing is filtered. */
+function filterSql(f: SearchFilter = {}): { sql: string; params: string[] } | null {
+  const where: string[] = [];
+  const params: string[] = [];
+  if (f.source) { where.push("d.source = ?"); params.push(f.source); }
+  if (f.author) { where.push("(d.author = ? OR d.updated_by = ?)"); params.push(f.author, f.author); }
+  if (f.tag) { where.push("EXISTS (SELECT 1 FROM json_each(d.tags) WHERE json_each.value = ?)"); params.push(f.tag); }
+  if (f.since) { where.push("(d.created_at >= ? OR d.updated_at >= ?)"); params.push(f.since, f.since); }
+  return where.length ? { sql: where.join(" AND "), params } : null;
 }
 
 export function ftsQuery(q: string): string {
@@ -26,24 +47,32 @@ export function ftsQuery(q: string): string {
     .join(" ");
 }
 
-export function keywordSearch(db: Database, query: string, limit: number): SearchHit[] {
+export function keywordSearch(db: Database, query: string, limit: number, filter?: SearchFilter): SearchHit[] {
   const match = ftsQuery(query);
   if (!match) return [];
-  return keywordSearchRaw(db, match, limit);
+  return keywordSearchRaw(db, match, limit, filter);
 }
-/** Run a prepared FTS5 MATCH expression (e.g. `"a" OR "b"`). */
-export function keywordSearchRaw(db: Database, match: string, limit: number): SearchHit[] {
+/** Run a prepared FTS5 MATCH expression (e.g. `"a" OR "b"`), keeping only items that match `filter`. */
+export function keywordSearchRaw(db: Database, match: string, limit: number, filter?: SearchFilter): SearchHit[] {
+  const f = filterSql(filter);
   const rows = db
     .query(
       `SELECT d.id AS docId, d.title, d.source, snippet(documents_fts, 1, '[', ']', '…', 12) AS snippet, rank
        FROM documents_fts JOIN documents d ON d.rowid = documents_fts.rowid
-       WHERE documents_fts MATCH ? ORDER BY rank LIMIT ?`,
+       WHERE documents_fts MATCH ?${f ? ` AND ${f.sql}` : ""} ORDER BY rank LIMIT ?`,
     )
-    .all(match, limit) as { docId: string; title: string; source: string; snippet: string; rank: number }[];
+    .all(match, ...(f?.params ?? []), limit) as { docId: string; title: string; source: string; snippet: string; rank: number }[];
   return rows.map((r) => ({ docId: r.docId, title: r.title, source: r.source, snippet: r.snippet, score: -r.rank }));
 }
 
-export async function semanticSearch(db: Database, query: string, limit: number): Promise<SearchHit[]> {
+/** The title, source and snippet text of one item, or null when it is gone or does not match `filter`. */
+function docForHit(db: Database, filter?: SearchFilter): (id: string) => { title: string; source: string; summary: string | null; head: string } | null {
+  const f = filterSql(filter);
+  const q = db.query(`SELECT d.title, d.source, d.summary, substr(d.body, 1, 200) AS head FROM documents d WHERE d.id = ?${f ? ` AND ${f.sql}` : ""}`);
+  return (id) => q.get(id, ...(f?.params ?? [])) as { title: string; source: string; summary: string | null; head: string } | null;
+}
+
+export async function semanticSearch(db: Database, query: string, limit: number, filter?: SearchFilter): Promise<SearchHit[]> {
   const embedder = getEmbedder();
   if (!(await embedder.available())) throw new EmbeddingUnavailableError(`embedding server (${embedder.name}) is unreachable`);
   const qv = await embedQuery(query);
@@ -52,13 +81,14 @@ export async function semanticSearch(db: Database, query: string, limit: number)
     .query(
       `SELECT c.doc_id AS docId, MIN(v.distance) AS distance
        FROM (SELECT chunk_id, distance FROM chunks_vec WHERE embedding MATCH ? AND k = ? ORDER BY distance) v
-       JOIN chunks c ON c.id = v.chunk_id GROUP BY c.doc_id ORDER BY distance LIMIT ?`,
+       JOIN chunks c ON c.id = v.chunk_id GROUP BY c.doc_id ORDER BY distance`,
     )
-    .all(vecToJson(qv), k, limit) as { docId: string; distance: number }[];
-  const docQ = db.query("SELECT title, source, summary, substr(body, 1, 200) AS head FROM documents WHERE id = ?");
+    .all(vecToJson(qv), k) as { docId: string; distance: number }[];
+  const doc = docForHit(db, filter);
   const out: SearchHit[] = [];
   for (const r of rows) {
-    const d = docQ.get(r.docId) as { title: string; source: string; summary: string | null; head: string } | null;
+    if (out.length >= limit) break;
+    const d = doc(r.docId);
     if (!d) continue;
     out.push({ docId: r.docId, title: d.title, source: d.source, snippet: d.summary ?? d.head, score: 1 / (1 + r.distance) });
   }
@@ -84,7 +114,7 @@ function topN(m: Map<string, { hit: SearchHit; score: number }>, n: number): Sea
     .map((x) => ({ ...x.hit, score: x.score }));
 }
 
-export function graphExpand(db: Database, hits: SearchHit[], limit: number): SearchHit[] {
+export function graphExpand(db: Database, hits: SearchHit[], limit: number, filter?: SearchFilter): SearchHit[] {
   const inResults = new Set(hits.map((h) => h.docId));
   const neighbours = new Map<string, number>();
   const q = db.query("SELECT src, dst, weight FROM edges WHERE src = ? OR dst = ?");
@@ -95,33 +125,36 @@ export function graphExpand(db: Database, hits: SearchHit[], limit: number): Sea
       neighbours.set(other, (neighbours.get(other) ?? 0) + h.score * (e.weight ?? 0));
     }
   }
-  const docQ = db.query("SELECT title, source, summary, substr(body, 1, 200) AS head FROM documents WHERE id = ?");
+  const doc = docForHit(db, filter);
   const out: SearchHit[] = [];
-  for (const [id, score] of [...neighbours.entries()].sort((a, b) => b[1] - a[1]).slice(0, limit)) {
-    const d = docQ.get(id) as { title: string; source: string; summary: string | null; head: string } | null;
+  for (const [id, score] of [...neighbours.entries()].sort((a, b) => b[1] - a[1])) {
+    if (out.length >= limit) break;
+    const d = doc(id);
     if (!d) continue;
     out.push({ docId: id, title: d.title, source: d.source, snippet: d.summary ?? d.head, score });
   }
   return out;
 }
 
+/** Search the library by keyword, meaning or both (fused, then widened along edges), keeping only items that match `opts.filter`. */
 export async function search(dataDir: string, query: string, opts: SearchOpts = {}): Promise<SearchHit[]> {
   const limit = Math.max(1, opts.limit ?? SEARCH_DEFAULT_LIMIT);
   const mode = opts.mode ?? "hybrid";
   const db = opts.db ?? openDb(dataDir);
   try {
-    if (mode === "keyword") return keywordSearch(db, query, limit);
-    if (mode === "semantic") return await semanticSearch(db, query, limit);
-    const kw = keywordSearch(db, query, limit);
+    const filter = opts.filter;
+    if (mode === "keyword") return keywordSearch(db, query, limit, filter);
+    if (mode === "semantic") return await semanticSearch(db, query, limit, filter);
+    const kw = keywordSearch(db, query, limit, filter);
     let sem: SearchHit[] = [];
     try {
-      sem = await semanticSearch(db, query, limit);
+      sem = await semanticSearch(db, query, limit, filter);
     } catch (e) {
       if (e instanceof EmbeddingUnavailableError) return kw; // documented silent degradation
       throw e;
     }
     const fused = topN(rrf([kw, sem]), limit);
-    const neighbours = graphExpand(db, fused, limit);
+    const neighbours = graphExpand(db, fused, limit, filter);
     if (neighbours.length === 0) return fused;
     return topN(rrf([fused, neighbours]), limit);
   } finally {

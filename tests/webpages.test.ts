@@ -104,6 +104,16 @@ describe("Browse & search", () => {
     expect(text(".jv-empty")).toContain("No matches for “zzz”.");
     expect(text(".jv-empty")).toContain("Try fewer or different words, or switch the search to Exact words.");
   });
+  test("a search with filters in use sends every filter, so only matching results come back", async () => {
+    env = await boot("#/browse", { setup: (e) => e.routes.set("GET /api/search", () => ({ json: [] })) });
+    localStorage.setItem("jv.browse", JSON.stringify({ q: "zoom drift", mode: "keyword", source: "note", author: "mia", tag: "ops", days: "7" }));
+    await go(env, "#/capture");
+    await go(env, "#/browse");
+    const sp = new URL("http://x" + env.calls.filter((c) => c.path.startsWith("/api/search")).at(-1)!.path).searchParams;
+    expect([sp.get("source"), sp.get("author"), sp.get("tag")]).toEqual(["note", "mia", "ops"]);
+    const since = Date.parse(sp.get("since") ?? "");
+    expect(Math.abs(Date.now() - 7 * 86_400_000 - since)).toBeLessThan(86_400_000);
+  });
   test("the search, filters and paging survive a reload, and Chat-and-back", async () => {
     env = await boot("#/browse", { setup: (e) => e.routes.set("GET /api/search", () => ({ json: [] })) });
     type(q(".jv-searchbar input"), "kept");

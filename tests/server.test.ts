@@ -70,6 +70,21 @@ describe("http api", () => {
     expect((await call("GET", "/api/search")).status).toBe(400);
   });
 
+  test("search honours the Browse filters (source, contributor, tag, time) in every mode", async () => {
+    const note = await ingest(t.dir, { source: "note", title: "Note", body: "zoom drift in the note", author: "bob", tags: ["ops"] });
+    await ingest(t.dir, { source: "paste", title: "Paste", body: "zoom drift in the paste", author: "mia", tags: ["ops"] });
+    await ingest(t.dir, { source: "meeting", title: "Meeting", body: "zoom drift in the meeting", author: "bob", tags: ["eng"] });
+    const ids = async (qs: string) => ((await (await call("GET", `/api/search?q=zoom%20drift&${qs}`)).json()) as { docId: string }[]).map((h) => h.docId);
+    for (const mode of ["keyword", "semantic", "hybrid"]) {
+      expect(await ids(`mode=${mode}`)).toHaveLength(3);
+      expect(await ids(`mode=${mode}&source=note`)).toEqual([note.id]);
+      expect(await ids(`mode=${mode}&author=bob&tag=ops`)).toEqual([note.id]);
+      expect(await ids(`mode=${mode}&tag=ops`)).toHaveLength(2);
+      expect(await ids(`mode=${mode}&since=2000-01-01T00:00:00Z`)).toHaveLength(3);
+      expect(await ids(`mode=${mode}&since=2999-01-01T00:00:00Z`)).toEqual([]);
+    }
+  });
+
   test("tags, context and filters", async () => {
     const r = await ingest(t.dir, { source: "note", title: "N", body: "b", author: "a" });
     expect((await call("POST", `/api/item/${r.id}/tags`, { tags: ["a", "b", "a"], author: "z" })).status).toBe(200);

@@ -60,15 +60,16 @@ export async function viewBrowse(ctx: Ctx): Page {
     clear(lists);
     lists.append(skeleton());
     const body = h("div");
+    const filter = { source: state.source, author: state.author, tag: state.tag, since: state.days ? sinceIso(Number(state.days)) : undefined };
     try {
       let b: BrowseResult | null = null;
       if (state.q) {
-        const hits = await api.search(state.q, state.mode, 20);
+        const hits = await api.search(state.q, state.mode, 20, filter);
         if (!facets) facets = await api.browse({ limit: 1 }).then((r) => r.facets, () => ({ sources: [], authors: [], tags: [] }));
         if (mine !== seq) return;
         body.append(...(hits.length ? [h("h2", { class: "jv-sh" }, hits.length === 1 ? "1 result" : `${hits.length} results`), ...hits.map(hitCard)] : [emptyBox(`No matches for “${state.q}”.`, "Try fewer or different words, or switch the search to Exact words.")]));
       } else {
-        b = await api.browse({ limit: 20, addedOffset: state.addedOffset, updatedOffset: state.updatedOffset, source: state.source, author: state.author, tag: state.tag, since: state.days ? sinceIso(Number(state.days)) : undefined });
+        b = await api.browse({ limit: 20, addedOffset: state.addedOffset, updatedOffset: state.updatedOffset, ...filter });
         if (mine !== seq) return;
         // A stored page past the end (the library shrank) goes back to the first page instead of showing a false empty state.
         const past = (key: "addedOffset" | "updatedOffset", p: PageInfo) => state[key] > 0 && p.total > 0 && p.total <= state[key];
