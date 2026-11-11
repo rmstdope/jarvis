@@ -266,7 +266,7 @@ describe("the agent acts (jv-oya.4)", () => {
   });
   test("attachments: kinds and size are checked, files are named in the prompt, a transcript is withheld unless the team allows it", async () => {
     const sid = await open("conv4");
-    const send = async (files: [string, string | Uint8Array][], message = "capture these") => {
+    const send = async (files: [string, string | Uint8Array<ArrayBuffer>][], message = "capture these") => {
       const f = new FormData();
       f.set("message", message);
       for (const [n, c] of files) f.append("files", new File([c], n));
@@ -275,7 +275,7 @@ describe("the agent acts (jv-oya.4)", () => {
     const bad = await send([["demo.mov", "x"]]);
     expect(bad.status).toBe(400);
     expect((await bad.json()).error).toBe("demo.mov — can't capture this kind of file");
-    expect((await (await send([["big.pdf", new Uint8Array(25 * 1024 * 1024 + 1)]])).json()).error).toBe("big.pdf — larger than 25 MB");
+    expect((await (await send([["big.pdf", new Uint8Array(new ArrayBuffer(25 * 1024 * 1024 + 1))]])).json()).error).toBe("big.pdf — larger than 25 MB");
     const ok = await ndjson(await send([["notes.md", "# Notes\nhello"], ["sync.vtt", "WEBVTT\n\n00:00:01.000 --> 00:00:02.000\n<v Sam>We decided to ship."]]));
     const said = ok.filter((e) => e.type === "message").map((e) => e.text).join("");
     expect(said).toContain("Attached files");
