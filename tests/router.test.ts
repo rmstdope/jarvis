@@ -140,11 +140,14 @@ describe("copilot model steps on live detection and the shipped presets (jv-zdv)
     entry.provider === "copilot" ? copilotProvider(copilot1105, () => "/usr/bin/copilot") : { name: entry.provider, available: async () => false, complete: async () => { throw new Error("unavailable"); } };
   const completesEveryCopilotStep = async (config: ModelsConfig) => {
     const r = await createRouter({ config, factory: onlyCopilot });
+    let routed = 0;
     for (const kind of TASK_KINDS) {
       const m = r.resolve({ kind, minQuality: "cheap" });
       if (!m || m.provider !== "copilot") continue;
+      routed++;
       expect(`${kind}: ${await m.complete("p", { json: true }).catch((e: Error) => e.message)}`).toBe(`${kind}: {"ok":true}`);
     }
+    expect(routed > 0).toBe(config.models.some((m) => m.provider === "copilot"));
   };
   test("no models.toml: live detection's Copilot entry answers every task kind", async () => {
     const detected = await detectModels({ ollama: async () => [], omlxModels: async () => [], copilotOnPath: () => true, openaiKey: () => false });

@@ -58,6 +58,7 @@ describe("ci planner", () => {
     const m = planFromChanges(["docs/examples/models/copilot-only.toml"]);
     expect(m.docsOnly).toBe(false);
     expect(m.tests).toContain("tests/onboarding.test.ts");
+    expect(m.tests).toContain("tests/router.test.ts"); // jv-zdv: presets routed through Copilot
     expect(m.tests).not.toContain("tests/chunk.test.ts");
     const f = planFromChanges(["tests/fixtures/teams.vtt"]);
     expect(f.tests).toContain("tests/producers.test.ts");
