@@ -436,7 +436,7 @@ describe("the agent acts: the change card (jv-oya.4)", () => {
       ch({ kind: "task.done", items: [task("T1", "E")] }),
       ch({ kind: "task.reopen", items: [task("T1", "E")] }),
       ch({ kind: "task.due", items: [task("T1", "E")], detail: { from: "2026-11-20", to: "2025-01-03" } }),
-      ch({ kind: "task.owner", items: [task("T1", "E")], detail: { from: "Sam", to: "Mia" } }),
+      ch({ kind: "task.owner", items: [task("T1", "E")], detail: { from: "Sam", to: "you" } }),
       ch({ kind: "link", items: [task("T1", "E"), { id: "N1", title: "A", kind: "doc" }], detail: { relation: "related" } }),
       ch({ kind: "draft.briefing", items: [{ id: "B1", title: "F", kind: "briefing" }], draft: { kind: "briefing", sections: ["One", "Two"], sources: 3 } }),
       ch({ kind: "draft.presentation", items: [{ id: "deck", title: "G", kind: "presentation" }], draft: { kind: "presentation", sections: ["S1"], sources: 0, slides: 4 } }),
@@ -448,7 +448,7 @@ describe("the agent acts: the change card (jv-oya.4)", () => {
       "✓Changed task E: due 20 Nov 2026 → 3 Jan 2025".replace("20 Nov 2026", "20 Nov"), "✓Changed task E: owner Sam → you", "✓Linked E to A · relates to",
       "✓Drafted briefing F", "✓Drafted presentation G", "✓Created initiative H"]);
     const drafts = qa(".jv-draft");
-    expect(drafts[0].textContent).toBe("BRIEFING · DRAFT · 2 sections · 3 sourcesFOne · TwoOpen draft".replace("FOne", "FOne"));
+    expect(drafts[0].textContent).toBe("BRIEFING · DRAFT · 2 sections · 3 sourcesFOne · TwoOpen draft");
     expect(drafts[1].querySelector(".jv-draft-k")!.textContent).toBe("PRESENTATION · DRAFT · 4 slides · 0 sources");
     expect((drafts[0].querySelector("a") as HTMLElement).getAttribute("href")).toBe("#/briefing/B1");
     expect((drafts[1].querySelector("a") as HTMLElement).getAttribute("href")).toBe("#/presentation/deck");
@@ -474,7 +474,7 @@ describe("the agent acts: the change card (jv-oya.4)", () => {
     (qa(".jv-crow-undo")[0]).click();
     await env.tick(30);
     expect(qa(".jv-crow")[0].classList.contains("jv-cundone")).toBe(true);
-    expect(qa(".jv-crow")[0].textContent).toBe("↺One taskUndone".replace("One task", "Created task One"));
+    expect(qa(".jv-crow")[0].textContent).toBe("↺Created task OneUndone");
     expect(document.activeElement).toBe(qa(".jv-crow-undo")[0]); // the next row's Undo
     expect(q(".jv-undoall")).toBeTruthy();
     (qa(".jv-crow-undo")[0]).click();
@@ -482,6 +482,15 @@ describe("the agent acts: the change card (jv-oya.4)", () => {
     expect(card().querySelector("h4")!.textContent).toBe("I made 2 changes · all undone");
     expect(document.querySelector(".jv-undoall")).toBeNull();
     expect(document.activeElement).toBe(input());
+  });
+  test("Undo all asks for its own answer only", async () => {
+    const a = ch({ turn: "TURN-9", kind: "task.create", items: [task("T1", "One")] });
+    await answerWith([a]);
+    const cid = (JSON.parse(localStorage.getItem("jv.chat")!) as { conversationId: string }).conversationId;
+    env.routes.set(`POST /api/chat/conversations/${cid}/changes/undo-all`, () => ({ json: { changes: [{ ...a, undone: true }] } }));
+    q(".jv-undoall").click();
+    await env.tick(30);
+    expect(env.calls.find((c) => c.path.endsWith("/undo-all"))!.body).toEqual({ turn: "TURN-9" });
   });
   test("Undo all undoes the rest, then focus goes to the typing box", async () => {
     const a = ch({ kind: "task.create", items: [task("T1", "One")] }), b = ch({ kind: "task.done", items: [task("T2", "Two")] });
@@ -513,10 +522,13 @@ describe("the agent acts: the change card (jv-oya.4)", () => {
     await env.tick(30);
     expect(q(".jv-changes h4").textContent).toBe("I made 1 change · all undone");
   });
-  test("a task the agent changed refreshes the open-tasks box without a reload", async () => {
-    await answerWith([ch({ kind: "task.create", items: [task("T1", "One")] })], "ok", { tasks: [] });
-    const before = env.calls.filter((c) => c.path.startsWith("/api/tasks")).length;
-    expect(before).toBeGreaterThanOrEqual(2);
+  test("a task the agent changed reloads the open tasks (the first screen's box) without a reload", async () => {
+    let loads = 0;
+    const chat = await setup({ name: "Mia", answer: () => ({ stream: async (push) => { push({ type: "change", change: ch({ kind: "task.create", items: [task("T1", "One")] }) }); push({ type: "done" }); } }) });
+    void chat;
+    env.routes.set("GET /api/tasks", () => { loads++; return { json: { tasks: [] } }; });
+    await ask("add a task");
+    expect(loads).toBe(1);
   });
   test("New chat: the question adds a line when changes are kept (plural, singular), and not otherwise", async () => {
     const chat = await answerWith([ch({ kind: "task.create", items: [task("T1", "One")] }), ch({ kind: "task.create", items: [task("T2", "Two")] }), ch({ kind: "task.create", undone: true, items: [task("T3", "Three")] })]);

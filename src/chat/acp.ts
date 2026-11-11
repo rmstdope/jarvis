@@ -23,7 +23,7 @@ export function permissionOutcome(params: Record<string, unknown>): { outcome: "
   const title = String((params.toolCall as { title?: unknown } | undefined)?.title ?? "");
   const options = (params.options as { optionId: string; kind?: string }[] | undefined) ?? [];
   const allow = options.find((o) => o.kind === "allow_once");
-  return /\bjarvis_[a-z_]+/.test(title) && allow ? { outcome: "selected", optionId: allow.optionId } : { outcome: "cancelled" };
+  return /^(?:[\w.-]+[-:./])?jarvis_[a-z_]+$/.test(title.trim()) && allow ? { outcome: "selected", optionId: allow.optionId } : { outcome: "cancelled" };
 }
 
 export class AcpClient {

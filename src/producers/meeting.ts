@@ -7,7 +7,7 @@ import { parsePastedTranscript, parseTeamsVtt } from "./transcript.ts";
 import { siblingVtt, transcribeAudio, type Runner, type WhisperBackend } from "./whisper.ts";
 
 export const AUDIO_EXT = [".mp3", ".m4a", ".wav", ".mp4", ".mov", ".aac", ".flac", ".ogg", ".webm", ".wma", ".m4v"];
-export const TEXT_EXT = [".vtt", ".md", ".txt", ".markdown", ".text"];
+export const TEXT_EXT = [".vtt", ".srt", ".md", ".txt", ".markdown", ".text"];
 
 export interface MeetingOpts {
   title?: string;

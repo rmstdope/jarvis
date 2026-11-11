@@ -4,8 +4,8 @@
  */
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { basename, extname, join } from "node:path";
-import { createBriefing } from "../briefings/store.ts";
+import { basename, extname, join, relative } from "node:path";
+import { briefingPath, createBriefing } from "../briefings/store.ts";
 import { resolveAuthor } from "../core/config.ts";
 import { LINK_RELATIONS, link } from "../core/links.ts";
 import { readDocFile } from "../core/docs.ts";
@@ -16,7 +16,7 @@ import { addTask, setTaskStatus, updateTask } from "../core/tasks.ts";
 import type { Relation } from "../core/constants.ts";
 import { meetingToPayload } from "../producers/meeting.ts";
 import { pdfToPayload } from "../producers/pdf.ts";
-import { trackCreated, type Change, type ChangeItem, type ChangeKind, type ChangeLog, type Op } from "./changes.ts";
+import { createdOp, type Change, type ChangeItem, type ChangeKind, type ChangeLog, type Op } from "./changes.ts";
 
 /** The tool names the agent sees, with a one-line description and JSON-schema properties each. */
 export const TOOLS: { name: string; description: string; properties: Record<string, unknown>; required: string[] }[] = [
@@ -63,10 +63,18 @@ const KIND_OF_TOOL: Record<string, ChangeKind> = {
   jarvis_link: "link", jarvis_draft_briefing: "draft.briefing", jarvis_draft_presentation: "draft.presentation",
 };
 
+/** The `created` op for the files of a new doc (its sidecar too, when it has one). */
+const docOp = (dataDir: string, id: string): Op[] => { const op = createdOp(dataDir, [`docs/${id}.md`, `edges/${id}.jsonl`]); return op ? [op] : []; };
+
 async function capture(dataDir: string, kind: ChangeKind, payload: CapturePayload): Promise<Done> {
-  const { value, op } = await trackCreated(dataDir, () => ingest(dataDir, payload));
-  return { kind, items: [{ id: value.id, title: value.title, kind: "doc" }], ops: op ? [op] : [], undoable: value.status === "captured" };
+  const value = await ingest(dataDir, payload);
+  const created = value.status === "captured";
+  return { kind, items: [{ id: value.id, title: value.title, kind: "doc" }], ops: created ? docOp(dataDir, value.id) : [], undoable: created };
 }
+/** Subtitle and transcript files: captured as meetings, never shown to a model the team has not allowed. */
+export const isTranscriptFile = (name: string): boolean => [".vtt", ".srt"].includes(extname(name).toLowerCase());
+/** The words `from`/`to` of an owner change: the user shows as "you". */
+const you = (who: string | undefined, me: string): string | undefined => (who === me ? "you" : who);
 
 async function perform(tool: string, a: Record<string, unknown>, ctx: ActionContext): Promise<Done> {
   const d = ctx.dataDir;
@@ -85,7 +93,7 @@ async function perform(tool: string, a: Record<string, unknown>, ctx: ActionCont
       const path = ctx.attachments[name];
       if (!path) throw new Error(`there is no attached file called ${name}`);
       const ext = extname(name).toLowerCase();
-      const meeting = a.meeting === true || ext === ".vtt";
+      const meeting = a.meeting === true || isTranscriptFile(name);
       if (ext === ".pdf") return capture(d, "capture.file", await pdfToPayload(path, { title: str(a, "title"), author }));
       if (meeting) return capture(d, "capture.meeting", meetingToPayload(path, { title: str(a, "title") ?? basename(name, ext), author, dataDir: d }));
       const { readFileSync } = await import("node:fs");
@@ -93,8 +101,8 @@ async function perform(tool: string, a: Record<string, unknown>, ctx: ActionCont
     }
     case "jarvis_create_task": {
       const links = ids(a.link);
-      const { value, op } = await trackCreated(d, () => addTask(d, { title: need(a, "title"), body: str(a, "body"), due: str(a, "due"), owner: str(a, "owner"), initiative: str(a, "initiative"), links, author }));
-      return { kind: "task.create", items: [item(d, value.id)], ops: op ? [op] : [] };
+      const value = await addTask(d, { title: need(a, "title"), body: str(a, "body"), due: str(a, "due"), owner: str(a, "owner"), initiative: str(a, "initiative"), links, author });
+      return { kind: "task.create", items: [item(d, value.id)], ops: docOp(d, value.id) };
     }
     case "jarvis_update_task":
     case "jarvis_set_task_status":
@@ -118,15 +126,15 @@ async function perform(tool: string, a: Record<string, unknown>, ctx: ActionCont
       } else {
         const r = await updateTask(d, id, { due: a.due === "" ? null : str(a, "due"), owner: str(a, "owner"), author });
         if (r.due) { kind = "task.due"; detail = { from: r.due.from, to: r.due.to }; }
-        else if (r.owner) { kind = "task.owner"; detail = { from: r.owner.from, to: r.owner.to }; }
+        else if (r.owner) { kind = "task.owner"; detail = { from: you(r.owner.from, author), to: you(r.owner.to, author) }; }
         else throw new Error("nothing to change");
       }
       const after = { ...readDocFile(d, id)!.frontmatter.task! };
       return { kind, items: [item(d, id)], detail, ops: [{ op: "task", id, before: beforeCopy, after }] };
     }
     case "jarvis_create_initiative": {
-      const { value, op } = await trackCreated(d, () => addInitiative(d, { title: need(a, "title"), goal: need(a, "goal"), owner: str(a, "owner"), author }));
-      return { kind: "initiative.create", items: [item(d, value.id)], ops: op ? [op] : [] };
+      const value = await addInitiative(d, { title: need(a, "title"), goal: need(a, "goal"), owner: str(a, "owner"), author });
+      return { kind: "initiative.create", items: [item(d, value.id)], ops: docOp(d, value.id) };
     }
     case "jarvis_link": {
       const src = need(a, "src"), dst = need(a, "dst");
@@ -137,7 +145,8 @@ async function perform(tool: string, a: Record<string, unknown>, ctx: ActionCont
     }
     case "jarvis_draft_briefing": {
       const title = need(a, "title");
-      const { value, op } = await trackCreated(d, () => createBriefing(d, { title, body: str(a, "body"), status: "draft", author }));
+      const value = createBriefing(d, { title, body: str(a, "body"), status: "draft", author });
+      const op = createdOp(d, [relative(d, briefingPath(d, value.id))]);
       const sections = [...value.body.matchAll(/^##\s+(.+?)\s*$/gm)].map((m) => m[1]);
       return { kind: "draft.briefing", items: [{ id: value.id, title: value.title, kind: "briefing" }], draft: { kind: "briefing", sections, sources: ids(a.sources).length }, ops: op ? [op] : [] };
     }
@@ -148,11 +157,12 @@ async function perform(tool: string, a: Record<string, unknown>, ctx: ActionCont
       if (!SLUG_RE.test(slug)) slug = "deck";
       const tmp = mkdtempSync(join(tmpdir(), "jarvis-deck-"));
       try {
-        writeFileSync(join(tmp, "index.mdx"), mdx);
+        writeFileSync(join(tmp, "index.mdx"), mdx.replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n/, "")); // the agent's own frontmatter (id, author, dates) is not trusted
         const { listPresentations } = await import("../core/presentations.ts");
         const taken = new Set(listPresentations(d).map((p) => p.slug));
         for (let n = 2; taken.has(slug); n++) slug = `${slugify(title)}-${n}`;
-        const { value, op } = await trackCreated(d, () => sharePresentation(d, join(tmp, "index.mdx"), { slug, title, author }));
+        const value = sharePresentation(d, join(tmp, "index.mdx"), { slug, title, author, importedFrom: "chat" });
+        const op = createdOp(d, [`presentations/${slug}`]);
         const slides = (mdx.match(/<Slide\b/g) ?? []).length;
         const sections = [...mdx.matchAll(/^#{1,2}\s+(.+?)\s*$/gm)].map((m) => m[1]);
         return { kind: "draft.presentation", items: [{ id: value.slug, title: value.title, kind: "presentation" }], draft: { kind: "presentation", sections: sections.slice(0, slides || sections.length), sources: ids(a.sources).length, slides } as Change["draft"], ops: op ? [op] : [] };

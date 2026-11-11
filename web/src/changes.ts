@@ -41,13 +41,13 @@ export function heading(changes: WebChange[]): string {
   return t;
 }
 /** The number of changes made and not undone (what New chat warns about). */
-export const keptCount = (changes: WebChange[]): number => changes.filter((c) => c.ok && !c.undone).length;
+export const keptCount = (changes: WebChange[]): number => changes.filter((c) => c.ok && c.undoable && !c.undone).length;
 
 const KIND_WORD: Record<string, string> = { "capture.note": "note", "capture.link": "link", "capture.file": "file", "capture.meeting": "meeting" };
 /** The sentence of a row, the item titles as links (plain text when `plain`, as in an undone row). */
 export function sentence(c: WebChange, opts: { me?: string; now?: Date; plain?: boolean } = {}): Child[] {
   const t = (i: number): Child => (opts.plain || !c.items[i] ? c.items[i]?.title : h("a", { href: itemHref(c.items[i]), title: c.items[i].title }, c.items[i].title));
-  const who = (v: string | undefined) => (v && (v === opts.me || v === "me") ? "you" : v ?? "none");
+  const who = (v: string | undefined) => v ?? "none"; // the service already says "you" for the user
   if (!c.ok) return [`Couldn't ${c.verb ?? "do that"}`, ...(c.items[0] ? [" ", h("i", {}, c.items[0].title)] : []), ` — ${c.error ?? "something went wrong"}.`];
   const d = c.detail ?? {};
   switch (c.kind) {

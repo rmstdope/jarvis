@@ -1,8 +1,8 @@
 import { ulid } from "ulid";
-import { mkdirSync, writeFileSync } from "node:fs";
-import { extname, join } from "node:path";
+import { mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { basename, extname, join } from "node:path";
 import { AcpClient, spawnCopilotAcp, type AcpTransport, type McpServer } from "./acp.ts";
-import { runTool } from "./actions.ts";
+import { isTranscriptFile, runTool } from "./actions.ts";
 import { ChangeLog, type Change } from "./changes.ts";
 import { loadConfig, loadTeamConfig, resolvePort } from "../core/config.ts";
 import { ftsQuery, keywordSearchRaw } from "../core/search.ts";
@@ -27,7 +27,11 @@ export type ChatEvent =
   | { type: "error"; error: string };
 
 export const CHAT_MAX_FILE_BYTES = 25 * 1024 * 1024;
-export const CHAT_FILE_EXT = [".txt", ".md", ".markdown", ".pdf", ".vtt"];
+export const CHAT_FILE_EXT = [".txt", ".md", ".markdown", ".pdf", ".vtt", ".srt"];
+/** Text that reads like a transcript (timestamped lines), whatever the file is called. */
+export function looksLikeTranscript(text: string): boolean {
+  return (text.match(/^\s*\[?\(?\d{1,2}:\d{2}(:\d{2})?([.,]\d+)?\]?\)?\s/gm) ?? []).length >= 3;
+}
 /** What the agent says when it captured a transcript it may not read. */
 export const TRANSCRIPT_NOTICE = "I saved the transcript, but your team doesn't allow sending meeting transcripts to the model I'm using, so I can't read it to find the decisions.";
 /** A file sent with a message. */
@@ -155,8 +159,9 @@ export class ChatService {
       const ext = extname(f.name).toLowerCase();
       const size = `${f.bytes.length} bytes`;
       if (ext === ".pdf") return `- ${f.name} (PDF, ${size})`;
-      if (ext === ".vtt" && !readable) return `- ${f.name} (meeting transcript, ${size}). You may not read it. If asked to capture it, call jarvis_capture_file with meeting=true, then tell the user exactly: "${TRANSCRIPT_NOTICE}"`;
-      return `- ${f.name} (${size}):\n${new TextDecoder().decode(f.bytes).slice(0, CHAT_GROUNDED_BODY_CHARS)}`;
+      const text = new TextDecoder().decode(f.bytes).slice(0, CHAT_GROUNDED_BODY_CHARS);
+      if (!readable && (isTranscriptFile(f.name) || looksLikeTranscript(text))) return `- ${f.name} (meeting transcript, ${size}). You may not read it. If asked to capture it, call jarvis_capture_file with meeting=true, then tell the user exactly: "${TRANSCRIPT_NOTICE}"`;
+      return `- ${f.name} (${size}):\n${text}`;
     });
     const attach = lines.length ? `\n\nAttached files (capture one only if asked; pass its name as attachment):\n${lines.join("\n")}` : "";
     const question = s.turns === 0 && !r.prompt.includes("User: ") ? `User: ${r.prompt}` : r.prompt;
@@ -171,8 +176,9 @@ export class ChatService {
       if (terms.length) {
         const db = openDb(this.dataDir);
         try {
-          const hits = keywordSearchRaw(db, terms.map((t) => ftsQuery(t)).join(" OR "), CHAT_RESULTS);
-          for (const h of hits) {
+          const hits = keywordSearchRaw(db, terms.map((t) => ftsQuery(t)).join(" OR "), CHAT_RESULTS * 2);
+          const allowed = loadTeamConfig(this.dataDir).privacy.transcriptsToCloud;
+          for (const h of hits.filter((x) => allowed || x.source !== "meeting").slice(0, CHAT_RESULTS)) { // a transcript the team keeps off cloud models never reaches the prompt
             const part = `[${h.docId}] ${h.title} (${h.source})\n${h.snippet.replace(/[[\]]/g, "")}\n\n`;
             if (ctx.length + part.length > CHAT_SNIPPET_CHARS) break;
             ctx += part;
@@ -216,13 +222,16 @@ export class ChatService {
     s.lastActive = this.now();
     s.turn = ulid();
     s.attachments = {};
+    const names: ChatFile[] = [];
     if (files.length) {
       const dir = join(this.dataDir, ".index", "chat", "uploads", s.turn);
       mkdirSync(dir, { recursive: true });
       for (const f of files) {
-        const safe = f.name.replace(/[\\/]/g, "_");
+        let safe = f.name.replace(/[\\/]/g, "_");
+        for (let n = 2; safe in s.attachments; n++) safe = `${basename(f.name, extname(f.name))}-${n}${extname(f.name)}`;
         writeFileSync(join(dir, safe), f.bytes);
-        s.attachments[f.name] = join(dir, safe);
+        s.attachments[safe] = join(dir, safe);
+        names.push({ ...f, name: safe });
       }
     }
     const queue: ChatEvent[] = [];
@@ -244,7 +253,7 @@ export class ChatService {
     });
     try {
       s.onChange = (change) => push({ type: "change", change });
-      const { prompt, sources } = this.buildPrompt(s, message, files);
+      const { prompt, sources } = this.buildPrompt(s, message, names);
       for (const src of sources) push({ type: "source", ...src });
       const agent = await this.agent();
       let finished = false;
@@ -262,6 +271,8 @@ export class ChatService {
     } finally {
       s.busy = false;
       s.onChange = undefined;
+      if (files.length) rmSync(join(this.dataDir, ".index", "chat", "uploads", s.turn), { recursive: true, force: true }); // captured files were copied into the content repo
+      s.attachments = {};
       s.lastActive = this.now();
       this.updateHandlers.delete(s.acpSessionId);
     }

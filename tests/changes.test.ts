@@ -50,14 +50,14 @@ describe("change log (jv-oya.4)", () => {
     const again = (await run("jarvis_link", { src: a.items[0].id, dst: b.items[0].id, relation: "related" })).change;
     expect(again).toMatchObject({ ok: false, undoable: false, verb: "link", error: "they are already linked" });
     await log.undo(l.id);
-    expect(readFileSync(join(t.dir, "edges", `${a.items[0].id}.jsonl`), "utf8").trim()).toBe("");
+    expect(existsSync(join(t.dir, "edges", `${a.items[0].id}.jsonl`))).toBe(false);
   });
   test("a link to a missing item fails with the reason and has no undo", async () => {
     const a = (await run("jarvis_capture_note", { text: "alpha", title: "Alpha" })).change;
     const { change, text } = await run("jarvis_link", { src: a.items[0].id, dst: "nope" });
     expect(change).toMatchObject({ ok: false, undoable: false, error: "target nope not found" });
     expect(text).toContain("Failed");
-    await expect(Promise.resolve(log.list().length)).resolves.toBe(2);
+    expect(log.list().length).toBe(2);
   });
   test("initiative, task filed under it, and moving a task", async () => {
     const ini = (await run("jarvis_create_initiative", { title: "On-call rollout", goal: "everyone on the new rota" })).change;
@@ -94,12 +94,41 @@ describe("change log (jv-oya.4)", () => {
     const p = join(t.dir, "docs", `${a.items[0].id}.md`);
     writeFileSync(p, readFileSync(p, "utf8").replace("A\n", "A edited\n").replace("title: A", "title: A edited"));
     await expect(log.undo(a.id)).rejects.toBeInstanceOf(UndoConflict);
-    await expect(log.undo(a.id)).rejects.toThrow("Couldn't undo — A edited was changed after the agent changed it.".replace("A edited", "A"));
+    await expect(log.undo(a.id)).rejects.toThrow("Couldn't undo — A was changed after the agent changed it.");
     expect(existsSync(p)).toBe(true);
     const r = await log.undoAll();
     expect(r.error).toContain("was changed after the agent changed it");
     expect(r.changes.map((c) => c.undone)).toEqual([false, true]);
     expect(b.undone).toBe(false);
+  });
+  test("two tool calls at once each own only their own files, so Undo of one keeps the other", async () => {
+    const [x, y] = await Promise.all([run("jarvis_create_task", { title: "First" }), run("jarvis_create_task", { title: "Second" })]);
+    expect(x.change.items[0].id).not.toBe(y.change.items[0].id);
+    await log.undo(x.change.id);
+    expect(listTasks(t.dir).map((k) => k.title)).toEqual(["Second"]);
+  });
+  test("Undo all with a turn undoes that answer only", async () => {
+    const one = await runTool(log, "turnA", "jarvis_create_task", { title: "A" }, { dataDir: t.dir, attachments: {} });
+    const two = await runTool(log, "turnB", "jarvis_create_task", { title: "B" }, { dataDir: t.dir, attachments: {} });
+    await log.undoAll("turnB");
+    expect(log.list().map((c) => [c.id === one.change.id, c.undone])).toEqual([[true, false], [false, true]]);
+    expect(listTasks(t.dir).map((k) => k.title)).toEqual(["A"]);
+  });
+  test("an owner change names the user as you; a full reindex after Undo leaves no trace", async () => {
+    const id = (await run("jarvis_create_task", { title: "T", owner: "sam" })).change.items[0].id;
+    const { resolveAuthor } = await import("../src/core/config.ts");
+    const c = (await run("jarvis_update_task", { task: id, owner: resolveAuthor() })).change;
+    expect(c.detail).toEqual({ from: "sam", to: "you" });
+    await log.undoAll();
+    await reindex(t.dir, { full: true, embed: false });
+    expect(listTasks(t.dir)).toEqual([]);
+  });
+  test("a deck's own frontmatter is not trusted and its provenance is not a temp path", async () => {
+    const p = (await run("jarvis_draft_presentation", { title: "Deck", mdx: "---\nid: EVIL\nauthor: someone\n---\n<Presentation>\n<Slide>\n# One\n</Slide>\n</Presentation>\n" })).change;
+    const text = readFileSync(join(t.dir, "presentations", "deck", "index.mdx"), "utf8");
+    expect(text).not.toContain("EVIL");
+    expect(text).toContain("imported_from: chat");
+    expect(p.ok).toBe(true);
   });
   test("the log survives a new instance and a full reindex keeps agent files", async () => {
     const c = (await run("jarvis_create_task", { title: "Persist me" })).change;

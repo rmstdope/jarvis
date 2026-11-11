@@ -34,7 +34,7 @@ export const MAX_SAVED_MESSAGES = 100;
 const GENERAL: Scope = { type: "jarvis", ids: [] };
 
 interface Step { text: string; done: boolean }
-export const FILE_EXT = [".txt", ".md", ".markdown", ".pdf", ".vtt"];
+export const FILE_EXT = [".txt", ".md", ".markdown", ".pdf", ".vtt", ".srt"];
 export const MAX_FILE_BYTES = 25 * 1024 * 1024;
 /** "312 B", "4 KB", "1.2 MB". */
 export function fileSize(n: number): string {
@@ -162,7 +162,7 @@ export function createChat(opts: { navigate: (hash: string) => void; onChange?: 
       parts.push(h("button", { class: "jv-steps-toggle", "aria-expanded": String(open), onClick: () => { if (open) openSteps.delete(m); else openSteps.add(m); render(); } }, `${open ? "▾" : "▸"} ${steps.length} ${steps.length === 1 ? "step" : "steps"}`));
       if (open) parts.push(list());
     }
-    parts.push(drawCard(m.changes ?? [], String(conv.messages.indexOf(m)), { onUndo: (c) => void undoOne(m, c), onUndoAll: () => void undoEverything() }, { me: name, now: now() }));
+    parts.push(drawCard(m.changes ?? [], String(conv.messages.indexOf(m)), { onUndo: (c) => void undoOne(m, c), onUndoAll: () => void undoEverything(m) }, { me: name, now: now() }));
     if (m.status === "failed") parts.push(h("div", { class: "jv-failed" }, "Something went wrong and I couldn't answer.", h("button", { class: "jv-retry", onClick: () => retry(m) }, "Try again")));
     else {
       if (m.text) parts.push(h("div", { class: "jv-answer", html: renderMarkdown(m.text) }));
@@ -290,9 +290,9 @@ export function createChat(opts: { navigate: (hash: string) => void; onChange?: 
     focusAfter(m, c.id);
     if (c.kind.startsWith("task.")) void tasks.load(name);
   }
-  async function undoEverything(): Promise<void> {
+  async function undoEverything(m: Msg): Promise<void> {
     try {
-      const r = await api.undoAll(conv.conversationId!);
+      const r = await api.undoAll(conv.conversationId!, m.changes?.[0]?.turn);
       merge(r.changes);
       if (r.error) toast(r.error, "error");
     } catch (e) { toast((e as Error).message, "error"); }

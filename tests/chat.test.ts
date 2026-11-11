@@ -290,6 +290,25 @@ describe("the agent acts (jv-oya.4)", () => {
     const allowed = await ndjson(await send([["sync.vtt", "WEBVTT\n\n00:00:01.000 --> 00:00:02.000\n<v Sam>We decided to ship."]], "what was decided"));
     expect(allowed.filter((e) => e.type === "message").map((e) => e.text).join("")).toContain("We decided to ship");
   });
+  test("a .srt is accepted and a transcript saved as .txt is withheld too, unless the team allows it", async () => {
+    const sid = await open("conv6");
+    const f = new FormData();
+    f.set("message", "read these");
+    f.append("files", new File(["1\n00:00:01,000 --> 00:00:02,000\nSecret srt line"], "talk.srt"));
+    f.append("files", new File(["00:01 Sam: secret txt line\n00:09 Kim: more\n00:15 Sam: yet more\n"], "talk.txt"));
+    f.append("files", new File(["# Plain notes\nbuy milk"], "plain.md"));
+    const said = (await ndjson(await call("POST", `/api/chat/sessions/${sid}/messages`, f))).filter((e) => e.type === "message").map((e) => e.text).join("");
+    expect(said).not.toContain("Secret srt line");
+    expect(said).not.toContain("secret txt line");
+    expect(said).toContain("buy milk");
+  });
+  test("a captured meeting never reaches the prompt through retrieval unless allowed", async () => {
+    const { ingest } = await import("../src/core/ingest.ts");
+    await ingest(t.dir, { source: "meeting", title: "Standup", body: "zebrafish rollout decision", author: "me" });
+    const sid = await open("conv7");
+    const said = (await ndjson(await call("POST", `/api/chat/sessions/${sid}/messages`, { message: "what about zebrafish rollout" }))).filter((e) => e.type === "message").map((e) => e.text).join("");
+    expect(said).not.toContain("zebrafish rollout decision");
+  });
   test("capturing an attached file through the tool", async () => {
     const sid = await open("conv5");
     const f = new FormData();

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { addTask, listTasks, showTask, setTaskStatus, suggestLinks, updateTask } from "../src/core/tasks.ts";
 import { link, unlink } from "../src/core/links.ts";
@@ -141,7 +141,7 @@ describe("updateTask and unlink (jv-oya.4)", () => {
     link(t.dir, a.id, [b.id], { relation: "follows_up", author: "me" });
     expect(unlink(t.dir, a.id, b.id, "follows_up")).toBe(true);
     expect(unlink(t.dir, a.id, b.id, "follows_up")).toBe(false);
-    expect(readFileSync(join(t.dir, "edges", `${a.id}.jsonl`), "utf8").trim()).toBe("");
+    expect(existsSync(join(t.dir, "edges", `${a.id}.jsonl`))).toBe(false);
     expect(withDb(t.dir, (db) => db.query("SELECT count(*) c FROM edges WHERE src = ?").get(a.id) as { c: number }).c).toBe(0);
   });
 });

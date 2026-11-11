@@ -1,13 +1,14 @@
 import { route, json, error, body, HttpError, type ServerContext } from "../http.ts";
 import { ChatService, ChatError, type ChatFile, type ChatScope } from "./sessions.ts";
 import { UndoConflict } from "./changes.ts";
+import { resolvePort } from "../core/config.ts";
 
 const services = new Map<string, ChatService>();
 export function chatService(ctx: ServerContext): ChatService {
   const key = ctx.dataDir;
   let s = services.get(key);
   if (!s) {
-    s = new ChatService(ctx.dataDir, (ctx as ServerContext & { chatDeps?: ConstructorParameters<typeof ChatService>[1] }).chatDeps);
+    s = new ChatService(ctx.dataDir, { serverUrl: () => ctx.url ?? `http://127.0.0.1:${resolvePort()}`, ...(ctx as ServerContext & { chatDeps?: ConstructorParameters<typeof ChatService>[1] }).chatDeps });
     services.set(key, s);
   }
   return s;
@@ -24,7 +25,7 @@ const wrap = async (fn: () => Promise<Response>): Promise<Response> => {
   } catch (e) {
     if (e instanceof ChatError) return error(e.message, e.status);
     if (e instanceof HttpError) return error(e.message, e.status);
-    return error((e as Error).message, /not found/i.test((e as Error).message) ? 404 : 500);
+    return error((e as Error).message, /not found/i.test((e as Error).message) ? 404 : /^invalid /.test((e as Error).message) ? 400 : 500);
   }
 };
 
@@ -82,7 +83,7 @@ route("POST", "/api/chat/sessions/:id/actions", (req, _u, p, ctx) => wrap(async 
   return json(r);
 }));
 route("GET", "/api/chat/conversations/:cid/changes", (_r, _u, p, ctx) => wrap(async () => json({ changes: chatService(ctx).changes(p.cid).list() })));
-route("POST", "/api/chat/conversations/:cid/changes/undo-all", (_r, _u, p, ctx) => wrap(async () => json(await chatService(ctx).changes(p.cid).undoAll())));
+route("POST", "/api/chat/conversations/:cid/changes/undo-all", (req, _u, p, ctx) => wrap(async () => json(await chatService(ctx).changes(p.cid).undoAll((await req.json().catch(() => ({}) as { turn?: string })).turn))));
 route("POST", "/api/chat/conversations/:cid/changes/:changeId/undo", (_r, _u, p, ctx) => wrap(async () => {
   try {
     return json({ change: await chatService(ctx).changes(p.cid).undo(p.changeId) });

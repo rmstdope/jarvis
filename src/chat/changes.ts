@@ -3,7 +3,7 @@
  * Machine-local state (`.index/chat/<conversation>.json`, never committed); the changes themselves
  * are ordinary files in the content repo, so they survive `jarvis reindex --full` and `jarvis sync`.
  */
-import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync, rmdirSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync, rmdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { ulid } from "ulid";
 import type { TaskBlock } from "../core/frontmatter.ts";
@@ -57,20 +57,6 @@ export class UndoConflict extends Error {
   }
 }
 
-const AUTHORED = ["docs", "edges", "briefings", "presentations"];
-function listFiles(dataDir: string): Set<string> {
-  const out = new Set<string>();
-  const walk = (rel: string) => {
-    const abs = join(dataDir, rel);
-    if (!existsSync(abs)) return;
-    for (const e of readdirSync(abs, { withFileTypes: true })) {
-      if (e.isDirectory()) walk(`${rel}/${e.name}`);
-      else out.add(`${rel}/${e.name}`);
-    }
-  };
-  for (const d of AUTHORED) walk(d);
-  return out;
-}
 /** What a doc's author wrote: enrichment (summary, tags, mentions) is ignored so a sync does not block Undo. */
 function fingerprint(dataDir: string, id: string): string | null {
   const d = readDocFile(dataDir, id);
@@ -79,16 +65,21 @@ function fingerprint(dataDir: string, id: string): string | null {
 const rawHash = (dataDir: string, rel: string): string | null => (existsSync(join(dataDir, rel)) ? sha256(readFileSync(join(dataDir, rel))) : null);
 const sameJson = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
 
-/** Run `fn` and report the files it created, as one `created` op (null when it created none). */
-export async function trackCreated<T>(dataDir: string, fn: () => Promise<T> | T): Promise<{ value: T; op: Op | null }> {
-  const before = listFiles(dataDir);
-  const value = await fn();
-  const files = [...listFiles(dataDir)].filter((f) => !before.has(f)).sort();
-  if (!files.length) return { value, op: null };
+/** The `created` op for files a tool just wrote (directories are expanded); null when none of them exist. */
+export function createdOp(dataDir: string, paths: string[]): Op | null {
+  const files: string[] = [];
+  const walk = (rel: string) => {
+    const abs = join(dataDir, rel);
+    if (!existsSync(abs)) return;
+    if (statSync(abs).isDirectory()) for (const e of readdirSync(abs)) walk(`${rel}/${e}`);
+    else files.push(rel);
+  };
+  for (const p of paths) walk(p);
+  if (!files.length) return null;
   const docs = files.filter((f) => /^docs\/[^/]+\.md$/.test(f)).map((f) => f.slice(5, -3)).map((id) => ({ id, fp: fingerprint(dataDir, id) ?? "" }));
   const raw: Record<string, string> = {};
   for (const f of files) if (!f.startsWith("docs/") && !f.startsWith("edges/")) raw[f] = rawHash(dataDir, f) ?? "";
-  return { value, op: { op: "created", files, docs, raw } };
+  return { op: "created", files, docs, raw };
 }
 
 /** The change log of one conversation. */
@@ -131,14 +122,16 @@ export class ChangeLog {
     const title = s.items[0]?.title ?? "the item";
     for (const op of s.ops) if (!this.verify(op)) throw new UndoConflict(title);
     for (const op of [...s.ops].reverse()) await this.revert(op);
-    s.undone = true;
-    this.save(all);
-    return this.strip(s);
+    const fresh = this.load(); // a change recorded while we were reverting must not be lost
+    const mine = fresh.find((c) => c.id === id)!;
+    mine.undone = true;
+    this.save(fresh);
+    return this.strip(mine);
   }
-  /** Undo every change not yet undone, newest first; stops at (and reports) the first conflict. */
-  async undoAll(): Promise<{ changes: Change[]; error?: string }> {
+  /** Undo every change not yet undone (of one answer when `turn` is given), newest first; stops at (and reports) the first conflict. */
+  async undoAll(turn?: string): Promise<{ changes: Change[]; error?: string }> {
     for (const c of [...this.load()].reverse()) {
-      if (!c.undoable || c.undone) continue;
+      if (!c.undoable || c.undone || (turn && c.turn !== turn)) continue;
       try {
         await this.undo(c.id);
       } catch (e) {
