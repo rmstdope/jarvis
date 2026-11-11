@@ -9,6 +9,7 @@ import { briefingPath, createBriefing } from "../briefings/store.ts";
 import { resolveAuthor } from "../core/config.ts";
 import { LINK_RELATIONS, link } from "../core/links.ts";
 import { readDocFile } from "../core/docs.ts";
+import { readSidecar, type EdgeLine } from "../core/sidecar.ts";
 import { ingest, type CapturePayload } from "../core/ingest.ts";
 import { addInitiative, moveTask } from "../core/initiatives.ts";
 import { SLUG_RE, sharePresentation } from "../core/presentations.ts";
@@ -39,7 +40,8 @@ export interface ActionContext {
   /** Files attached to this message: name → absolute path. */
   attachments: Record<string, string>;
 }
-interface Done { kind: ChangeKind; items: ChangeItem[]; ops: Op[]; detail?: Change["detail"]; draft?: Change["draft"]; undoable?: boolean }
+/** What a tool did; `also` holds further rows the same call made (the links of a new task), each undone on its own. */
+interface Done { kind: ChangeKind; items: ChangeItem[]; ops: Op[]; detail?: Change["detail"]; draft?: Change["draft"]; undoable?: boolean; also?: Done[] }
 const str = (a: Record<string, unknown>, k: string): string | undefined => (typeof a[k] === "string" && (a[k] as string).trim() ? (a[k] as string).trim() : undefined);
 const need = (a: Record<string, unknown>, k: string): string => str(a, k) ?? (() => { throw new Error(`${k} is required`); })();
 const ids = (v: unknown): string[] => (Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : []);
@@ -102,7 +104,11 @@ async function perform(tool: string, a: Record<string, unknown>, ctx: ActionCont
     case "jarvis_create_task": {
       const links = ids(a.link);
       const value = await addTask(d, { title: need(a, "title"), body: str(a, "body"), due: str(a, "due"), owner: str(a, "owner"), initiative: str(a, "initiative"), links, author });
-      return { kind: "task.create", items: [item(d, value.id)], ops: docOp(d, value.id) };
+      const task = item(d, value.id);
+      const also: Done[] = readSidecar(d, value.id)
+        .filter((l): l is EdgeLine => l.kind === "edge" && l.created_by === "manual" && links.includes(l.dst))
+        .map((l) => ({ kind: "link", items: [task, item(d, l.dst)], detail: { relation: l.relation }, ops: [{ op: "edge", src: value.id, dst: l.dst, relation: l.relation }] }));
+      return { kind: "task.create", items: [task], ops: docOp(d, value.id), also };
     }
     case "jarvis_update_task":
     case "jarvis_set_task_status":
@@ -176,18 +182,24 @@ async function perform(tool: string, a: Record<string, unknown>, ctx: ActionCont
   }
 }
 
-/** Run one tool call and record it; a failure is recorded as a failed row, never thrown. Returns the row and the text the model reads. */
-export async function runTool(log: ChangeLog, turn: string, tool: string, args: Record<string, unknown>, ctx: ActionContext): Promise<{ change: Change | null; text: string }> {
+/**
+ * Run one tool call and record it; a failure is recorded as a failed row, never thrown. Returns the
+ * row, any further rows the call made (`more`: the links of a new task), and the text the model reads.
+ */
+export async function runTool(log: ChangeLog, turn: string, tool: string, args: Record<string, unknown>, ctx: ActionContext): Promise<{ change: Change | null; more: Change[]; text: string }> {
   if (!(tool in VERBS)) throw new Error(`unknown tool ${tool}`);
   try {
     const done = await perform(tool, args, ctx);
-    const change = log.record({ turn, kind: done.kind, ok: true, items: done.items, detail: done.detail, draft: done.draft, undoable: done.undoable }, done.ops);
-    return { change, text: `Done: ${done.items.map((i) => `${i.title} [${i.id}]`).join(" → ")}` };
+    const rec = (x: Done): Change => log.record({ turn, kind: x.kind, ok: true, items: x.items, detail: x.detail, draft: x.draft, undoable: x.undoable }, x.ops);
+    const change = rec(done);
+    const more = (done.also ?? []).map(rec);
+    const said = (x: Done) => x.items.map((i) => `${i.title} [${i.id}]`).join(" → ");
+    return { change, more, text: `Done: ${[done, ...(done.also ?? [])].map(said).join("; ")}` };
   } catch (e) {
     const error = (e as Error).message.replace(/\.$/, "");
     const subject = str(args, "title") ?? str(args, "task") ?? str(args, "src") ?? str(args, "attachment");
     const title = subject && /^[0-9A-Z]{26}$/.test(subject) ? titleOf(ctx.dataDir, subject) : subject;
     const change = log.record({ turn, kind: KIND_OF_TOOL[tool], ok: false, items: title ? [{ id: subject ?? "", title, kind: "doc" }] : [], error, verb: VERBS[tool] }, []);
-    return { change, text: `Failed: could not ${VERBS[tool]} — ${error}.` };
+    return { change, more: [], text: `Failed: could not ${VERBS[tool]} — ${error}.` };
   }
 }
