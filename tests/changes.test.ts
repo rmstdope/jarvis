@@ -72,6 +72,14 @@ describe("change log (jv-oya.4)", () => {
     await log.undo(rows[0].id);
     expect(existsSync(join(t.dir, "docs", `${task}.md`))).toBe(false);
   });
+  test("undoing a linked task first leaves its Linked row undone, not a conflict (jv-eit)", async () => {
+    const zoom = (await run("jarvis_capture_note", { text: "zoom drift", title: "Zoom drift" })).change.items[0].id;
+    await run("jarvis_create_task", { title: "Order spare Zoom cameras", link: [zoom] });
+    const [, task, linked] = log.list();
+    await log.undo(task.id);
+    expect((await log.undo(linked.id)).undone).toBe(true);
+    expect(readDocFile(t.dir, zoom)).not.toBeNull();
+  });
   test("a status that is neither done nor open is a failed row, not a reopen", async () => {
     const id = (await run("jarvis_create_task", { title: "S" })).change.items[0].id;
     const r = await runAny("jarvis_set_task_status", { task: id, status: "complete" });

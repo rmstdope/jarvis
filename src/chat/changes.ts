@@ -120,8 +120,9 @@ export class ChangeLog {
     if (!s) throw new Error("change not found");
     if (!s.undoable || s.undone) return this.strip(s);
     const title = s.items[0]?.title ?? "the item";
-    for (const op of s.ops) if (!this.verify(op)) throw new UndoConflict(title);
-    for (const op of [...s.ops].reverse()) await this.revert(op);
+    const pending = s.ops.filter((op) => !this.alreadyGone(op));
+    for (const op of pending) if (!this.verify(op)) throw new UndoConflict(title);
+    for (const op of [...pending].reverse()) await this.revert(op);
     const fresh = this.load(); // a change recorded while we were reverting must not be lost
     const mine = fresh.find((c) => c.id === id)!;
     mine.undone = true;
@@ -144,6 +145,10 @@ export class ChangeLog {
   private strip(s: Stored): Change {
     const { ops: _ops, ...c } = s;
     return c;
+  }
+  /** An edge whose source or target was deleted (by undoing the change that created it) is already undone. */
+  private alreadyGone(op: Op): boolean {
+    return op.op === "edge" && !this.verify(op) && (!readDocFile(this.dataDir, op.src) || !readDocFile(this.dataDir, op.dst));
   }
   private verify(op: Op): boolean {
     const d = this.dataDir;
