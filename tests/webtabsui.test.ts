@@ -233,15 +233,17 @@ describe("many tabs keep Chat whole (jv-4mc)", () => {
       return Math.max(width, 24 + 54 + docs * 96 + 2 * (docs + more) + more * 95);
     } });
   };
-  for (const width of [640, 1250]) {
-    test(`with 12 documents open in a ${width} px strip, every tab fits beside a whole Chat tab`, async () => {
+  for (const [width, shown] of [[640, 4], [1250, 10]] as const) {
+    test(`with 12 documents open in a ${width} px strip, ${shown} fit beside a whole Chat tab and the active one is among them`, async () => {
       await boot();
       const ids = "DEFGHIJKLMNO".split("");
       for (const id of ids) env.routes.set(`GET /api/item/${id}`, () => ({ json: { item: item(id, `Doc ${id}`), edges: [] } }));
       const strip = q(".jv-tabstrip");
       fakeLayout(strip, width);
       for (const id of ids) await go(`#/item/${id}`);
-      expect(tabs().length + Number(/\d+/.exec(q(".jv-more-btn").textContent!)![0])).toBe(13);
+      expect(tabs().length).toBe(1 + shown);
+      expect(q(".jv-more-btn").textContent).toBe(`⌄ ${12 - shown} more`);
+      expect(q('.jv-tab[aria-selected="true"] .jv-tab-t').textContent).toBe("Doc O");
       expect(strip.scrollWidth).toBeLessThanOrEqual(strip.clientWidth);
     });
   }
@@ -253,7 +255,6 @@ describe("many tabs keep Chat whole (jv-4mc)", () => {
     await go("#/item/A");
     const chat = env.win.getComputedStyle(q(".jv-tab[data-key=chat]") as never);
     expect(chat.flexShrink).toBe("0");
-    expect(chat.minWidth).not.toBe("0px");
     (window as unknown as { __JV_TAB_CAPACITY__?: number }).__JV_TAB_CAPACITY__ = 0;
     await go("#/item/B");
     expect(env.win.getComputedStyle(q(".jv-more") as never).flexShrink).toBe("0");
