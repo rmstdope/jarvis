@@ -119,6 +119,7 @@ html, body { height:100%; } #app { height:100%; }
 .jv-searchbar { display:flex; align-items:center; gap:10px; border:1px solid var(--border); background:var(--panel); border-radius:12px; padding:8px 14px; margin-bottom:12px; }
 :root[data-theme=dark] .jv-searchbar { box-shadow:0 0 0 1px #22d3ee22, 0 0 18px #22d3ee14; }
 @media (prefers-color-scheme: dark) { :root:not([data-theme=light]) .jv-searchbar { box-shadow:0 0 0 1px #22d3ee22, 0 0 18px #22d3ee14; } }
+.jv-searchbar input::-webkit-search-cancel-button, .jv-searchbar input::-webkit-search-decoration { -webkit-appearance:none; appearance:none; display:none; }
 .jv-searchbar input { flex:1; min-width:0; border:0; outline:0; background:none; color:var(--text); padding:4px 0; font-size:16px; }
 .jv-kind { width:auto; border:0; border-left:1px solid var(--border); border-radius:0; background:none; font-size:12.5px; color:var(--muted); }
 .jv-x { border:0; background:none; color:var(--muted); padding:0 4px; }
@@ -140,7 +141,7 @@ html, body { height:100%; } #app { height:100%; }
 .jv-write input, .jv-write textarea { width:100%; border:0; outline:0; background:none; color:var(--text); padding:0; border-radius:0; }
 .jv-wt { font:700 30px var(--serif); } .jv-wb { font:17px/1.65 var(--serif); min-height:340px; resize:vertical; }
 .jv-wfoot { display:flex; align-items:center; margin-top:14px; } .jv-whint { flex:1; font-size:12.5px; color:var(--muted); }
-.jv-titlerow { display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:4px; } .jv-titlerow .jv-title { flex:1; margin:0; min-width:0; }
+.jv-titlerow { display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:4px; } .jv-titlerow .jv-title { flex:1 1 220px; margin:0; min-width:0; }
 .jv-bgrid { display:flex; gap:32px; align-items:flex-start; margin-top:20px; } .jv-bgrid > article { flex:1; min-width:0; }
 .jv-bcol { flex:none; font-size:13px; position:sticky; top:0; max-height:calc(100vh - 80px); overflow:auto; } .jv-col-contents { width:170px; } .jv-col-comments { width:260px; }
 .jv-colh { display:flex; align-items:center; margin-bottom:8px; } .jv-colh .jv-sh { flex:1; margin:0; } .jv-cfold { border:0; background:none; color:var(--muted); padding:0 4px; }

@@ -17,6 +17,15 @@ const col = (c: string) => q(`.jv-col-${c}`);
 const strip = (c: string) => q(`.jv-strip[data-col=${c}]`);
 const foldBtn = (c: string) => q(`.jv-cfold[data-col=${c}]`);
 
+describe("a briefing with no status field", () => {
+  test("shows a draft pill on its card and on its page", async () => {
+    env = await boot("#/briefings", { setup: (e) => { setup({ b: { status: undefined } })(e); e.routes.set("GET /api/briefings", () => ({ json: [{ id: "B3", title: "Fresh", kind: "briefing", createdAt: "2026-03-01T00:00:00Z", updatedAt: "2026-03-01T00:00:00Z" }] })); } });
+    expect(q(".jv-card .jv-status")!.textContent).toBe("draft");
+    await go(env, "#/briefing/B1");
+    expect(q(".jv-titlerow .jv-status")!.textContent).toBe("draft");
+  });
+});
+
 describe("Briefings list", () => {
   const list = [
     { id: "B1", title: "Q3 plan", subtitle: "What we do", kind: "briefing", author: "mia", status: "draft", createdAt: "2026-01-01T00:00:00Z", updatedAt: "2026-01-05T00:00:00Z", tags: ["plan"] },
@@ -31,6 +40,7 @@ describe("Briefings list", () => {
     expect(qa(".jv-card .jv-ct").map((a) => a.textContent)).toEqual(["Alpha", "Q3 plan"]);
     expect(qa(".jv-card")[1].querySelector(".jv-m")!.textContent).toBe("briefing · mia · updated 2026-01-05 draft");
     expect(qa(".jv-card")[1].querySelector(".jv-s")!.textContent).toBe("What we do");
+    expect(qa(".jv-card")[0].querySelector(".jv-status")!.textContent).toBe("approved");
     type(q(".jv-filterbar input"), "zzz");
     expect(text(".jv-empty")).toContain("No briefings match “zzz”.");
     expect(JSON.parse(localStorage.getItem("jv.briefList")!).filter).toBe("zzz");

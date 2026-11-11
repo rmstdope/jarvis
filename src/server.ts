@@ -53,7 +53,12 @@ route("GET", "/api/search", async (_r, url, _p, ctx) => {
   if (!q) return error("q is required");
   const mode = (url.searchParams.get("mode") ?? "hybrid") as SearchMode;
   const limit = Math.min(100, Math.max(1, Number(url.searchParams.get("limit") ?? 10) || 10));
-  return json(await search(ctx.dataDir, q, { mode, limit }));
+  const hits = await search(ctx.dataDir, q, { mode, limit });
+  // The web's result cards show "kind · who · when": add the author and capture time to each hit.
+  return json(withDb(ctx.dataDir, (db) => {
+    const row = db.query("SELECT author, created_at AS createdAt FROM documents WHERE id = ?");
+    return hits.map((h) => ({ ...h, ...((row.get(h.docId) as { author: string; createdAt: string } | null) ?? {}) }));
+  }));
 });
 
 route("POST", "/api/sync", async (_r, _u, _p, ctx) => {

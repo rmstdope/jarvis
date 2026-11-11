@@ -31,7 +31,7 @@ export async function viewBriefings(ctx: Ctx): Page {
       box.append(all.length ? emptyBox(`No briefings match “${list.filter.trim()}”.`) : emptyBox("No briefings yet.", undefined, h("div", {}, "Create one with ", h("code", {}, "jarvis briefing create --title …"))));
       return;
     }
-    append(box, rows.map((b) => entryCard({ href: `#/briefing/${b.id}`, title: b.title, details: entryLine(b.kind, b.author, `updated ${fmtDate(b.updatedAt)}`), pill: b.status ? statusPill(b.status, tone(b.status)) : null, summary: b.subtitle, tags: b.tags })));
+    append(box, rows.map((b) => entryCard({ href: `#/briefing/${b.id}`, title: b.title, details: entryLine(b.kind, b.author, `updated ${fmtDate(b.updatedAt)}`), pill: statusPill(b.status ?? "draft", tone(b.status ?? "draft")), summary: b.subtitle, tags: b.tags })));
   }
   draw();
   return () => filter.focus();
@@ -120,7 +120,7 @@ export async function viewBriefing(ctx: Ctx, id: string): Page {
 
   const grid = h("div", { class: "jv-bgrid" },
     cols.includes("contents") ? [strips.contents, contentsCol] : null, article, strips.comments, commentsCol);
-  const titleRow = h("div", { class: "jv-titlerow" }, h("h1", { class: "jv-title" }, b.title), b.status ? statusPill(b.status, tone(b.status)) : null,
+  const titleRow = h("div", { class: "jv-titlerow" }, h("h1", { class: "jv-title" }, b.title), statusPill(b.status ?? "draft", tone(b.status ?? "draft")),
     toc.length ? phoneBtns.contents : null, phoneBtns.comments, h("button", { onClick: () => ctx.chat.askAbout({ type: "briefing", ids: [id] }, b.title) }, "Ask about this"));
   const wrap = h("div", { class: "jv-bwrap", onKeydown: (e: KeyboardEvent) => { if (e.key === "Escape" && open) { e.preventDefault(); close(); } } },
     trail("Briefings", "#/briefings", b.title), titleRow, h("div", { class: "jv-meta" }, entryLine(b.kind, b.author, `updated ${fmtDate(b.updatedAt)}`)), b.subtitle ? h("div", { class: "jv-bsub muted" }, b.subtitle) : null, grid);

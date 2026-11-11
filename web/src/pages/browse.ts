@@ -17,7 +17,7 @@ const TIMES: [string, string][] = [["1", "Last day"], ["7", "Last 7 days"], ["30
 
 const card = (i: ItemSummary) => entryCard({ href: itemHref(i), title: i.title || "(untitled)", details: entryLine(i.source, i.author, fmtDate(i.created_at)), summary: i.summary, tags: i.tags });
 const hitCard = (x: SearchHit) => {
-  const c = entryCard({ href: itemHref({ id: x.docId, source: x.source }), title: x.title || x.docId, details: x.source });
+  const c = entryCard({ href: itemHref({ id: x.docId, source: x.source }), title: x.title || x.docId, details: entryLine(x.source, x.author, x.createdAt ? fmtDate(x.createdAt) : null) });
   c.append(h("div", { class: "jv-s jv-snip", html: highlightSnippet(x.snippet) }));
   return c;
 };
