@@ -117,6 +117,25 @@ describe("cli end to end (subprocess)", () => {
     expect(rep.checks.find((c: { name: string }) => c.name === "data-dir").status).toBe("ok");
     expect(jarvis("skill").out).toContain("jarvis tasks");
   });
+  test("skill uses the plain command and names this code repo for the fallback", () => {
+    const out = jarvis("skill").out.replace(/\s+/g, " ");
+    const repo = join(import.meta.dir, "..");
+    expect(out).toContain("driven through the `jarvis` CLI and the local HTTP service on");
+    expect(out).toContain(`run \`bun --cwd ${repo} run jarvis …\` instead, and tell the user to run \`bun link\` in that folder`);
+    expect(out).not.toContain("<code repo>");
+    expect(out).not.toMatch(/bun run jarvis [a-z]/);
+  });
+  test("package.json bin and README setup use the plain jarvis command", () => {
+    const pkg = JSON.parse(readFileSync(join(import.meta.dir, "..", "package.json"), "utf8"));
+    expect(pkg.bin.jarvis).toBe("src/cli.ts");
+    expect(pkg.scripts.jarvis).toBe("bun run src/cli.ts");
+    expect(readFileSync(join(import.meta.dir, "..", pkg.bin.jarvis), "utf8").startsWith("#!/usr/bin/env bun")).toBe(true);
+    const readme = readFileSync(join(import.meta.dir, "..", "README.md"), "utf8").replace(/\r\n/g, "\n");
+    expect(readme).toMatch(/bun install\nbun link +# installs the jarvis command, so it works from any folder\njarvis init/);
+    expect(readme).not.toContain("multi-root");
+    expect(readme).not.toMatch(/bun run jarvis/);
+    expect(readme).toContain("bun run web:build");
+  });
   test("ingest from stdin-less file and a PDF; meeting from vtt", () => {
     const f = join(t.dir, "notes.md");
     writeFileSync(f, "# Notes\n\nsome notes about pasta");
