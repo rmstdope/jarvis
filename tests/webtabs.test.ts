@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, test } from "bun:test";
-import { createTabs, KEY_TABS_STORE, type Store } from "../web/src/tabs.ts";
+import { createTabs, docRefFor, KEY_TABS_STORE, type Store } from "../web/src/tabs.ts";
 
 let mem: Store;
 beforeEach(() => { let v: string | null = null; mem = { get: () => v, set: (s) => { v = s; } }; });
@@ -52,5 +52,22 @@ describe("tabs model", () => {
     const bad = createTabs({ get: () => "{nope", set: () => {} });
     expect(bad.list()).toEqual([]);
     expect(KEY_TABS_STORE).toBe("jv.tabs");
+  });
+  test("an initiative is a document: its source maps to it and it survives a reload", () => {
+    expect(docRefFor("initiative", "IA")).toEqual({ type: "initiative", id: "IA" });
+    const t = createTabs(mem);
+    t.open({ type: "initiative", id: "IA" }, "Move billing", "Initiative", { show: true });
+    const back = createTabs(mem);
+    expect(back.list().map((x) => x.key)).toEqual(["initiative:IA"]);
+    expect(back.shown()).toBe("initiative:IA");
+  });
+  test("`after` puts a new tab right after that tab; an open tab never moves", () => {
+    const t = createTabs(mem);
+    t.open(note("a"), "A", "Note", { show: true });
+    t.open(note("b"), "B", "Note", { show: false });
+    t.open(note("c"), "C", "Note", { show: true, after: "item:a" });
+    expect(t.list().map((x) => x.key)).toEqual(["item:a", "item:c", "item:b"]);
+    t.open(note("b"), "B", "Note", { show: true, after: "item:a" });
+    expect(t.list().map((x) => x.key)).toEqual(["item:a", "item:c", "item:b"]);
   });
 });

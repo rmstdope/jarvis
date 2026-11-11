@@ -149,6 +149,11 @@ function section(items: TiedItem[], all: boolean): TiedSection {
 
 /** The initiative, its tasks and everything tied to it by manual/LLM links, through its tasks and directly. */
 export async function showInitiative(dataDir: string, id: string, opts: { all?: boolean; db?: Database } = {}): Promise<InitiativeDetail> {
+  return readInitiative(dataDir, id, opts);
+}
+
+/** {@link showInitiative} without the promise, for callers that cannot wait (the chat prompt builder). */
+export function readInitiative(dataDir: string, id: string, opts: { all?: boolean; db?: Database } = {}): InitiativeDetail {
   const { doc } = requireInitiative(dataDir, id);
   const db = opts.db ?? openDb(dataDir);
   try {

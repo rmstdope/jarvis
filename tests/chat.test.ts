@@ -3,6 +3,9 @@ import { join } from "node:path";
 import { spawnBunAcp, AcpClient, copilotAcpArgs } from "../src/chat/acp.ts";
 import { ChatService, retrievalTerms, chatModel } from "../src/chat/sessions.ts";
 import { ingest } from "../src/core/ingest.ts";
+import { addInitiative } from "../src/core/initiatives.ts";
+import { addTask } from "../src/core/tasks.ts";
+import { link } from "../src/core/links.ts";
 import { createBriefing } from "../src/briefings/store.ts";
 import { handle } from "../src/server.ts";
 import { resetChatServices } from "../src/chat/routes.ts";
@@ -186,6 +189,23 @@ describe("chat service", () => {
     const b = createBriefing(t.dir, { title: "B", body: "briefing body\n" });
     const bs = await svc.create({ type: "briefing", ids: [b.id] });
     expect(svc.buildPrompt(bs, "q").prompt).toContain("briefing body");
+    await svc.shutdown();
+  });
+  test("initiative scope: unknown id is not found, the first turn carries its tasks and tied captures, later turns are bare", async () => {
+    const ini = await addInitiative(t.dir, { title: "Ledger move", goal: "everything on the new ledger", author: "me" });
+    await addTask(t.dir, { title: "Dry-run invoices", initiative: ini.id });
+    const note = await ingest(t.dir, { source: "note", title: "Cutover plan", body: "plan", author: "me" });
+    link(t.dir, ini.id, [note.id]);
+    const svc = new ChatService(t.dir, { spawn });
+    await expect(svc.create({ type: "initiative", ids: ["nope"] })).rejects.toThrow(/not found/);
+    const s = await svc.create({ type: "initiative", ids: [ini.id] });
+    expect(s.sources).toEqual([{ docId: ini.id, title: "Ledger move", source: "initiative" }]);
+    const first = svc.buildPrompt(s, "what is left?").prompt;
+    expect(first).toContain("everything on the new ledger");
+    expect(first).toContain("Dry-run invoices");
+    expect(first).toContain("Cutover plan");
+    s.turns = 1;
+    expect(svc.buildPrompt(s, "more").prompt).toBe("more");
     await svc.shutdown();
   });
   test("HTTP routes stream NDJSON and map errors", async () => {

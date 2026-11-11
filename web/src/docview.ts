@@ -2,11 +2,13 @@
 import { api, ApiError } from "./api.ts";
 import type { Chat, Scope } from "./chat.ts";
 import { viewBriefing } from "./pages/briefings.ts";
+import { initiativePage } from "./pages/initiative.ts";
 import type { Ctx } from "./pages/common.ts";
 import type { DocRef } from "./tabs.ts";
 import { kindLabel, speakerTurns } from "./transcript.ts";
 import { entryLine, fmtDate, h } from "./ui.ts";
-import { tagPills } from "./pages/common.ts";
+import { initiativeLabel, progress, tagPills } from "./pages/common.ts";
+import { onInitiativeProgress } from "./initiativeBus.ts";
 import { renderMarkdown } from "../../src/briefings/markdown.ts";
 import { renderBriefingHtml } from "../../src/briefings/render.ts";
 import type { Node as BriefingNode } from "../../src/briefings/parser.ts";
@@ -55,7 +57,7 @@ export function renderDoc(ref: DocRef, ctx: DocCtx): DocView {
   const run = async () => {
     el.replaceChildren(placeholder());
     try {
-      const page = ref.type === "briefing" ? await briefingPage(ref.id, ctx) : ref.type === "presentation" ? await presentationPage(ref.id, ctx) : await itemPage(ref.id, ctx);
+      const page = ref.type === "initiative" ? await initiativePage(ref.id, ctx) : ref.type === "briefing" ? await briefingPage(ref.id, ctx) : ref.type === "presentation" ? await presentationPage(ref.id, ctx) : await itemPage(ref.id, ctx);
       el.replaceChildren(page.el);
       ctx.loaded(page.title, page.kind);
     } catch (e) {
@@ -66,10 +68,23 @@ export function renderDoc(ref: DocRef, ctx: DocCtx): DocView {
   };
   return { el, ready: run() };
 }
-interface Page { el: HTMLElement; title: string; kind: string; }
+/** A drawn tab body with the title and kind badge the tab takes. */
+export interface DocPage { el: HTMLElement; title: string; kind: string; }
+type Page = DocPage;
+
+/** Above a task's title: its initiative and how far that has got, kept current while the initiative's own tab is ticked. */
+function initiativeLine(i: { id: string; title: string; done: number; total: number } | undefined): HTMLElement | null {
+  if (!i) return null;
+  const line = h("div", { class: "jv-iline" }, initiativeLabel(i), progress(i.done, i.total, { small: true }));
+  const off = onInitiativeProgress(i.id, (p) => {
+    if (!line.isConnected) return off();
+    line.lastElementChild!.replaceWith(progress(p.done, p.total, { small: true }));
+  });
+  return line;
+}
 
 async function itemPage(id: string, ctx: DocCtx): Promise<Page> {
-  const { item, edges } = await api.item(id);
+  const { item, edges, initiative } = await api.item(id);
   const kind = kindLabel(item.source);
   const meta = item.metadata ?? {};
   const askBtn = h("button", { onClick: () => ctx.askAbout({ type: "item", ids: [item.id] }, item.title) }, "Ask about this");
@@ -86,7 +101,7 @@ async function itemPage(id: string, ctx: DocCtx): Promise<Page> {
     const turns = speakerTurns(item.body);
     text = h("div", { class: "jv-transcript" }, ...turns.map((t) => h("div", { class: "jv-turn" }, t.speaker ? h("div", { class: "jv-who" }, t.speaker) : null, h("p", {}, t.text))));
   } else text = h("div", { class: "body-md jv-text", html: renderMarkdown(item.body) });
-  const el = h("div", {}, head.el, h("div", { class: "jv-dbody" },
+  const el = h("div", {}, initiativeLine(initiative), head.el, h("div", { class: "jv-dbody" },
     h("div", { class: "muted small jv-meta" }, entryLine(item.source, item.author, fmtDate(item.created_at))),
     item.source === "pdf" ? h("p", { class: "jv-pdfnote small" }, `Text taken from ${filename ?? item.title} — the original layout and images aren't kept.`, item.source_url && /^https?:\/\//i.test(item.source_url) ? [" ", h("a", { href: safeHref(item.source_url), target: "_blank", rel: "noopener" }, "Open the original ↗")] : null) : null,
     item.source !== "pdf" && item.source_url ? h("p", { class: "small" }, h("a", { href: safeHref(item.source_url), target: "_blank", rel: "noopener" }, item.source_url)) : null,

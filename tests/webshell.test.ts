@@ -42,8 +42,8 @@ describe("sidebar", () => {
     expect(document.querySelector(".jv-side .jv-brand .jv-name")!.textContent).toBe("J.A.R.V.I.S.");
     expect(document.querySelector(".jv-new .lbl")!.textContent).toBe(" New chat");
     expect(document.querySelector(".jv-sec")!.textContent).toBe("Your knowledge");
-    expect(texts(".jv-nav .lbl")).toEqual(["Chat", "Browse & search", "Capture", "Briefings", "Presentations"]);
-    expect(texts(".jv-nav .rl")).toEqual(["Chat", "Browse", "Capture", "Briefings", "Slides"]);
+    expect(texts(".jv-nav .lbl")).toEqual(["Chat", "Browse & search", "Initiatives", "Capture", "Briefings", "Presentations"]);
+    expect(texts(".jv-nav .rl")).toEqual(["Chat", "Browse", "Initiatives", "Capture", "Briefings", "Slides"]);
     expect(document.querySelector(".jv-new .rl")!.textContent).toBe("New");
     expect(document.querySelector(".jv-sync .rl")!.textContent).toBe("Sync");
     expect(document.querySelector(".jv-sync .lbl")!.textContent).toBe("Sync");

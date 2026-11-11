@@ -10,6 +10,7 @@ export function kindLabel(source: string): string {
     case "pdf": return "PDF";
     case "briefing": return "Briefing";
     case "presentation": return "Presentation";
+    case "initiative": return "Initiative";
     default: return "Note";
   }
 }

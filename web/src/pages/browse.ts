@@ -2,7 +2,8 @@
 import { api, type BrowseResult, type ItemSummary, type Page as PageInfo, type SearchHit } from "../api.ts";
 import { clear, entryLine, fmtDate, h, highlightSnippet, itemHref, sinceIso } from "../ui.ts";
 import { getJson, KEY_BROWSE, setJson } from "../prefs.ts";
-import { type Ctx, emptyBox, entryCard, errorBox, heading, type Page, skeleton } from "./common.ts";
+import { type Ctx, emptyBox, entryCard, errorBox, heading, initiativeLabel, type Page, skeleton } from "./common.ts";
+import { initiativeCard } from "./initiatives.ts";
 
 type Key = "source" | "author" | "tag" | "days";
 const fresh = () => ({ q: "", mode: "hybrid", source: "", author: "", tag: "", days: "", addedOffset: 0, updatedOffset: 0 });
@@ -15,9 +16,13 @@ export function resetBrowse(over: Partial<ReturnType<typeof fresh>> = {}): void 
 const KINDS: [string, string][] = [["hybrid", "Best match"], ["semantic", "By meaning"], ["keyword", "Exact words"]];
 const TIMES: [string, string][] = [["1", "Last day"], ["7", "Last 7 days"], ["30", "Last 30 days"], ["365", "Last year"]];
 
-const card = (i: ItemSummary) => entryCard({ href: itemHref(i), title: i.title || "(untitled)", details: entryLine(i.source, i.author, fmtDate(i.created_at)), summary: i.summary, tags: i.tags });
+const card = (i: ItemSummary) => i.source === "initiative" && i.progress
+  ? initiativeCard({ id: i.id, title: i.title, updated_at: i.updated_at ?? i.created_at, ...i.progress })
+  : entryCard({ href: itemHref(i), title: i.title || "(untitled)", details: entryLine(i.source, i.author, fmtDate(i.created_at)), pill: i.initiative ? initiativeLabel(i.initiative) : null, summary: i.summary, tags: i.tags });
 const hitCard = (x: SearchHit) => {
-  const c = entryCard({ href: itemHref({ id: x.docId, source: x.source }), title: x.title || x.docId, details: entryLine(x.source, x.author, x.createdAt ? fmtDate(x.createdAt) : null) });
+  const c = x.source === "initiative" && x.progress
+    ? initiativeCard({ id: x.docId, title: x.title, updated_at: undefined, ...x.progress })
+    : entryCard({ href: itemHref({ id: x.docId, source: x.source }), title: x.title || x.docId, details: entryLine(x.source, x.author, x.createdAt ? fmtDate(x.createdAt) : null), pill: x.initiative ? initiativeLabel(x.initiative) : null });
   c.append(h("div", { class: "jv-s jv-snip", html: highlightSnippet(x.snippet) }));
   return c;
 };
