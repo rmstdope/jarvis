@@ -220,6 +220,7 @@ html, body { height:100%; } #app { height:100%; }
 .jv-docard-i { width:30px; height:34px; border-radius:5px; background:var(--accent-soft); color:var(--accent); display:flex; align-items:center; justify-content:center; flex:none; }
 .jv-docard-b { display:flex; flex-direction:column; min-width:0; } .jv-docard-t { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; } .jv-docard-s { color:var(--muted); font-size:12px; }
 .jv-phone .jv-dbody { padding:16px 14px 60px; } .jv-phone .jv-dhead { padding:10px 14px; }
+.jv-doc > .jv-view { padding:22px 30px 60px; } .jv-phone .jv-doc > .jv-view { padding:16px 14px 60px; } /* a briefing tab: the same side margin as an item tab's body */
 
 /* ---- initiatives ---- */
 .jv-progress { display:flex; align-items:center; gap:10px; margin:8px 0 0; max-width:420px; font-size:13px; color:var(--muted); }
