@@ -122,7 +122,7 @@ jobs:
           SECOND_BRAIN_HOME: ${{ runner.temp }}/sb-home
           SECOND_BRAIN_EMBED_FAKE: "1"
         run: |
-          echo '${{ needs.plan.outputs.tests }}' | jq -r '.[]' | xargs bun test --timeout 60000
+          echo '${{ needs.plan.outputs.tests }}' | jq -r '.[]' | tr -d '\r' | xargs bun test --timeout 60000
 
   # 4. Swift launcher typecheck when the app changed.
   swift:
