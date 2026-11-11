@@ -124,6 +124,7 @@ describe("cli end to end (subprocess)", () => {
     expect(jarvis("initiative", "show", id).out).toContain("tasks (1)");
     const filed = jarvis("task", "add", "Move billing checklist", "--initiative", id).out;
     expect(filed).not.toContain(`jarvis link ${filed.match(/task ([0-9A-Z]{26})/)![1]} ${id}`); // already in its initiative
+    expect(filed).toContain("link suggestions:"); // the other candidates are still offered
   });
   test("passes without models skip cleanly; process and sync run local-only", () => {
     expect(jarvis("enrich").out).toMatch(/skipped \d+/);
