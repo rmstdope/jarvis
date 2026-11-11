@@ -78,7 +78,12 @@ export function dbPath(dataDir: string): string {
   return join(indexDir(dataDir), "jarvis.db");
 }
 
-/** Open the local projection. Callers own the lifecycle: open → work → close. */
+/**
+ * Open the local projection. Callers own the lifecycle: open → work → close. Prepare statements
+ * with `db.query()`, never `db.prepare()`: `close()` finalizes cached queries, but a prepared
+ * statement nobody finalizes keeps the connection, and its file handle, alive after `close()`,
+ * which Windows reports as EBUSY when the data directory is moved or removed.
+ */
 export function openDb(dataDir: string): Database {
   ensureCustomSqlite();
   mkdirSync(indexDir(dataDir), { recursive: true });

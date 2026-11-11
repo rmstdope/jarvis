@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { mkdirSync, readFileSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { commands } from "../src/cli.ts";
 import { listRoutes } from "../src/http.ts";
@@ -30,7 +30,7 @@ beforeAll(() => {
   Bun.spawnSync(["git", "init", "-q", "-b", "main"], { cwd: data });
   Bun.spawnSync(["git", "config", "user.name", "t"], { cwd: data });
   Bun.spawnSync(["git", "config", "user.email", "t@test"], { cwd: data });
-  Bun.write(join(home, "models.toml"), 'preference = ["local"]\n'); // Tier 0: no models, hermetic
+  writeFileSync(join(home, "models.toml"), 'preference = ["local"]\n'); // Tier 0: no models, hermetic
 });
 afterAll(() => t.cleanup());
 
@@ -119,9 +119,8 @@ describe("cli end to end (subprocess)", () => {
   });
   test("ingest from stdin-less file and a PDF; meeting from vtt", () => {
     const f = join(t.dir, "notes.md");
-    Bun.write(f, "# Notes\n\nsome notes about pasta");
-    Bun.spawnSync(["sleep", "0.05"]);
-    expect(jarvis("ingest", "--file", f, "--source", "paste").out).toMatch(/^captured/);
+    writeFileSync(f, "# Notes\n\nsome notes about pasta");
+    expect(jarvis("ingest", "--file", f, "--source", "paste").out).toMatch(/^captured \S+  notes\.md  /);
     expect(jarvis("ingest", "--file", join(import.meta.dir, "fixtures", "hello.pdf")).out).toContain("Fixture Title");
     expect(jarvis("meeting", join(import.meta.dir, "fixtures", "teams.vtt"), "--title", "Sync").out).toContain("Sync");
     expect(jarvis("search", "pasta", "--mode", "keyword").out).toContain("notes.md");

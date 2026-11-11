@@ -39,16 +39,16 @@ export function computeEdges(dataDir: string, opts: { db?: Database; ids?: strin
       : (db.query("SELECT id FROM documents WHERE edged_at IS NULL OR edged_at < indexed_at ORDER BY id").all() as { id: string }[]).map((r) => r.id);
     if (pending.length === 0) return res;
     // Purge stale derived edges of pending docs (they are recomputed below).
-    const purge = db.prepare("DELETE FROM edges WHERE src = ? AND created_by IN ('backlink','auto','entity','embedding')");
+    const purge = db.query("DELETE FROM edges WHERE src = ? AND created_by IN ('backlink','auto','entity','embedding')");
     const titles = db.query("SELECT id, title FROM documents WHERE length(trim(title)) >= ?").all(BACKLINK_MIN_TITLE) as { id: string; title: string }[];
     const titleRegex = titles.map((t) => ({ id: t.id, words: t.title.trim().split(/\s+/).length, re: new RegExp(`\\b${escapeRegExp(t.title.trim())}\\b`, "i") }));
-    const chunkText = db.prepare("SELECT text FROM chunks WHERE doc_id = ? ORDER BY seq");
-    const docRow = db.prepare("SELECT id, created_at, tags FROM documents WHERE id = ?");
-    const nearest = db.prepare(
+    const chunkText = db.query("SELECT text FROM chunks WHERE doc_id = ? ORDER BY seq");
+    const docRow = db.query("SELECT id, created_at, tags FROM documents WHERE id = ?");
+    const nearest = db.query(
       "SELECT id, tags, abs(julianday(created_at) - julianday(?1)) AS dt FROM documents WHERE id != ?2 AND tags IS NOT NULL ORDER BY dt LIMIT ?3",
     );
-    const chunkVecs = db.prepare("SELECT v.embedding AS e FROM chunks c JOIN chunks_vec v ON v.chunk_id = c.id WHERE c.doc_id = ?");
-    const knn = db.prepare(
+    const chunkVecs = db.query("SELECT v.embedding AS e FROM chunks c JOIN chunks_vec v ON v.chunk_id = c.id WHERE c.doc_id = ?");
+    const knn = db.query(
       `SELECT c.doc_id AS docId, MIN(v.distance) AS distance FROM (SELECT chunk_id, distance FROM chunks_vec WHERE embedding MATCH ?1 AND k = ?2) v JOIN chunks c ON c.id = v.chunk_id GROUP BY c.doc_id ORDER BY distance`,
     );
     const hasVec = (() => {
@@ -59,7 +59,7 @@ export function computeEdges(dataDir: string, opts: { db?: Database; ids?: strin
         return false;
       }
     })();
-    const stamp = db.prepare("UPDATE documents SET edged_at = ? WHERE id = ?");
+    const stamp = db.query("UPDATE documents SET edged_at = ? WHERE id = ?");
 
     interface Pend { id: string; created_at: string; tags: string[]; texts: string[] }
     const rows: Pend[] = [];

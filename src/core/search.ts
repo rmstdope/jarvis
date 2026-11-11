@@ -55,7 +55,7 @@ export async function semanticSearch(db: Database, query: string, limit: number)
        JOIN chunks c ON c.id = v.chunk_id GROUP BY c.doc_id ORDER BY distance LIMIT ?`,
     )
     .all(vecToJson(qv), k, limit) as { docId: string; distance: number }[];
-  const docQ = db.prepare("SELECT title, source, summary, substr(body, 1, 200) AS head FROM documents WHERE id = ?");
+  const docQ = db.query("SELECT title, source, summary, substr(body, 1, 200) AS head FROM documents WHERE id = ?");
   const out: SearchHit[] = [];
   for (const r of rows) {
     const d = docQ.get(r.docId) as { title: string; source: string; summary: string | null; head: string } | null;
@@ -87,7 +87,7 @@ function topN(m: Map<string, { hit: SearchHit; score: number }>, n: number): Sea
 export function graphExpand(db: Database, hits: SearchHit[], limit: number): SearchHit[] {
   const inResults = new Set(hits.map((h) => h.docId));
   const neighbours = new Map<string, number>();
-  const q = db.prepare("SELECT src, dst, weight FROM edges WHERE src = ? OR dst = ?");
+  const q = db.query("SELECT src, dst, weight FROM edges WHERE src = ? OR dst = ?");
   for (const h of hits) {
     for (const e of q.all(h.docId, h.docId) as { src: string; dst: string; weight: number | null }[]) {
       const other = e.src === h.docId ? e.dst : e.src;
@@ -95,7 +95,7 @@ export function graphExpand(db: Database, hits: SearchHit[], limit: number): Sea
       neighbours.set(other, (neighbours.get(other) ?? 0) + h.score * (e.weight ?? 0));
     }
   }
-  const docQ = db.prepare("SELECT title, source, summary, substr(body, 1, 200) AS head FROM documents WHERE id = ?");
+  const docQ = db.query("SELECT title, source, summary, substr(body, 1, 200) AS head FROM documents WHERE id = ?");
   const out: SearchHit[] = [];
   for (const [id, score] of [...neighbours.entries()].sort((a, b) => b[1] - a[1]).slice(0, limit)) {
     const d = docQ.get(id) as { title: string; source: string; summary: string | null; head: string } | null;

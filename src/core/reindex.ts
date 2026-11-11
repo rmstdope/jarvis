@@ -40,8 +40,8 @@ export function registerProjectionHook(h: ProjectionHook): void {
 export function mirrorSidecars(db: Database, dataDir: string, result: ReindexResult): void {
   const dir = join(dataDir, "edges");
   if (!existsSync(dir)) return;
-  const insEdge = db.prepare("INSERT OR REPLACE INTO edges (src, dst, relation, created_by, weight, created_at) VALUES (?, ?, ?, ?, ?, ?)");
-  const insRej = db.prepare("INSERT OR IGNORE INTO edge_rejections (src, dst) VALUES (?, ?)");
+  const insEdge = db.query("INSERT OR REPLACE INTO edges (src, dst, relation, created_by, weight, created_at) VALUES (?, ?, ?, ?, ?, ?)");
+  const insRej = db.query("INSERT OR IGNORE INTO edge_rejections (src, dst) VALUES (?, ?)");
   db.transaction(() => {
     for (const f of readdirSync(dir).filter((f) => f.endsWith(".jsonl"))) {
       const lines = readFileSync(join(dir, f), "utf8").split("\n");
@@ -68,7 +68,7 @@ export function mirrorSidecars(db: Database, dataDir: string, result: ReindexRes
 export function mirrorEntities(db: Database, dataDir: string, result: ReindexResult): void {
   const dir = join(dataDir, "entities");
   if (!existsSync(dir)) return;
-  const ins = db.prepare("INSERT OR REPLACE INTO entities (id, name, kind, canonical, aliases, stub) VALUES (?, ?, ?, ?, ?, ?)");
+  const ins = db.query("INSERT OR REPLACE INTO entities (id, name, kind, canonical, aliases, stub) VALUES (?, ?, ?, ?, ?, ?)");
   db.transaction(() => {
     for (const f of readdirSync(dir).filter((f) => f.endsWith(".json"))) {
       try {
@@ -105,7 +105,7 @@ export async function reindex(dataDir: string, opts: ReindexOpts = {}): Promise<
 
     const files = listDocFiles(dataDir);
     const seen = new Set<string>();
-    const hashOf = db.prepare("SELECT file_hash FROM documents WHERE id = ?");
+    const hashOf = db.query("SELECT file_hash FROM documents WHERE id = ?");
     for (const f of files) {
       const id = f.slice(0, -3);
       seen.add(id);
@@ -142,10 +142,10 @@ export async function reindex(dataDir: string, opts: ReindexOpts = {}): Promise<
     }
     // Reap rows whose file disappeared (docs only; projections reap themselves in hooks).
     const stale = db.query("SELECT id FROM documents WHERE source NOT IN ('briefing','presentation')").all() as { id: string }[];
-    const delDoc = db.prepare("DELETE FROM documents WHERE id = ?");
-    const delChunks = db.prepare("DELETE FROM chunks WHERE doc_id = ?");
-    const delVecs = db.prepare("DELETE FROM chunks_vec WHERE chunk_id IN (SELECT id FROM chunks WHERE doc_id = ?)");
-    const delEdges = db.prepare("DELETE FROM edges WHERE (src = ? OR dst = ?) AND created_by IN ('backlink','auto','embedding','entity')");
+    const delDoc = db.query("DELETE FROM documents WHERE id = ?");
+    const delChunks = db.query("DELETE FROM chunks WHERE doc_id = ?");
+    const delVecs = db.query("DELETE FROM chunks_vec WHERE chunk_id IN (SELECT id FROM chunks WHERE doc_id = ?)");
+    const delEdges = db.query("DELETE FROM edges WHERE (src = ? OR dst = ?) AND created_by IN ('backlink','auto','embedding','entity')");
     db.transaction(() => {
       for (const s of stale) {
         if (!seen.has(s.id)) {

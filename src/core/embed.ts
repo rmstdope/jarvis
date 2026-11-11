@@ -127,8 +127,8 @@ export async function embedPending(db: Database, opts: { batchSize?: number; con
   const batches: { id: string; text: string }[][] = [];
   for (let i = 0; i < pending.length; i += batchSize) batches.push(pending.slice(i, i + batchSize));
 
-  const insertVec = db.prepare("INSERT OR REPLACE INTO chunks_vec (chunk_id, embedding) VALUES (?, ?)");
-  const markDone = db.prepare("UPDATE chunks SET embedded = 1 WHERE id = ?");
+  const insertVec = db.query("INSERT OR REPLACE INTO chunks_vec (chunk_id, embedding) VALUES (?, ?)");
+  const markDone = db.query("UPDATE chunks SET embedded = 1 WHERE id = ?");
   const store = db.transaction((rows: { id: string; vec: Float32Array }[]) => {
     for (const r of rows) {
       insertVec.run(r.id, vecToJson(r.vec));

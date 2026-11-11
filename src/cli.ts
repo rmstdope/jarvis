@@ -1,5 +1,6 @@
 #!/usr/bin/env bun
 import { readFileSync } from "node:fs";
+import { basename } from "node:path";
 import { flagBool, flagInt, flagStr, parseArgs } from "./core/args.ts";
 import { resolveDataDir } from "./core/config.ts";
 import type { Source } from "./core/constants.ts";
@@ -34,7 +35,7 @@ register("ingest", "ingest --file <path|-|x.pdf> [--source --title --url --autho
     return;
   }
   const body = file === "-" ? await Bun.stdin.text() : readFileSync(file, "utf8");
-  const title = flagStr(flags, "title") ?? (file === "-" ? body.split("\n")[0].slice(0, 60) || "stdin" : file.split("/").pop()!);
+  const title = flagStr(flags, "title") ?? (file === "-" ? body.split("\n")[0].slice(0, 60) || "stdin" : basename(file));
   const r = await ingest(dataDir(), {
     source: (flagStr(flags, "source") as Source) ?? "paste",
     title, body, author: flagStr(flags, "author"), source_url: flagStr(flags, "url"),

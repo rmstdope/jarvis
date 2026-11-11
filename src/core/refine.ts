@@ -42,9 +42,9 @@ export async function refine(dataDir: string, router: Router | null, opts: { lim
     res.model = model.id;
     if (opts.dryRun) return res;
     const author = resolveAuthor(opts.author);
-    const delEmb = db.prepare("DELETE FROM edges WHERE src = ? AND dst = ? AND created_by = 'embedding'");
-    const insLlm = db.prepare("INSERT OR REPLACE INTO edges (src, dst, relation, created_by, weight, created_at) VALUES (?, ?, ?, 'llm', ?, ?)");
-    const insRej = db.prepare("INSERT OR IGNORE INTO edge_rejections (src, dst) VALUES (?, ?)");
+    const delEmb = db.query("DELETE FROM edges WHERE src = ? AND dst = ? AND created_by = 'embedding'");
+    const insLlm = db.query("INSERT OR REPLACE INTO edges (src, dst, relation, created_by, weight, created_at) VALUES (?, ?, ?, 'llm', ?, ?)");
+    const insRej = db.query("INSERT OR IGNORE INTO edge_rejections (src, dst) VALUES (?, ?)");
     for (let i = 0; i < pending.length; i += REFINE_BATCH) {
       const batch = pending.slice(i, i + REFINE_BATCH);
       const cands: RefineCandidate[] = batch.map((r) => ({ src: r.src, srcTitle: r.st, srcBlurb: (r.ss ?? r.sb).replace(/\s+/g, " "), dst: r.dst, dstTitle: r.dt, dstBlurb: (r.ds ?? r.db).replace(/\s+/g, " ") }));

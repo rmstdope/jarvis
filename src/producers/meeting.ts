@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
 import { basename, extname, resolve } from "node:path";
+import { fileSourceUrl } from "../core/util.ts";
 import { loadGlossary, whisperInitialPrompt } from "../core/glossary.ts";
 import type { CapturePayload } from "../core/ingest.ts";
 import { parsePastedTranscript, parseTeamsVtt } from "./transcript.ts";
@@ -54,7 +55,7 @@ export function meetingToPayload(file: string, opts: MeetingOpts = {}): CaptureP
     title,
     body,
     author: opts.author,
-    source_url: `file:${abs}${opts.captureId ? `#capture=${opts.captureId}` : ""}`,
+    source_url: `${fileSourceUrl(abs)}${opts.captureId ? `#capture=${opts.captureId}` : ""}`,
     metadata,
   };
 }
