@@ -191,6 +191,19 @@ describe("copilot model steps on an account that does not offer gpt-4.1 (jv-l1q)
       await completesEveryCopilotStep({ ...parseModelsToml(readPreset(name)), source: "file" });
     });
   }
+  test("JARVIS_COPILOT_MODEL names the detected id; empty falls back to default", async () => {
+    const saved = process.env.JARVIS_COPILOT_MODEL;
+    const detect = () => detectModels({ ollama: async () => [], omlxModels: async () => [], copilotOnPath: () => true, openaiKey: () => false });
+    try {
+      process.env.JARVIS_COPILOT_MODEL = "gpt-5.6-luna";
+      expect((await detect()).models[0]!.id).toBe("gpt-5.6-luna");
+      process.env.JARVIS_COPILOT_MODEL = "";
+      expect((await detect()).models[0]!.id).toBe("default");
+    } finally {
+      if (saved === undefined) delete process.env.JARVIS_COPILOT_MODEL;
+      else process.env.JARVIS_COPILOT_MODEL = saved;
+    }
+  });
   test("a configured model id the account offers is still passed with --model", async () => {
     await completesEveryCopilotStep({ preference: ["copilot"], models: [{ provider: "copilot", id: "gpt-5.6-luna", quality: "high", bestFor: [...TASK_KINDS] }], source: "file" });
   });
