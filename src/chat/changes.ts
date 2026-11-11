@@ -113,7 +113,7 @@ export class ChangeLog {
     const { ops: _ops, ...out } = s;
     return out;
   }
-  /** Undo one change; throws UndoConflict (nothing touched) when the item changed since. */
+  /** Undo one change, and settle as undone any row it took with it; throws UndoConflict (nothing touched) when the item changed since. */
   async undo(id: string): Promise<Change> {
     const all = this.load();
     const s = all.find((c) => c.id === id);
@@ -126,6 +126,10 @@ export class ChangeLog {
     const fresh = this.load(); // a change recorded while we were reverting must not be lost
     const mine = fresh.find((c) => c.id === id)!;
     mine.undone = true;
+    // A row whose every op is a link to an item this undo removed (the links of a new task) went with it.
+    const removed = new Set(s.ops.flatMap((op) => (op.op === "created" ? op.docs.map((x) => x.id) : [])));
+    const tookWith = (op: Op) => op.op === "edge" && (removed.has(op.src) || removed.has(op.dst)) && this.alreadyGone(op);
+    if (removed.size) for (const c of fresh) if (c.undoable && !c.undone && c.ops.every(tookWith)) c.undone = true;
     this.save(fresh);
     return this.strip(mine);
   }

@@ -301,7 +301,7 @@ export function createChat(opts: { navigate: (hash: string) => void; onChange?: 
     (target as HTMLElement).focus();
   }
   async function undoOne(m: Msg, c: WebChange): Promise<void> {
-    try { merge([(await api.undoChange(conv.conversationId!, c.id)).change]); }
+    try { const r = await api.undoChange(conv.conversationId!, c.id); merge(r.changes ?? [r.change]); } // every row the Undo settled (a task's links)
     catch (e) { toast((e as Error).message, "error"); }
     persist(); render();
     focusAfter(m, c.id);

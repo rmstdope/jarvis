@@ -572,6 +572,17 @@ describe("the agent acts: the change card (jv-oya.4)", () => {
     expect(document.querySelector(".jv-undoall")).toBeNull();
     expect(document.activeElement).toBe(input());
   });
+  test("Undo on a Created task row shows its Linked rows Undone at once (jv-a9b)", async () => {
+    const a = ch({ kind: "task.create", items: [task("T1", "One")] }), l = ch({ kind: "link", items: [task("T1", "One"), { id: "N1", title: "Zoom drift", kind: "doc" }], detail: { relation: "related" } });
+    await answerWith([a, l]);
+    const cid = (JSON.parse(localStorage.getItem("jv.chat")!) as { conversationId: string }).conversationId;
+    env.routes.set(`POST /api/chat/conversations/${cid}/changes/${a.id}/undo`, () => ({ json: { change: { ...a, undone: true }, changes: [{ ...a, undone: true }, { ...l, undone: true }] } }));
+    q(".jv-crow-undo").click();
+    await env.tick(30);
+    expect(qa(".jv-crow").map((r) => r.classList.contains("jv-cundone"))).toEqual([true, true]);
+    expect(rows()[1]).toBe("↺Linked One to Zoom drift · relates toUndone");
+    expect(card().querySelector("h4")!.textContent).toBe("I made 2 changes · all undone");
+  });
   test("Undo all asks for its own answer only", async () => {
     const a = ch({ turn: "TURN-9", kind: "task.create", items: [task("T1", "One")] });
     await answerWith([a]);

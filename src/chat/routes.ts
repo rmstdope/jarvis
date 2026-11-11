@@ -79,7 +79,9 @@ route("GET", "/api/chat/conversations/:cid/changes", (_r, _u, p, ctx) => wrap(as
 route("POST", "/api/chat/conversations/:cid/changes/undo-all", (req, _u, p, ctx) => wrap(async () => json(await chatService(ctx).changes(p.cid).undoAll((await req.json().catch(() => ({}) as { turn?: string })).turn))));
 route("POST", "/api/chat/conversations/:cid/changes/:changeId/undo", (_r, _u, p, ctx) => wrap(async () => {
   try {
-    return json({ change: await chatService(ctx).changes(p.cid).undo(p.changeId) });
+    const log = chatService(ctx).changes(p.cid);
+    const change = await log.undo(p.changeId);
+    return json({ change, changes: log.list() });
   } catch (e) {
     if (e instanceof UndoConflict) return error(e.message, 409);
     throw e;
