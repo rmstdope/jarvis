@@ -74,8 +74,11 @@ export function checkJarvisCommand(o: JarvisCommandProbe): Check {
   const bunBin = posix.join(o.bunInstall ?? posix.join(o.home, ".bun"), "bin");
   if (o.exists(posix.join(bunBin, "jarvis"))) {
     const sh = posix.basename(o.shell);
-    const fix = sh === "fish" ? "echo 'fish_add_path ~/.bun/bin' >> ~/.config/fish/config.fish" : `echo 'export PATH="$HOME/.bun/bin:$PATH"' >> ${sh === "zsh" ? "~/.zshrc" : sh === "bash" ? "~/.bashrc" : "~/.profile"}`;
-    return warn(name, "jarvis is installed in ~/.bun/bin, but that folder is not on PATH", `${fix}   then open a new terminal`);
+    const isDefault = bunBin === posix.join(o.home, ".bun", "bin");
+    const shown = isDefault ? "~/.bun/bin" : bunBin;
+    const pathExpr = isDefault ? "$HOME/.bun/bin" : bunBin;
+    const fix = sh === "fish" ? `echo 'fish_add_path ${shown}' >> ~/.config/fish/config.fish` : `echo 'export PATH="${pathExpr}:$PATH"' >> ${sh === "zsh" ? "~/.zshrc" : sh === "bash" ? "~/.bashrc" : "~/.profile"}`;
+    return warn(name, `jarvis is installed in ${shown}, but that folder is not on PATH`, `${fix}   then open a new terminal`);
   }
   return warn(name, "jarvis is not on PATH, so agents in the content repo cannot run it", link);
 }
