@@ -350,7 +350,7 @@ register("doctor", "doctor [--json --core-only --port]", async ({ flags }) => {
 // ---- M7: tasks + manual links ----
 import { addTask, listTasks, showTask, setTaskStatus, suggestLinks, type TaskItem } from "./core/tasks.ts";
 import { addInitiative, closeInitiative, editInitiative, initiativeSuggestions, listInitiatives, moveTask, reopenInitiative, showInitiative } from "./core/initiatives.ts";
-import { ANSI, PLAIN, formatInitiativeList, formatInitiativeShow, lastTaskNotice, suggestionLines, taskListLine, type Style } from "./core/initiativeView.ts";
+import { ANSI, PLAIN, formatInitiativeList, formatInitiativeShow, lastTaskNotice, memberLinkLine, suggestionLines, taskListLine, type Style } from "./core/initiativeView.ts";
 import { link as linkItems, LINK_RELATIONS } from "./core/links.ts";
 import type { Relation } from "./core/constants.ts";
 
@@ -483,7 +483,7 @@ register("link", `link <src> <dst[,dst]> [--relation ${LINK_RELATIONS.join("|")}
   if (!src || !dsts) throw new Error("usage: jarvis link <src> <dst[,dst]> [--relation]");
   for (const r of linkItems(dataDir(), src, dsts.split(",").map((s) => s.trim()).filter(Boolean), { relation: flagStr(flags, "relation") as Relation | undefined, author: flagStr(flags, "author") })) {
     if (r.status === "member") {
-      console.log(`${r.task}  ${r.title}  ${style().dim(`is already a task in ${r.initiative}`)} — nothing linked`);
+      console.log(memberLinkLine(r, style()));
     } else console.log(`${r.status}: ${r.src} → ${r.dst} [${r.relation}]`);
   }
 });
