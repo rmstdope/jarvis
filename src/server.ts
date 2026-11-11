@@ -78,7 +78,8 @@ route("GET", "/api/browse", (_r, url, _p, ctx) => {
     limit: num("limit"), addedOffset: num("addedOffset"), updatedOffset: num("updatedOffset"),
     source: sp.get("source") ?? undefined, author: sp.get("author") ?? undefined, tag: sp.get("tag") ?? undefined, since: sp.get("since") ?? undefined,
   });
-  return json({ ...r, added: decorateItems(ctx.dataDir, r.added, (i) => i.id), updated: decorateItems(ctx.dataDir, r.updated, (i) => i.id) });
+  const rows = decorateItems(ctx.dataDir, [...r.added, ...r.updated], (i) => i.id);
+  return json({ ...r, added: rows.slice(0, r.added.length), updated: rows.slice(r.added.length) });
 });
 route("GET", "/api/recent", (_r, url, _p, ctx) => json({ items: recent(ctx.dataDir, Number(url.searchParams.get("limit") ?? 10) || 10) }));
 route("GET", "/api/item-by-source", (_r, url, _p, ctx) => {
