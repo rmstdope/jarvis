@@ -59,6 +59,9 @@ export async function viewBrowse(ctx: Ctx): Page {
     clear(filters);
     filters.append(pill("All sources", "source", counted(f.sources)), pill("All contributors", "author", counted(f.authors)), pill("All tags", "tag", counted(f.tags)), pill("Any time", "days", TIMES.map(([value, label]) => ({ value, label }))));
   };
+  const anyFilter = () => !!(state.source || state.author || state.tag || state.days);
+  /** Back to "All sources / contributors / tags / Any time"; the search text and kind stay. */
+  const resetFilters = () => { state.source = state.author = state.tag = state.days = ""; state.addedOffset = state.updatedOffset = 0; save(); void load(); input.focus(); };
   async function load(): Promise<void> {
     const mine = ++seq;
     clear(lists);
@@ -71,7 +74,12 @@ export async function viewBrowse(ctx: Ctx): Page {
         const hits = await api.search(state.q, state.mode, 20, filter);
         if (!facets) facets = await api.browse({ limit: 1 }).then((r) => r.facets, () => ({ sources: [], authors: [], tags: [] }));
         if (mine !== seq) return;
-        body.append(...(hits.length ? [h("h2", { class: "jv-sh" }, hits.length === 1 ? "1 result" : `${hits.length} results`), ...hits.map(hitCard)] : [emptyBox(`No matches for “${state.q}”.`, "Try fewer or different words, or switch the search to Exact words.")]));
+        const searchEmpty = () => {
+          const head = `No matches for “${state.q}”`;
+          if (anyFilter()) return emptyBox(`${head} with these filters.`, "Clear the filters to search everything.", h("div", {}, h("button", { class: "primary", onClick: resetFilters }, "Clear filters")));
+          return emptyBox(`${head}.`, `Try fewer or different words, or switch the search to ${state.mode === "keyword" ? "Best match" : "Exact words"}.`);
+        };
+        body.append(...(hits.length ? [h("h2", { class: "jv-sh" }, hits.length === 1 ? "1 result" : `${hits.length} results`), ...hits.map(hitCard)] : [searchEmpty()]));
       } else {
         b = await api.browse({ limit: 20, addedOffset: state.addedOffset, updatedOffset: state.updatedOffset, ...filter });
         if (mine !== seq) return;
@@ -87,13 +95,12 @@ export async function viewBrowse(ctx: Ctx): Page {
       }
       paintFilters(facets!);
       if (b) {
-        const filtered = !!(state.source || state.author || state.tag || state.days);
+        const filtered = anyFilter();
         const col = (name: string, rows: ItemSummary[], empty: HTMLElement, key: "addedOffset" | "updatedOffset", p: BrowseResult["pagination"]["added"]) =>
           h("section", {}, h("h2", { class: "jv-sh" }, name), ...(rows.length ? [...rows.map(card), pager(key, p)] : [empty]));
         if (filtered && !b.added.length && !b.updated.length) {
           // Filters are why nothing shows: one message with a way out, not the empty-library one.
-          const reset = () => { state.source = state.author = state.tag = state.days = ""; state.addedOffset = state.updatedOffset = 0; save(); void load(); input.focus(); };
-          body.append(emptyBox("Nothing matches these filters.", "Remove a filter to see more.", h("div", {}, h("button", { class: "primary", onClick: reset }, "Clear filters"))));
+          body.append(emptyBox("Nothing matches these filters.", "Remove a filter to see more.", h("div", {}, h("button", { class: "primary", onClick: resetFilters }, "Clear filters"))));
         } else {
           const capture = h("div", {}, h("button", { class: "primary", onClick: () => { location.hash = "#/capture"; } }, "＋ Capture"));
           body.append(h("div", { class: "jv-two" },
