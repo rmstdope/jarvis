@@ -45,15 +45,22 @@ local and disposable.
   `created_at`). Slidecraft keeps the frontmatter byte for byte; never remove or rewrite it.
 - Every deck lives in `presentations/<slug>/` (slugs are lowercase words joined by hyphens). Anything
   outside `presentations/` is never indexed and never shared by `jarvis sync`.
-- A **new** deck: write it outside the content repo (a scratch folder, or another Slidecraft vault),
-  then bring it in with `jarvis presentation share <file-or-dir> --slug <slug>`, which adds the
-  frontmatter. Never create one with Slidecraft's `create_presentation` tool, or at `<repo>/<name>/`
-  as Slidecraft's skill would: Slidecraft creates decks at its vault's top level, which here is the
-  content repo's root.
+- A **new** deck: write it in a folder outside the content repo (a scratch folder, or another
+  Slidecraft vault), then bring it in with `jarvis presentation share <folder> --slug <slug>`, which
+  adds the frontmatter. Share the deck's folder, not its `index.mdx` alone, whenever it has images or
+  other assets: sharing a file copies only that file. Never create one with Slidecraft's
+  `create_presentation` tool, or at `<repo>/<name>/` as Slidecraft's skill would: Slidecraft creates
+  decks at its vault's top level, which here is the content repo's root.
+- A deck that already landed at the root (made in Slidecraft's own app, say; `jarvis doctor` lists
+  these under `decks-outside`): `jarvis presentation share <repo>/<name> --slug <name>`, check that it
+  is in `presentations/<name>/`, then delete `<repo>/<name>/`.
 - A captured doc whose body is a deck becomes one with `jarvis presentation promote <id> --slug <slug>`.
 - **Changing** a deck already under `presentations/`: follow Slidecraft's `slidecraft-presentations`
-  skill (Slidecraft keeps it in the repo's `.claude/skills/` when the content repo is a writable vault),
-  addressing the deck as `presentations/<slug>`.
+  skill (Slidecraft keeps it in the repo's `.claude/skills/` when the content repo is a writable
+  vault) and edit `presentations/<slug>/index.mdx`. Slidecraft's MCP tools act on the vault their
+  server was started in, not on the folder you work in: call `get_content_dir` first, and use the
+  tools only when its `contentDir` is the content repo. Otherwise edit the file directly, or start the
+  MCP server with `--vault <id>`, the vault `jarvis doctor` names.
 - To present, the user opens the deck in the web UI and presses *Present in Slidecraft*. If that
   button is missing, run `jarvis doctor` and quote its `slidecraft` fix line.
 - `jarvis sync` afterwards, as for any other change.

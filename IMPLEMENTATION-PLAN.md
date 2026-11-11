@@ -1,6 +1,6 @@
 # J.A.R.V.I.S. — implementation plan
 
-Rebuild of the system described by the original "Team Brain" rewrite specification (no longer kept), renamed
+Rebuild of the system described by the original rewrite specification (no longer kept), renamed
 **jarvis** everywhere (package name, `~/.jarvis`, `JARVIS_*` env vars).
 One milestone per loop iteration; each milestone ends with `bun test` green and a commit.
 

@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { existsSync, mkdirSync, readFileSync, symlinkSync, utimesSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { sharePresentation, promotePresentation, listPresentations, discoverSlidecraft, slidecraftUrl, SLIDECRAFT_CANDIDATES, parsePresentation } from "../src/core/presentations.ts";
+import { type SlidecraftStatus, sharePresentation, promotePresentation, listPresentations, discoverSlidecraft, deckInSlidecraft, slidecraftGlob, SLIDECRAFT_CANDIDATES, parsePresentation } from "../src/core/presentations.ts";
 import { ingest } from "../src/core/ingest.ts";
 import { reindex } from "../src/core/reindex.ts";
 import { search } from "../src/core/search.ts";
@@ -88,29 +88,30 @@ describe("presentations", () => {
     const real = realpathSync(t.dir);
     const deckGlob = ["*/index.mdx", "presentations/*/index.mdx"];
     const configFile = "/home/u/.config/slidecraft/config.json";
-    // Fake Slidecraft instances keyed by base URL; every other address refuses.
-    type Fake = { health: unknown; vaults: unknown };
+    // Fake Slidecraft instances keyed by base URL, each answering after `delay` ms; every other address refuses.
+    type Fake = { health: unknown; vaults: unknown; delay?: number };
     const fakes = (servers: Record<string, Fake>) => (async (url: string) => {
       const base = Object.keys(servers).find((b) => url.startsWith(b));
       if (!base) throw new Error("refused");
       const f = servers[base];
+      if (f.delay) await Bun.sleep(f.delay);
       if (url.endsWith("/api/health")) return new Response(JSON.stringify(f.health));
       if (url.endsWith("/api/vaults")) return new Response(typeof f.vaults === "string" ? f.vaults : JSON.stringify(f.vaults));
       return new Response("not found", { status: 404 });
     }) as unknown as typeof fetch;
     const slidecraft = { app: "slidecraft", port: 6110 };
     const vaults = (list: unknown[]) => ({ vaults: list, defaultVault: "work", configFile });
+    const team = { id: "team", path: real, include: deckGlob, readOnly: false };
+    const teamReady = (base: string): SlidecraftStatus => ({ status: "ready", base, vault: "team", include: deckGlob, readOnly: false, configFile });
     const saved = process.env.JARVIS_SLIDECRAFT_URL;
     try {
       // Without JARVIS_SLIDECRAFT_URL it looks where Slidecraft runs: the dev server, then the release.
       delete process.env.JARVIS_SLIDECRAFT_URL;
       expect(SLIDECRAFT_CANDIDATES()).toEqual(["http://localhost:6100", "http://localhost:6110"]);
-      const team = { id: "team", path: real, include: deckGlob };
-      expect(await discoverSlidecraft(t.dir, fakes({ "http://localhost:6110": { health: slidecraft, vaults: vaults([team]) } })))
-        .toEqual({ status: "ready", base: "http://localhost:6110", vault: "team" });
-      // Both answering: the dev server wins, whichever replies first.
-      expect(await discoverSlidecraft(t.dir, fakes({ "http://localhost:6110": { health: slidecraft, vaults: vaults([team]) }, "http://localhost:6100": { health: slidecraft, vaults: vaults([team]) } })))
-        .toEqual({ status: "ready", base: "http://localhost:6100", vault: "team" });
+      expect(await discoverSlidecraft(t.dir, fakes({ "http://localhost:6110": { health: slidecraft, vaults: vaults([team]) } }))).toEqual(teamReady("http://localhost:6110"));
+      // Both answering: the dev server wins even when the release answers first.
+      expect(await discoverSlidecraft(t.dir, fakes({ "http://localhost:6110": { health: slidecraft, vaults: vaults([team]) }, "http://localhost:6100": { health: slidecraft, vaults: vaults([team]), delay: 30 } })))
+        .toEqual(teamReady("http://localhost:6100"));
       // The variable, when set, is the only place it looks.
       process.env.JARVIS_SLIDECRAFT_URL = "http://localhost:7000/";
       expect(SLIDECRAFT_CANDIDATES()).toEqual(["http://localhost:7000"]);
@@ -122,23 +123,39 @@ describe("presentations", () => {
       expect(await at(vaults([team]), { app: "deck-viewer" })).toEqual({ status: "not-running" });
       // Slidecraft runs, but the content repo is not one of its vaults.
       expect(await at(vaults([{ id: "work", path: "/elsewhere", include: deckGlob }]))).toEqual({ status: "no-vault", base: "http://localhost:6100" });
-      // Include globs are matched as globs, the way Slidecraft matches them.
-      for (const include of [["**/index.mdx"], ["presentations/**/index.mdx"], ["presentations/*/index.mdx"]])
-        expect(await at(vaults([{ id: "team", path: real, include }]))).toEqual({ status: "ready", base: "http://localhost:6100", vault: "team" });
-      // The repo is a vault, but its include misses the decks: a different fix, in Slidecraft's config file.
-      expect(await at(vaults([{ id: "team", path: real, include: ["*/index.mdx"] }])))
-        .toEqual({ status: "no-include", base: "http://localhost:6100", vault: "team", configFile });
-      // A read-only vault can still present.
-      expect(await at(vaults([{ id: "team", path: real, include: ["presentations/*/index.mdx"], readOnly: true }]))).toEqual({ status: "ready", base: "http://localhost:6100", vault: "team" });
+      // The vault is found by path whatever its include; whether a deck is listed is decided per deck.
+      expect(await at(vaults([{ id: "team", path: real, include: ["*/index.mdx"], readOnly: true }])))
+        .toEqual({ status: "ready", base: "http://localhost:6100", vault: "team", include: ["*/index.mdx"], readOnly: true, configFile } satisfies SlidecraftStatus);
       // Slidecraft answered but its vault list is unusable: it is running, the repo is just not found in it.
       expect(await at("not json")).toEqual({ status: "no-vault", base: "http://localhost:6100" });
-      expect(await at(vaults([{ id: "odd", path: 42, include: deckGlob }, team]))).toEqual({ status: "ready", base: "http://localhost:6100", vault: "team" });
+      expect(await at(vaults([{ id: "odd", path: 42, include: deckGlob }, team]))).toEqual(teamReady("http://localhost:6100"));
     } finally {
       process.env.JARVIS_SLIDECRAFT_URL = saved;
     }
+  });
 
-    expect(slidecraftUrl({ status: "ready", base: "http://localhost:6100", vault: "team decks" }, "q3-review")).toBe("http://localhost:6100/v/team%20decks/presentations/q3-review");
-    expect(slidecraftUrl({ status: "no-vault", base: "http://localhost:6100" }, "q3-review")).toBeUndefined();
+  test("include globs mean what they mean to Slidecraft: *, **, ? and nothing else", () => {
+    const m = (glob: string, path: string) => slidecraftGlob(glob).test(path);
+    expect(m("presentations/*/index.mdx", "presentations/q3-review/index.mdx")).toBe(true);
+    expect(m("presentations/*/index.mdx", "presentations/a/b/index.mdx")).toBe(false);
+    expect(m("*/index.mdx", "presentations/q3/index.mdx")).toBe(false);
+    expect(m("**/index.mdx", "presentations/q3/index.mdx")).toBe(true);
+    expect(m("**/index.mdx", "index.mdx")).toBe(true);
+    expect(m("presentations/**", "presentations/q3/index.mdx")).toBe(true);
+    expect(m("presentations/????/index.mdx", "presentations/q3ab/index.mdx")).toBe(true);
+    expect(m("presentations/????/index.mdx", "presentations/q3-review/index.mdx")).toBe(false);
+    // Braces, classes and dots are literal to Slidecraft, so they are literal here.
+    expect(m("{presentations,talks}/*/index.mdx", "presentations/q3/index.mdx")).toBe(false);
+    expect(m("[p]resentations/*/index.mdx", "presentations/q3/index.mdx")).toBe(false);
+    expect(m("presentations/*/index.mdx", "presentationsX/q3/indexXmdx")).toBe(false);
+  });
+
+  test("each deck is presentable on its own: the vault's include must list that deck", () => {
+    const ready = { status: "ready" as const, base: "http://localhost:6100", vault: "team decks", include: ["presentations/????/index.mdx"], readOnly: false };
+    expect(deckInSlidecraft(ready, "q3ab")).toEqual({ status: "ready", launchUrl: "http://localhost:6100/v/team%20decks/presentations/q3ab" });
+    expect(deckInSlidecraft(ready, "q3-review")).toEqual({ status: "no-include" });
+    expect(deckInSlidecraft({ status: "no-vault", base: "http://localhost:6100" }, "q3ab")).toEqual({ status: "no-vault" });
+    expect(deckInSlidecraft({ status: "not-running" }, "q3ab")).toEqual({ status: "not-running" });
   });
 
   test("presentation routes report Slidecraft's status per deck", async () => {

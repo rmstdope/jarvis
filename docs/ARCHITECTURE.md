@@ -241,23 +241,28 @@ searchable without Slidecraft; presenting and editing them is Slidecraft's.
 when it is set, and otherwise at `http://localhost:6100` (its dev server) and
 `http://localhost:6110` (the release binary and `bun start`), probing them together and preferring
 the first that answers in that order. Slidecraft identifies itself with `app: "slidecraft"` on
-`GET /api/health`, and `GET /api/vaults` lists its vaults. The content repo is presentable when one
-vault's real path is the repo's and one of its `include` globs matches
-`presentations/<slug>/index.mdx` (Slidecraft's default include does; globs are matched with the same
-`*`/`**` rules Slidecraft uses). The deck routes then carry
+`GET /api/health`, and `GET /api/vaults` lists its vaults; the repo's vault is the one whose real path
+is the repo's. A deck is presentable when one of that vault's `include` globs matches its
+`presentations/<slug>/index.mdx`, decided per deck by `deckInSlidecraft()` with a port of Slidecraft's
+own matcher (`*`, `**`, `?`; everything else literal). Slidecraft's default include lists every deck.
+The deck routes then carry
 `slidecraft: {status: "ready", launchUrl: "<base>/v/<vault>/presentations/<slug>"}`, and the UI shows
 *Present in Slidecraft*. Otherwise the status is `not-running`, `no-vault` (Slidecraft runs, the repo
-is not a vault), or `no-include` (it is, but its include misses the decks, which only Slidecraft's
-`config.json` can change), and `jarvis doctor`'s `slidecraft` check names the fix for each.
+is not a vault), or `no-include` (it is, but its include misses this deck, which only Slidecraft's
+`config.json` can change), and `jarvis doctor`'s `slidecraft` check names the fix for each, checking
+the include against every deck the repo has.
 
 Slidecraft creates new decks at a vault's top level (`<vault>/<name>/index.mdx`), which here would be
 the content repo's root, outside `presentations/`: such a deck is neither indexed nor shared. New decks
 therefore come in through `jarvis presentation share`, and Slidecraft edits the ones already under
-`presentations/` (`docs/AGENT-INSTRUCTIONS.md`).
+`presentations/` (`docs/AGENT-INSTRUCTIONS.md`). `jarvis doctor`'s `decks-outside` check lists any deck
+at the repo's top level, with the command that brings it in.
 
 A writable vault also gets files from Slidecraft in the content repo: a generated `AGENTS.md`, its
-`slidecraft-presentations` and `slidecraft-components` skills under `.claude/skills/`, and
-`.slidecraft/attachments/`; a user may add vault-level `themes/`, `components/` and `templates/`.
+`slidecraft-presentations` and `slidecraft-components` skills under `.claude/skills/`, `.slidecraft/`
+(the agent's attachments, and the image library when the repo is a release binary's default vault), and
+`exports/` (HTML and PDF exports); a user may add vault-level `themes/`, `components/` and
+`templates/`.
 `jarvis sync` commits only J.A.R.V.I.S.'s own paths, so none of these is shared with the team: a deck
 that uses a vault-level theme or component renders differently on a teammate's machine. Decks that
 should look the same everywhere use Slidecraft's built-in themes and components.

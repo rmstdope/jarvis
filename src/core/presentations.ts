@@ -210,19 +210,38 @@ registerProjectionHook(indexPresentations);
 
 // ---- Slidecraft discovery ----
 /**
- * Whether a deck can be presented in Slidecraft right now, and where. `no-vault`: Slidecraft runs but
- * the content repo is not one of its vaults; `no-include`: it is, but the vault's include globs miss
- * `presentations/<slug>/index.mdx` (fixed in Slidecraft's config file, which `configFile` names).
+ * What Slidecraft says about the content repo. `ready`: Slidecraft runs and one of its vaults is the
+ * repo (whether a given deck is listed there is `deckInSlidecraft`'s question, since it depends on the
+ * vault's include globs); `no-vault`: Slidecraft runs, but no vault is the repo.
  */
 export type SlidecraftStatus =
-  | { status: "ready"; base: string; vault: string }
+  | { status: "ready"; base: string; vault: string; include: string[]; readOnly: boolean; configFile?: string }
   | { status: "not-running" }
-  | { status: "no-vault"; base: string }
-  | { status: "no-include"; base: string; vault: string; configFile?: string };
+  | { status: "no-vault"; base: string };
+
+/** Whether one deck can be presented: `no-include` when the repo's vault does not list it. */
+export type DeckInSlidecraft = { status: "ready"; launchUrl: string } | { status: "not-running" | "no-vault" | "no-include" };
 
 /** The include glob a Slidecraft vault needs for the content repo's decks to be listed in it. */
 export const SLIDECRAFT_DECK_GLOB = "presentations/*/index.mdx";
-const SAMPLE_DECK = "presentations/deck/index.mdx";
+
+/**
+ * A vault include glob as Slidecraft reads it (its `globToRegex`): `**\/` is any number of leading
+ * directories, `**` anything, `*` anything within one segment, `?` one character, and every other
+ * character literal, braces and brackets included.
+ */
+export function slidecraftGlob(glob: string): RegExp {
+  let out = "";
+  for (let i = 0; i < glob.length; i++) {
+    const c = glob[i];
+    if (c === "*" && glob[i + 1] === "*" && glob[i + 2] === "/") { out += "(?:.*/)?"; i += 2; }
+    else if (c === "*" && glob[i + 1] === "*") { out += ".*"; i += 1; }
+    else if (c === "*") out += "[^/]*";
+    else if (c === "?") out += "[^/]";
+    else out += c.replace(/[.+^${}()|[\]\\]/g, "\\$&");
+  }
+  return new RegExp(`^${out}$`);
+}
 
 /**
  * Where to look for Slidecraft: `JARVIS_SLIDECRAFT_URL` alone when it is set, otherwise the dev
@@ -235,7 +254,7 @@ export const SLIDECRAFT_CANDIDATES = (): string[] => {
 
 const realOr = (p: string): string => { try { return realpathSync(p); } catch { return resolve(p); } };
 
-type VaultInfo = { id?: unknown; path?: unknown; include?: unknown };
+type VaultInfo = { id?: unknown; path?: unknown; include?: unknown; readOnly?: unknown };
 
 /** Ask one base URL; undefined when nothing that calls itself Slidecraft answers there. */
 async function probeSlidecraft(base: string, real: string, fetchImpl: typeof fetch): Promise<SlidecraftStatus | undefined> {
@@ -250,21 +269,18 @@ async function probeSlidecraft(base: string, real: string, fetchImpl: typeof fet
     if (v.ok) listed = (await v.json()) as typeof listed;
   } catch {}
   const vaults = (Array.isArray(listed.vaults) ? listed.vaults : []) as VaultInfo[];
-  const mine = vaults.filter((x) => typeof x.id === "string" && typeof x.path === "string" && realOr(x.path) === real);
-  // Slidecraft matches include globs against vault-relative paths; Bun.Glob has the same * and ** rules.
-  const listsDecks = (x: VaultInfo) => Array.isArray(x.include) && x.include.some((g) => typeof g === "string" && new Bun.Glob(g).match(SAMPLE_DECK));
-  const hit = mine.find(listsDecks);
-  if (hit) return { status: "ready", base, vault: hit.id as string };
-  if (mine.length) return { status: "no-include", base, vault: mine[0].id as string, configFile: typeof listed.configFile === "string" ? listed.configFile : undefined };
-  return { status: "no-vault", base };
+  const hit = vaults.find((x) => typeof x.id === "string" && typeof x.path === "string" && realOr(x.path) === real);
+  if (!hit) return { status: "no-vault", base };
+  const include = Array.isArray(hit.include) ? hit.include.filter((g): g is string => typeof g === "string") : [];
+  return { status: "ready", base, vault: hit.id as string, include, readOnly: hit.readOnly === true, ...(typeof listed.configFile === "string" ? { configFile: listed.configFile } : {}) };
 }
 
 /**
- * Find a running Slidecraft whose vaults include the content repo. Slidecraft answers
- * `GET /api/health` with `app: "slidecraft"` and `GET /api/vaults` with `{vaults:[{id, path, include}], configFile}`;
- * the content repo is presentable when one vault's real path is the repo's and its include globs
- * cover `presentations/<slug>/index.mdx`. Candidates are probed together, and the first in
- * `SLIDECRAFT_CANDIDATES` order that answers wins, so an absent Slidecraft costs one timeout, not two.
+ * Find a running Slidecraft and the vault that is the content repo. Slidecraft answers
+ * `GET /api/health` with `app: "slidecraft"` and `GET /api/vaults` with
+ * `{vaults:[{id, path, include, readOnly}], configFile}`; the vault is the one whose real path is the
+ * repo's. Candidates are probed together, and the first in `SLIDECRAFT_CANDIDATES` order that answers
+ * wins, so an absent Slidecraft costs one wait, not two.
  */
 export async function discoverSlidecraft(dataDir: string, fetchImpl: typeof fetch = fetch): Promise<SlidecraftStatus> {
   const real = realOr(dataDir);
@@ -272,7 +288,12 @@ export async function discoverSlidecraft(dataDir: string, fetchImpl: typeof fetc
   return answers.find((a) => a !== undefined) ?? { status: "not-running" };
 }
 
-/** The Slidecraft page that presents a deck: `<base>/v/<vault>/presentations/<slug>`. */
-export function slidecraftUrl(s: SlidecraftStatus, slug: string): string | undefined {
-  return s.status === "ready" ? `${s.base}/v/${encodeURIComponent(s.vault)}/presentations/${encodeURIComponent(slug)}` : undefined;
+/** Whether the repo's vault lists this deck, matching its include globs the way Slidecraft does. */
+export const vaultListsDeck = (include: string[], slug: string): boolean => include.some((g) => slidecraftGlob(g).test(`presentations/${slug}/index.mdx`));
+
+/** One deck's Slidecraft status, with the page that presents it: `<base>/v/<vault>/presentations/<slug>`. */
+export function deckInSlidecraft(s: SlidecraftStatus, slug: string): DeckInSlidecraft {
+  if (s.status !== "ready") return { status: s.status };
+  if (!vaultListsDeck(s.include, slug)) return { status: "no-include" };
+  return { status: "ready", launchUrl: `${s.base}/v/${encodeURIComponent(s.vault)}/presentations/${encodeURIComponent(slug)}` };
 }

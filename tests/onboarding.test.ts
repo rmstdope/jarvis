@@ -100,10 +100,17 @@ describe("doctor", () => {
     const data = join(t.dir, "content");
     await init({ yes: true, data, author: "tester", preset: "cpu-only-minimal", embedding: "ollama", log: () => {} });
     const which = (b: string) => `/bin/${b}`;
-    const check = async (status: SlidecraftStatus) => (await doctor({ which, port: 0, slidecraft: async () => status })).checks.find((c) => c.name === "slidecraft")!;
-    const ready = await check({ status: "ready", base: "http://localhost:6110", vault: "team" });
+    const deckGlob = ["*/index.mdx", "presentations/*/index.mdx"];
+    const configFile = "/home/u/.config/slidecraft/config.json";
+    const run = async (status: SlidecraftStatus) => Object.fromEntries((await doctor({ which, port: 0, slidecraft: async () => status })).checks.map((c) => [c.name, c]));
+    const check = async (status: SlidecraftStatus) => (await run(status)).slidecraft;
+    const vault = (include: string[], readOnly = false): SlidecraftStatus => ({ status: "ready", base: "http://localhost:6110", vault: "team", include, readOnly, configFile });
+
+    const ready = await check(vault(deckGlob));
     expect(ready).toMatchObject({ status: "ok", required: false });
     expect(ready.detail).toContain('vault "team"');
+    // A read-only vault presents, but Slidecraft cannot edit there or keep its skill in the repo.
+    expect((await check(vault(deckGlob, true))).detail).toContain("read-only");
     const down = await check({ status: "not-running" });
     expect(down.status).toBe("warn");
     expect(down.fix).toContain("JARVIS_SLIDECRAFT_URL");
@@ -111,19 +118,38 @@ describe("doctor", () => {
     expect(missing.status).toBe("warn");
     expect(missing.fix).toContain(data);
     expect(missing.fix).toContain("http://localhost:6110/settings");
-    expect(missing.fix).toContain("presentations/*/index.mdx");
-    // The repo is a vault already, but its include misses the decks: the settings page cannot change
-    // include, so the fix names the vault and Slidecraft's config file.
-    const narrow = await check({ status: "no-include", base: "http://localhost:6110", vault: "team", configFile: "/home/u/.config/slidecraft/config.json" });
-    expect(narrow.status).toBe("warn");
+
+    // The vault's include is checked against the decks the repo really has.
+    for (const slug of ["q3ab", "q3-review"]) {
+      mkdirSync(join(data, "presentations", slug), { recursive: true });
+      writeFileSync(join(data, "presentations", slug, "index.mdx"), `---\nid: 01Q3${slug.length === 4 ? "AAAAAAAAAAAAAAAAAAAAAA" : "BBBBBBBBBBBBBBBBBBBBBB"}\nsource: presentation\ntitle: ${slug}\nauthor: a\ncreated_at: 2026-01-01T00:00:00Z\n---\n<Presentation></Presentation>\n`);
+    }
+    expect((await check(vault(["presentations/????/index.mdx"]))).status).toBe("warn");
+    const narrow = await check(vault(["presentations/????/index.mdx"]));
+    expect(narrow.detail).toContain("q3-review");
+    expect(narrow.detail).not.toContain("q3ab,");
+    // The settings page cannot change include, so the fix names the vault and Slidecraft's config file.
     expect(narrow.fix).toContain('"team"');
-    expect(narrow.fix).toContain("/home/u/.config/slidecraft/config.json");
+    expect(narrow.fix).toContain(configFile);
     expect(narrow.fix).toContain("presentations/*/index.mdx");
     expect(narrow.fix).not.toContain("/settings");
+    expect((await check(vault(deckGlob))).status).toBe("ok");
+
+    // A deck Slidecraft created at the repo's top level is neither indexed nor shared: say how to bring it in.
+    expect((await run(vault(deckGlob)))["decks-outside"].status).toBe("ok");
+    mkdirSync(join(data, "kickoff"), { recursive: true });
+    writeFileSync(join(data, "kickoff", "index.mdx"), "<Presentation></Presentation>\n");
+    const outside = (await run({ status: "not-running" }))["decks-outside"];
+    expect(outside.status).toBe("warn");
+    expect(outside.detail).toContain("kickoff");
+    expect(outside.fix).toContain(`jarvis presentation share ${join(data, "kickoff")} --slug kickoff`);
+
     // Presenting is optional: a missing Slidecraft never makes doctor unhealthy, and --core-only skips it.
     expect((await doctor({ which, port: 0, slidecraft: async () => ({ status: "not-running" }) })).summary.healthy).toBe(true);
-    expect((await doctor({ coreOnly: true, which, slidecraft: async () => ({ status: "not-running" }) })).checks.some((c) => c.name === "slidecraft")).toBe(false);
-  });
+    const core = (await doctor({ coreOnly: true, which, slidecraft: async () => ({ status: "not-running" }) })).checks.map((c) => c.name);
+    expect(core).not.toContain("slidecraft");
+    expect(core).not.toContain("decks-outside");
+  }, 30000); // one init and a dozen full doctor runs
 });
 
 describe("init", () => {
