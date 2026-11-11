@@ -54,15 +54,16 @@ const kindOfDoc = (dataDir: string, id: string): ChangeItem["kind"] => {
 const item = (dataDir: string, id: string): ChangeItem => ({ id, title: titleOf(dataDir, id), kind: kindOfDoc(dataDir, id) });
 /**
  * The id an action's reference names: the reference itself when it is an id, else the one indexed
- * item of `source` (any source when omitted) whose title matches it, ignoring case. The agent sees
+ * item of `source` (any source when omitted) whose title matches it, ignoring the case of ASCII
+ * letters (SQLite NOCASE). Several matches are refused, listing each id so the agent can choose. The agent sees
  * ids only for what retrieval put in its context, so it names everything else by title (jv-zyp).
  * No match leaves the reference as it is, for the action to report as not found.
  */
 const resolveRef = (dataDir: string, ref: string, source?: string): string => {
   if (readDocFile(dataDir, ref)) return ref;
   const found = withDb(dataDir, (db) =>
-    db.query<{ id: string }, [string, string | null]>("SELECT id FROM documents WHERE title = ?1 COLLATE NOCASE AND (?2 IS NULL OR source = ?2)").all(ref.trim(), source ?? null));
-  if (found.length > 1) throw new Error(`more than one item is called "${ref}"; name it by id`);
+    db.query<{ id: string; title: string; created_at: string }, [string, string | null]>("SELECT id, title, created_at FROM documents WHERE title = ?1 COLLATE NOCASE AND (?2 IS NULL OR source = ?2) ORDER BY created_at DESC").all(ref.trim(), source ?? null));
+  if (found.length > 1) throw new Error(`more than one item is called "${ref}": ${found.map((f) => `${f.title} [${f.id}] from ${f.created_at.slice(0, 10)}`).join(", ")}; pass one of these ids, or ask the user which`);
   return found[0]?.id ?? ref;
 };
 const slugify = (s: string): string => s.toLowerCase().normalize("NFKD").replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 48) || "deck";
