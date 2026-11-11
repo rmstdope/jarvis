@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { Window } from "happy-dom";
-import { h, append, clear, toast, modal, metaLine } from "../web/src/ui.ts";
+import { h, append, clear, toast, modal, entryLine, highlightSnippet } from "../web/src/ui.ts";
 
 const win = new Window();
 const saved: Record<string, unknown> = {};
@@ -48,7 +48,9 @@ describe("web ui helpers under happy-dom", () => {
     expect(ok).toBe(1);
     expect(document.querySelector(".modal-bg")).toBeNull();
   });
-  test("metaLine omits missing parts", () => {
-    expect(metaLine({ source: "note", created_at: "2026-02-03T00:00:00Z", author: "a" })).toBe("note · added 2026-02-03 by a");
+  test("entryLine joins kind, who and when and leaves out what is missing", () => {
+    expect(entryLine("note", "mia", "2026-02-03")).toBe("note · mia · 2026-02-03");
+    expect(entryLine("note", undefined, "2026-02-03")).toBe("note · 2026-02-03");
+    expect(highlightSnippet("a [b] <i> & c")).toBe("a <mark>b</mark> &lt;i> &amp; c");
   });
 });
