@@ -38,6 +38,20 @@ local and disposable.
 - Handle `open` comments (`jarvis briefing show <id>`), then mark them handled in the comments sidecar.
 - Publish only approved briefings: `jarvis briefing approve <id>` → `jarvis briefing publish <id>`.
 
+## Presentations
+
+- Decks are Slidecraft decks: `presentations/<slug>/index.mdx`, a `<Presentation>` body, and a YAML
+  frontmatter block that J.A.R.V.I.S. owns (`id`, `source: presentation`, `title`, `author`,
+  `created_at`). Slidecraft keeps the frontmatter byte for byte; never remove or rewrite it.
+- Bring a deck in with `jarvis presentation share <file-or-dir> --slug <slug>` (adds the frontmatter),
+  or turn a captured doc whose body is a deck into one with `jarvis presentation promote <id> --slug <slug>`.
+- Write and change decks with Slidecraft: when the content repo is a writable Slidecraft vault,
+  Slidecraft keeps its `slidecraft-presentations` skill in the repo's `.claude/skills/`; follow it.
+  Slugs are lowercase words joined by hyphens.
+- To present, the user opens the deck in the web UI and presses *Present in Slidecraft*. If that
+  button is missing, run `jarvis doctor` and quote its `slidecraft` fix line.
+- `jarvis sync` afterwards, as for any other change.
+
 ## Sharing
 
 `jarvis sync` commits authored files, pulls with merge (never rebase), processes, commits enrichment,

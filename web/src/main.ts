@@ -186,7 +186,7 @@ async function viewPresentations() {
 }
 async function viewPresentation(id: string) {
   const p = await api.presentation(id);
-  const present = p.viewer.status === "ready" && p.viewer.launchUrl ? h("a", { href: p.viewer.launchUrl, target: inApp() ? "_self" : "_blank", rel: "noopener" }, h("button", { class: "primary" }, "Present in deck viewer")) : h("span", { class: "muted small" }, p.viewer.status === "not-running" ? "Deck viewer is not running (set JARVIS_DECK_VIEWER_URL)" : p.viewer.status === "content-not-mounted" ? "Content repo is not mounted in the deck viewer" : p.viewer.status);
+  const present = p.slidecraft.status === "ready" && p.slidecraft.launchUrl ? h("a", { href: p.slidecraft.launchUrl, target: inApp() ? "_self" : "_blank", rel: "noopener" }, h("button", { class: "primary" }, "Present in Slidecraft")) : h("span", { class: "muted small" }, p.slidecraft.status === "not-running" ? "Start Slidecraft to present this deck (jarvis doctor says how)." : "Add this content repo as a Slidecraft vault to present this deck (jarvis doctor says how).");
   main.append(h("h1", {}, p.title), h("div", { class: "muted small" }, `${p.slug} · added ${fmtDate(p.created_at)} by ${p.author} `, h("span", { class: `pill ${p.indexed ? "green" : ""}` }, p.indexed ? "indexed" : "not indexed")), h("p", {}, present), h("h3", {}, "MDX source"), h("pre", { class: "body-md" }, h("code", {}, p.body)));
 }
 

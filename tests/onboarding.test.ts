@@ -7,6 +7,7 @@ import { doctor, checkSqliteVec, formatDoctor } from "../src/core/doctor.ts";
 import { init } from "../src/core/init.ts";
 import { loadConfig, resetConfigCache } from "../src/core/config.ts";
 import { ingest } from "../src/core/ingest.ts";
+import type { SlidecraftStatus } from "../src/core/presentations.ts";
 import { clearEmbedder, tmpDataDir, useFakeEmbedder } from "./helpers.ts";
 
 let t: ReturnType<typeof tmpDataDir>;
@@ -94,6 +95,26 @@ describe("doctor", () => {
     expect(n2["yt-dlp"].status).toBe("warn");
     expect(n2.whisper.status).toBe("warn");
     expect(r2.summary.healthy).toBe(true);
+  });
+  test("doctor says whether decks can be presented in Slidecraft, with the exact fix", async () => {
+    const data = join(t.dir, "content");
+    await init({ yes: true, data, author: "tester", preset: "cpu-only-minimal", embedding: "ollama", log: () => {} });
+    const which = (b: string) => `/bin/${b}`;
+    const check = async (status: SlidecraftStatus) => (await doctor({ which, port: 0, slidecraft: async () => status })).checks.find((c) => c.name === "slidecraft")!;
+    const ready = await check({ status: "ready", base: "http://localhost:6110", vault: "team" });
+    expect(ready).toMatchObject({ status: "ok", required: false });
+    expect(ready.detail).toContain('vault "team"');
+    const down = await check({ status: "not-running" });
+    expect(down.status).toBe("warn");
+    expect(down.fix).toContain("JARVIS_SLIDECRAFT_URL");
+    const missing = await check({ status: "no-vault", base: "http://localhost:6110" });
+    expect(missing.status).toBe("warn");
+    expect(missing.fix).toContain(data);
+    expect(missing.fix).toContain("http://localhost:6110/settings");
+    expect(missing.fix).toContain("presentations/*/index.mdx");
+    // Presenting is optional: a missing Slidecraft never makes doctor unhealthy, and --core-only skips it.
+    expect((await doctor({ which, port: 0, slidecraft: async () => ({ status: "not-running" }) })).summary.healthy).toBe(true);
+    expect((await doctor({ coreOnly: true, which, slidecraft: async () => ({ status: "not-running" }) })).checks.some((c) => c.name === "slidecraft")).toBe(false);
   });
 });
 

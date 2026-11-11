@@ -12,6 +12,7 @@ import { modelsPath } from "../providers/models.ts";
 import { getRouter } from "../providers/index.ts";
 import { unresolvedKinds } from "../providers/router.ts";
 import { detectWhisperBackend } from "../producers/whisper.ts";
+import { discoverSlidecraft, SLIDECRAFT_DECK_GLOB, type SlidecraftStatus } from "./presentations.ts";
 
 export type CheckStatus = "ok" | "warn" | "fail" | "skip";
 export interface Check {
@@ -31,6 +32,8 @@ export interface DoctorOpts {
   dataDir?: string;
   which?: (b: string) => string | null;
   embedProbe?: () => Promise<number>; // returns dims
+  /** Where decks can be presented; defaults to probing for a running Slidecraft. */
+  slidecraft?: (dataDir: string) => Promise<SlidecraftStatus>;
 }
 
 const ok = (name: string, required: boolean, detail: string): Check => ({ name, required, status: "ok", detail });
@@ -122,6 +125,7 @@ export async function doctor(opts: DoctorOpts = {}): Promise<DoctorReport> {
     checks.push(which("yt-dlp") ? ok("yt-dlp", false, "on PATH") : warn("yt-dlp", "yt-dlp not on PATH (YouTube capture unavailable)", process.platform === "darwin" ? "brew install yt-dlp" : "pipx install yt-dlp"));
     const wb = detectWhisperBackend(undefined, which);
     checks.push(wb ? ok("whisper", false, wb) : warn("whisper", "no Whisper backend (audio transcription unavailable; Teams .vtt and pasted transcripts still work)", process.platform === "darwin" ? "pipx install mlx-whisper" : "pipx install faster-whisper"));
+    if (dataDir && existsSync(dataDir)) checks.push(slidecraftCheck(await (opts.slidecraft ?? discoverSlidecraft)(dataDir), dataDir));
     const inbox = process.env.JARVIS_INBOX ?? loadConfig().inboxDir;
     if (inbox && dataDir && inbox.startsWith(dataDir)) checks.push(warn("inbox", `inbox ${inbox} is inside the content repo`, "jarvis config set-inbox <path outside the repo>"));
     else checks.push(ok("inbox", false, inbox ?? "~/.jarvis/inbox (default)"));
@@ -140,4 +144,12 @@ export function formatDoctor(r: DoctorReport): string {
   const lines = r.checks.map((c) => `${icon[c.status]} ${c.name.padEnd(18)} ${c.detail}${c.fix && c.status !== "ok" ? `\n    fix: ${c.fix}` : ""}`);
   lines.push("", `${r.summary.ok} ok, ${r.summary.warn} warning(s), ${r.summary.fail} failure(s)${r.summary.healthy ? "" : " — fix the failures above"}`);
   return lines.join("\n");
+}
+
+/** Presenting decks is optional, so every Slidecraft state short of ready is a warning with its exact fix. */
+function slidecraftCheck(s: SlidecraftStatus, dataDir: string): Check {
+  if (s.status === "ready") return ok("slidecraft", false, `decks present in Slidecraft at ${s.base}, vault "${s.vault}"`);
+  if (s.status === "not-running")
+    return warn("slidecraft", "Slidecraft is not running (decks are listed and searchable, but cannot be presented)", "start Slidecraft (`slidecraft` from a release, or `bun run dev` in its checkout)   or   set JARVIS_SLIDECRAFT_URL to where it runs");
+  return warn("slidecraft", `Slidecraft at ${s.base} has no vault for the content repo that includes ${SLIDECRAFT_DECK_GLOB}`, `add ${dataDir} as a vault on ${s.base}/settings (its default include covers ${SLIDECRAFT_DECK_GLOB})`);
 }

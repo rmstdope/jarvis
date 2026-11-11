@@ -230,15 +230,26 @@ All producers end in the same `ingest()` contract (`src/producers/`):
 | Inbox scan | the above | a gitignored drop zone with per-folder locks, atomic state and staged resume |
 | Browser extension | Readability | page-shaped payload mapped by the server |
 
-### 2.9 Optional deck viewer
+### 2.9 Presenting decks in Slidecraft
 
-Presentations are plain MDX bundles (`presentations/<slug>/index.mdx`, body containing a
-`<Presentation` component) and are indexed and searchable on their own. Presenting them is delegated
-to whatever local viewer app the team uses: set `JARVIS_DECK_VIEWER_URL` to its base URL. The
-viewer must answer `GET /api/health` with JSON whose `app` field equals `JARVIS_DECK_VIEWER_APP`
-(default `deck-viewer`) and `GET /api/contents` with `{sources:[{id, path}]}` listing its mounted
-directories; when the content repo is among them the UI shows a "Present in deck viewer" link. Nothing
-is hardcoded to a particular product or port.
+Presentations are [Slidecraft](https://github.com/rmstdope/slidecraft) decks: MDX bundles at
+`presentations/<slug>/index.mdx` whose body contains a `<Presentation` component, with a YAML
+frontmatter block that J.A.R.V.I.S. owns and Slidecraft keeps byte for byte. They are indexed and
+searchable without Slidecraft; presenting and editing them is Slidecraft's.
+
+`discoverSlidecraft()` in `src/core/presentations.ts` looks for Slidecraft at `JARVIS_SLIDECRAFT_URL`
+when it is set, and otherwise at `http://localhost:6100` (its dev server) and then
+`http://localhost:6110` (the release binary and `bun start`). Slidecraft identifies itself with
+`app: "slidecraft"` on `GET /api/health`, and `GET /api/vaults` lists its vaults. The content repo is
+presentable when one vault's real path is the repo's and its `include` globs cover
+`presentations/*/index.mdx` (Slidecraft's default include does). The deck routes then carry
+`slidecraft: {status: "ready", launchUrl: "<base>/v/<vault>/presentations/<slug>"}`, and the UI shows
+*Present in Slidecraft*; otherwise the status is `not-running` or `no-vault`, and `jarvis doctor`'s
+`slidecraft` check names the fix.
+
+A writable vault gets Slidecraft's generated `AGENTS.md` and its `slidecraft-presentations` skill
+under `.claude/skills/` in the content repo. `jarvis sync` commits only J.A.R.V.I.S.'s own paths, so
+neither is shared with the team.
 
 ### 2.10 Model ids are configuration
 

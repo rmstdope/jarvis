@@ -208,34 +208,47 @@ export function indexPresentations(db: Database, dataDir: string, result: Reinde
 }
 registerProjectionHook(indexPresentations);
 
-// ---- deck-viewer discovery ----
-export type DeckViewerStatus = { status: "ready"; base: string; sourceId: string } | { status: "not-running" } | { status: "content-not-mounted"; base: string };
-/**
- * Optional deck-viewer integration. Any local app that serves the content repo's presentations can be
- * used: set JARVIS_DECK_VIEWER_URL to its base URL. It must answer `GET /api/health` with JSON
- * whose `app` field equals JARVIS_DECK_VIEWER_APP (default "deck-viewer") and `GET /api/contents`
- * with `{sources:[{id, path}]}` listing the mounted directories.
- */
-export const DECK_VIEWER_CANDIDATES = () => [process.env.JARVIS_DECK_VIEWER_URL].filter((x): x is string => !!x);
-export const DECK_VIEWER_APP = () => process.env.JARVIS_DECK_VIEWER_APP ?? "deck-viewer";
+// ---- Slidecraft discovery ----
+/** Whether a deck can be presented in Slidecraft right now, and where. */
+export type SlidecraftStatus = { status: "ready"; base: string; vault: string } | { status: "not-running" } | { status: "no-vault"; base: string };
 
-export async function discoverDeckViewer(dataDir: string, fetchImpl: typeof fetch = fetch): Promise<DeckViewerStatus> {
-  let real: string;
-  try { real = realpathSync(dataDir); } catch { real = resolve(dataDir); }
-  for (const base of DECK_VIEWER_CANDIDATES()) {
+/** The include glob a Slidecraft vault needs for the content repo's decks to be listed in it. */
+export const SLIDECRAFT_DECK_GLOB = "presentations/*/index.mdx";
+
+/**
+ * Where to look for Slidecraft: `JARVIS_SLIDECRAFT_URL` alone when it is set, otherwise the dev
+ * server (6100) and then the release binary or `bun start` (6110).
+ */
+export const SLIDECRAFT_CANDIDATES = (): string[] => {
+  const explicit = process.env.JARVIS_SLIDECRAFT_URL?.trim();
+  return explicit ? [explicit.replace(/\/+$/, "")] : ["http://localhost:6100", "http://localhost:6110"];
+};
+
+const realOr = (p: string): string => { try { return realpathSync(p); } catch { return resolve(p); } };
+
+/**
+ * Find a running Slidecraft whose vaults include the content repo. Slidecraft answers
+ * `GET /api/health` with `app: "slidecraft"` and `GET /api/vaults` with `{vaults:[{id, path, include}]}`;
+ * the content repo is presentable when one vault's real path is the repo's and its include globs
+ * cover `presentations/<slug>/index.mdx`.
+ */
+export async function discoverSlidecraft(dataDir: string, fetchImpl: typeof fetch = fetch): Promise<SlidecraftStatus> {
+  const real = realOr(dataDir);
+  for (const base of SLIDECRAFT_CANDIDATES()) {
     try {
       const h = await fetchImpl(`${base}/api/health`, { signal: AbortSignal.timeout(PROBE_TIMEOUT_MS) });
       if (!h.ok) continue;
-      const hj = (await h.json()) as { app?: string };
-      if (hj.app !== DECK_VIEWER_APP()) continue;
-      const c = await fetchImpl(`${base}/api/contents`, { signal: AbortSignal.timeout(PROBE_TIMEOUT_MS) });
-      const cj = c.ok ? ((await c.json()) as { sources?: { id: string; path: string }[] }) : { sources: [] };
-      const hit = (cj.sources ?? []).find((s) => { try { return realpathSync(s.path) === real; } catch { return resolve(s.path) === real; } });
-      return hit ? { status: "ready", base, sourceId: hit.id } : { status: "content-not-mounted", base };
+      if (((await h.json()) as { app?: string }).app !== "slidecraft") continue;
+      const v = await fetchImpl(`${base}/api/vaults`, { signal: AbortSignal.timeout(PROBE_TIMEOUT_MS) });
+      const vj = v.ok ? ((await v.json()) as { vaults?: { id: string; path: string; include?: string[] }[] }) : {};
+      const hit = (vj.vaults ?? []).find((x) => realOr(x.path) === real && (x.include ?? []).includes(SLIDECRAFT_DECK_GLOB));
+      return hit ? { status: "ready", base, vault: hit.id } : { status: "no-vault", base };
     } catch {}
   }
   return { status: "not-running" };
 }
-export function launchUrl(l: DeckViewerStatus, slug: string): string | undefined {
-  return l.status === "ready" ? `${l.base}/${slug}?source=${encodeURIComponent(l.sourceId)}&path=${encodeURIComponent(`presentations/${slug}`)}` : undefined;
+
+/** The Slidecraft page that presents a deck: `<base>/v/<vault>/presentations/<slug>`. */
+export function slidecraftUrl(s: SlidecraftStatus, slug: string): string | undefined {
+  return s.status === "ready" ? `${s.base}/v/${encodeURIComponent(s.vault)}/presentations/${encodeURIComponent(slug)}` : undefined;
 }
