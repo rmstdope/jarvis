@@ -41,7 +41,11 @@ export const TRANSCRIPT_NOTICE = "I saved the transcript, but your team doesn't 
 /** A file sent with a message. */
 export interface ChatFile { name: string; bytes: Uint8Array }
 /** The action block format and the actions the agent may write, as the prompt shows them. */
-export const ACTION_REFERENCE = TOOLS.map((t) => `${t.name} ${JSON.stringify(Object.fromEntries(Object.keys(t.properties).map((k) => [k, t.required.includes(k) ? "…" : "…?"])))} — ${t.description}`).join("\n");
+const sample = (p: unknown): unknown => {
+  const d = p as { type?: string; enum?: string[] };
+  return d.enum ? d.enum.join("|") : d.type === "array" ? ["…"] : d.type === "boolean" ? true : "…";
+};
+export const ACTION_REFERENCE = TOOLS.map((t) => `${t.name} ${JSON.stringify(Object.fromEntries(Object.entries(t.properties).map(([k, p]) => [t.required.includes(k) ? k : `${k}?`, sample(p)])))} — ${t.description}`).join("\n");
 /** The rules every conversation starts with. */
 export const CHAT_RULES = `You can act on the knowledge base by writing action blocks in your answer: capture notes, links and attached files; create and update tasks; create initiatives and file tasks under them; link items; draft briefings and presentations. A block is a fenced code block whose info string is jarvis-action, holding one JSON object {"tool": …, "args": {…}, "as": "name"} (as is optional):
 
@@ -52,7 +56,7 @@ export const CHAT_RULES = `You can act on the knowledge base by writing action b
 Later blocks of the same answer may pass "$t1" wherever an id is needed (for example link or initiative). Ids of existing items are in square brackets in the context. Actions:
 ${ACTION_REFERENCE}
 
-When the user asks for a change, write its block straight away without asking first; every change can be undone. Write one block per change. The blocks are removed from what the person reads and a card under your answer shows what was done or failed, so do not claim a result and do not repeat the block's content; say in words what you are doing, by title. Never publish or approve anything: a briefing or presentation you make is a draft, and you say so. Capture an attached file only when the user asks. To open a document for the user in a tab beside the chat, write <<open:ID>> with its id in your answer.`;
+When the user asks for a change, write its block straight away without asking first; every change can be undone. Write one block per change. After the blocks run you are told what happened; if something failed, say so plainly. The blocks are removed from what the person reads and a card under your answer shows what was done or failed, so do not claim a result and do not repeat the block's content; say in words what you are doing, by title. Never publish or approve anything: a briefing or presentation you make is a draft, and you say so. Capture an attached file only when the user asks. To open a document for the user in a tab beside the chat, write <<open:ID>> with its id in your answer.`;
 
 export interface ChatSession {
   id: string;
@@ -67,6 +71,8 @@ export interface ChatSession {
   createdAt: number;
   lastActive: number;
   turns: number;
+  /** What the agent's actions did in its previous answer (titles and ids), told to it with the next question. */
+  lastResults: string[];
   busy: boolean;
   sources: { docId: string; title: string; source: string }[];
 }
@@ -154,7 +160,7 @@ export class ChatService {
     const id = ulid();
     const acpSessionId = await agent.newSession(this.dataDir);
     new ChangeLog(this.dataDir, conversationId ?? id); // validates the id
-    const s: ChatSession = { id, conversationId: conversationId ?? id, turn: "", attachments: {}, scope: { type: scope.type, ids }, acpSessionId, createdAt: this.now(), lastActive: this.now(), turns: 0, busy: false, sources };
+    const s: ChatSession = { id, conversationId: conversationId ?? id, turn: "", attachments: {}, scope: { type: scope.type, ids }, acpSessionId, createdAt: this.now(), lastActive: this.now(), turns: 0, lastResults: [], busy: false, sources };
     this.sessions.set(s.id, s);
     return s;
   }
@@ -179,7 +185,8 @@ export class ChatService {
     });
     const attach = lines.length ? `\n\nAttached files (capture one only if asked; pass its name as attachment):\n${lines.join("\n")}` : "";
     const question = s.turns === 0 && !r.prompt.includes("User: ") ? `User: ${r.prompt}` : r.prompt;
-    return { prompt: `${s.turns === 0 ? `${CHAT_RULES}\n\n` : ""}${question}${attach}`, sources: r.sources };
+    const prev = s.lastResults.length ? `Results of your actions in your previous answer:\n${s.lastResults.map((r) => `- ${r}`).join("\n")}\n\n` : "";
+    return { prompt: `${s.turns === 0 ? `${CHAT_RULES}\n\n` : ""}${prev}${question}${attach}`, sources: r.sources };
   }
   /** Grounded body on the first turn for item/briefing; retrieval snippets every turn for jarvis. */
   private buildQuestion(s: ChatSession, message: string): { prompt: string; sources: ChatSession["sources"] } {
@@ -234,8 +241,9 @@ export class ChatService {
     }
     s.busy = true;
     s.lastActive = this.now();
-    s.turn = ulid();
+    const turn = (s.turn = ulid());
     s.attachments = {};
+    const attachments = s.attachments;
     const names: ChatFile[] = [];
     if (files.length) {
       const dir = join(this.dataDir, ".index", "chat", "uploads", s.turn);
@@ -258,12 +266,16 @@ export class ChatService {
     const filter = new OpenFilter();
     const aliases: Record<string, string> = {};
     let chain: Promise<void> = Promise.resolve();
+    const results: string[] = [];
+    const failed: string[] = [];
     /** Run the agent's actions in order, each recorded and pushed as a `change` event. */
     const act = (list: { tool: string; args: Record<string, unknown>; as?: string }[]) => {
       for (const a of list) {
         chain = chain.then(async () => {
           try {
-            const r = await runTool(new ChangeLog(this.dataDir, s.conversationId), s.turn, a.tool, resolveRefs(a.args, aliases), { dataDir: this.dataDir, attachments: s.attachments });
+            const r = await runTool(new ChangeLog(this.dataDir, s.conversationId), turn, a.tool, resolveRefs(a.args, aliases), { dataDir: this.dataDir, attachments });
+            results.push(r.text);
+            if (r.change && !r.change.ok) failed.push(r.text);
             if (r.change) {
               push({ type: "change", change: r.change });
               if (a.as && r.change.ok && r.change.items[0]) aliases[a.as] = r.change.items[0].id;
@@ -280,7 +292,8 @@ export class ChatService {
     const finishText = () => {
       const r = actions.end();
       act(r.actions);
-      const rest = filter.end() + r.text;
+      pushText(filter.push(r.text));
+      const rest = filter.end();
       if (rest) push({ type: "message", text: rest });
     };
     const opened = new Set<string>();
@@ -308,7 +321,14 @@ export class ChatService {
       for (const src of sources) push({ type: "source", ...src });
       const agent = await this.agent();
       let finished = false;
-      const done = agent.prompt(s.acpSessionId, prompt).then(async (r) => { finishText(); await chain; push({ type: "done", stopReason: r?.stopReason }); finished = true; }, async (e: Error) => { finishText(); await chain; push({ type: "error", error: e.message }); finished = true; });
+      const done = agent.prompt(s.acpSessionId, prompt).then(async (r) => {
+        finishText();
+        await chain;
+        if (failed.length) { // the agent says so in its answer: one more prompt, with what failed
+          await agent.prompt(s.acpSessionId, `Some of your actions failed:\n${failed.map((f) => `- ${f}`).join("\n")}\nTell the user plainly, in one or two sentences, what did not work and why. Do not write action blocks.`).catch(() => null);
+          finishText();
+        }
+        push({ type: "done", stopReason: r?.stopReason }); finished = true; }, async (e: Error) => { finishText(); await chain; push({ type: "error", error: e.message }); finished = true; });
       while (!finished || queue.length) {
         if (queue.length) {
           yield queue.shift()!;
@@ -321,7 +341,8 @@ export class ChatService {
       s.turns++;
     } finally {
       s.busy = false;
-      if (files.length) rmSync(join(this.dataDir, ".index", "chat", "uploads", s.turn), { recursive: true, force: true }); // captured files were copied into the content repo
+      if (files.length) rmSync(join(this.dataDir, ".index", "chat", "uploads", turn), { recursive: true, force: true }); // captured files were copied into the content repo
+      s.lastResults = results;
       s.attachments = {};
       s.lastActive = this.now();
       this.updateHandlers.delete(s.acpSessionId);

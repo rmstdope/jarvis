@@ -43,7 +43,7 @@ export class ActionFilter {
     const parts = (this.held + chunk).split("\n");
     const tail = parts.pop()!;
     for (const l of parts) this.line(l, out);
-    const hold = this.block !== null || tail.startsWith("```") || tail.startsWith("Info: ") || "Info: ".startsWith(tail) && tail !== "";
+    const hold = this.block !== null || (tail !== "" && /^\s*(`|$)/.test(tail)) || tail.startsWith("Info: ") || (tail !== "" && "Info: ".startsWith(tail));
     if (hold) this.held = tail;
     else { out.text += tail; this.held = ""; }
     return out;

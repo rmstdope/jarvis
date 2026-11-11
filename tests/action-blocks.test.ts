@@ -20,13 +20,19 @@ describe("ActionFilter (jv-oya.4)", () => {
   });
   test("a block split across chunks is held until its closing fence", () => {
     const full = "Hi\n" + block({ tool: "jarvis_link", args: { src: "a", dst: "b" } }) + "Bye";
-    for (let n = 1; n < full.length; n += 7) {
+    for (let n = 1; n < full.length; n++) {
       const r = run([full.slice(0, n), full.slice(n)]);
       expect(r.text).toBe("Hi\nBye");
       expect(r.actions).toHaveLength(1);
     }
     const f = new ActionFilter();
     expect(f.push("```jarvis-act").text).toBe("");
+  });
+  test("a fence split inside its backticks, or indented, is still a fence (token-sized chunks)", () => {
+    const full = "Hi\n  " + block({ tool: "jarvis_link", args: {} }).slice(0, -1) + "\nBye";
+    const r = run(full.split(/(?<=[`\n])|(?=[`])/));
+    expect(r.text).toBe("Hi\nBye");
+    expect(r.actions).toHaveLength(1);
   });
   test("Info lines are dropped, even split across chunks", () => {
     const r = run(["Info: Disabled tools: bash\nInfo: Unknown tool", " name\nHello"]);

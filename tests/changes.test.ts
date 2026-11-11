@@ -58,14 +58,20 @@ describe("change log (jv-oya.4)", () => {
     await log.undo(l.id);
     expect(existsSync(join(t.dir, "edges", `${a.items[0].id}.jsonl`))).toBe(false);
   });
-  test("linking an initiative to its own task is a no-op with no change row", async () => {
+  test("a status that is neither done nor open is a failed row, not a reopen", async () => {
+    const id = (await run("jarvis_create_task", { title: "S" })).change.items[0].id;
+    const r = await runAny("jarvis_set_task_status", { task: id, status: "complete" });
+    expect(r.change).toMatchObject({ ok: false, error: 'status must be "done" or "open", not "complete"' });
+    expect(readDocFile(t.dir, id)!.frontmatter.task!.status).toBe("open");
+  });
+  test("linking an initiative to its own task is a failed row, nothing is written", async () => {
     const ini = (await run("jarvis_create_initiative", { title: "Move billing", goal: "g" })).change;
     const task = (await run("jarvis_create_task", { title: "Export invoices", initiative: ini.items[0].id })).change;
     const before = log.list().length;
     const { change, text } = await runAny("jarvis_link", { src: ini.items[0].id, dst: task.items[0].id });
-    expect(change).toBeNull();
-    expect(text).toBe("Export invoices is already a task in Move billing; nothing was linked. Tell the user so.");
-    expect(log.list().length).toBe(before);
+    expect(change).toMatchObject({ ok: false, error: "Export invoices is already a task in Move billing" });
+    expect(text).toContain("Export invoices is already a task in Move billing");
+    expect(log.list().length).toBe(before + 1);
     expect(existsSync(join(t.dir, "edges", `${ini.items[0].id}.jsonl`))).toBe(false);
   });
   test("a link to a missing item fails with the reason and has no undo", async () => {

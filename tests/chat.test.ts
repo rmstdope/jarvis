@@ -323,6 +323,15 @@ describe("the agent acts (jv-oya.4)", () => {
     const { readDocFile } = await import("../src/core/docs.ts");
     expect(readDocFile(t.dir, changes[1].items[0].id)?.frontmatter.task?.initiative).toBe(changes[0].items[0].id);
   });
+  test("a failure is told to the agent in the same turn, and the next turn is told every id it made", async () => {
+    const sid = await open("conv11");
+    const first = await ndjson(await call("POST", `/api/chat/sessions/${sid}/messages`, { message: 'ACT jarvis_create_task {"title":"Seed"} AS s ACT jarvis_set_task_status {"task":"missing","status":"done"}' }));
+    expect(first.filter((e) => e.type === "message").map((e) => e.text).join("")).toContain("could not update task"); // the follow-up prompt (the fake echoes it)
+    const id = first.find((e) => e.type === "change").change.items[0].id;
+    const second = await ndjson(await call("POST", `/api/chat/sessions/${sid}/messages`, { message: "now mark that done" }));
+    const said = second.filter((e) => e.type === "message").map((e) => e.text).join("");
+    expect(said).toContain(`Seed [${id}]`);
+  });
   test("an action naming an unknown tool is dropped without a row", async () => {
     const sid = await open("conv9");
     const evs = await ndjson(await call("POST", `/api/chat/sessions/${sid}/messages`, { message: 'ACT jarvis_format_disk {} ACT jarvis_capture_note {"text":"kept","title":"Kept"}' }));

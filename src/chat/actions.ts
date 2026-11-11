@@ -39,7 +39,7 @@ export interface ActionContext {
   /** Files attached to this message: name → absolute path. */
   attachments: Record<string, string>;
 }
-interface Done { kind: ChangeKind; items: ChangeItem[]; ops: Op[]; detail?: Change["detail"]; draft?: Change["draft"]; undoable?: boolean; noop?: string }
+interface Done { kind: ChangeKind; items: ChangeItem[]; ops: Op[]; detail?: Change["detail"]; draft?: Change["draft"]; undoable?: boolean }
 const str = (a: Record<string, unknown>, k: string): string | undefined => (typeof a[k] === "string" && (a[k] as string).trim() ? (a[k] as string).trim() : undefined);
 const need = (a: Record<string, unknown>, k: string): string => str(a, k) ?? (() => { throw new Error(`${k} is required`); })();
 const ids = (v: unknown): string[] => (Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : []);
@@ -93,7 +93,7 @@ async function perform(tool: string, a: Record<string, unknown>, ctx: ActionCont
       const path = ctx.attachments[name];
       if (!path) throw new Error(`there is no attached file called ${name}`);
       const ext = extname(name).toLowerCase();
-      const meeting = a.meeting === true || isTranscriptFile(name);
+      const meeting = a.meeting === true || a.meeting === "true" || isTranscriptFile(name);
       if (ext === ".pdf") return capture(d, "capture.file", await pdfToPayload(path, { title: str(a, "title"), author }));
       if (meeting) return capture(d, "capture.meeting", meetingToPayload(path, { title: str(a, "title") ?? basename(name, ext), author, dataDir: d }));
       const { readFileSync } = await import("node:fs");
@@ -114,7 +114,9 @@ async function perform(tool: string, a: Record<string, unknown>, ctx: ActionCont
       let kind: ChangeKind = "task.due";
       let detail: Change["detail"];
       if (tool === "jarvis_set_task_status") {
-        const status = need(a, "status") === "done" ? "done" : "open";
+        const given = need(a, "status");
+        if (given !== "done" && given !== "open") throw new Error(`status must be "done" or "open", not "${given}"`);
+        const status = given;
         setTaskStatus(d, id, status, author);
         kind = status === "done" ? "task.done" : "task.reopen";
       } else if (tool === "jarvis_move_task") {
@@ -140,7 +142,7 @@ async function perform(tool: string, a: Record<string, unknown>, ctx: ActionCont
       const src = need(a, "src"), dst = need(a, "dst");
       const relation = (str(a, "relation") ?? "related") as Relation;
       const r = link(d, src, [dst], { relation, author })[0];
-      if (r.status === "member") return { kind: "link", items: [], ops: [], noop: `${r.title} is already a task in ${r.initiative}; nothing was linked. Tell the user so.` };
+      if (r.status === "member") throw new Error(`${r.title} is already a task in ${r.initiative}`);
       if (r.status === "exists") throw new Error("they are already linked");
       return { kind: "link", items: [item(d, src), item(d, dst)], detail: { relation }, ops: [{ op: "edge", src, dst, relation }] };
     }
@@ -179,7 +181,6 @@ export async function runTool(log: ChangeLog, turn: string, tool: string, args: 
   if (!(tool in VERBS)) throw new Error(`unknown tool ${tool}`);
   try {
     const done = await perform(tool, args, ctx);
-    if (done.noop) return { change: null, text: done.noop };
     const change = log.record({ turn, kind: done.kind, ok: true, items: done.items, detail: done.detail, draft: done.draft, undoable: done.undoable }, done.ops);
     return { change, text: `Done: ${done.items.map((i) => `${i.title} [${i.id}]`).join(" → ")}` };
   } catch (e) {
@@ -187,6 +188,6 @@ export async function runTool(log: ChangeLog, turn: string, tool: string, args: 
     const subject = str(args, "title") ?? str(args, "task") ?? str(args, "src") ?? str(args, "attachment");
     const title = subject && /^[0-9A-Z]{26}$/.test(subject) ? titleOf(ctx.dataDir, subject) : subject;
     const change = log.record({ turn, kind: KIND_OF_TOOL[tool], ok: false, items: title ? [{ id: subject ?? "", title, kind: "doc" }] : [], error, verb: VERBS[tool] }, []);
-    return { change, text: `Failed: could not ${VERBS[tool]} — ${error}. Tell the user.` };
+    return { change, text: `Failed: could not ${VERBS[tool]} — ${error}.` };
   }
 }
