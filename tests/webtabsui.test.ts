@@ -222,6 +222,44 @@ describe("many tabs", () => {
   });
 });
 
+describe("many tabs keep Chat whole (jv-4mc)", () => {
+  /** A layout model of the strip, since happy-dom lays nothing out: 24 px padding, Chat at its natural 54 px,
+   *  every document tab at its 96 px floor, 2 px gaps, and '⌄ n more' at 95 px. */
+  const fakeLayout = (strip: HTMLElement, width: number) => {
+    Object.defineProperty(strip, "clientWidth", { configurable: true, get: () => width });
+    Object.defineProperty(strip, "scrollWidth", { configurable: true, get: () => {
+      const docs = strip.querySelectorAll(".jv-tab:not([data-key=chat])").length;
+      const more = strip.querySelector(".jv-more") ? 1 : 0;
+      return Math.max(width, 24 + 54 + docs * 96 + 2 * (docs + more) + more * 95);
+    } });
+  };
+  for (const width of [640, 1250]) {
+    test(`with 12 documents open in a ${width} px strip, every tab fits beside a whole Chat tab`, async () => {
+      await boot();
+      const ids = "DEFGHIJKLMNO".split("");
+      for (const id of ids) env.routes.set(`GET /api/item/${id}`, () => ({ json: { item: item(id, `Doc ${id}`), edges: [] } }));
+      const strip = q(".jv-tabstrip");
+      fakeLayout(strip, width);
+      for (const id of ids) await go(`#/item/${id}`);
+      expect(tabs().length + Number(/\d+/.exec(q(".jv-more-btn").textContent!)![0])).toBe(13);
+      expect(strip.scrollWidth).toBeLessThanOrEqual(strip.clientWidth);
+    });
+  }
+  test("the Chat tab and '⌄ n more' never shrink below their natural width", async () => {
+    await boot();
+    const st = document.createElement("style");
+    st.textContent = (await import("node:fs")).readFileSync("web/src/styles.css", "utf8");
+    document.head.append(st);
+    await go("#/item/A");
+    const chat = env.win.getComputedStyle(q(".jv-tab[data-key=chat]") as never);
+    expect(chat.flexShrink).toBe("0");
+    expect(chat.minWidth).not.toBe("0px");
+    (window as unknown as { __JV_TAB_CAPACITY__?: number }).__JV_TAB_CAPACITY__ = 0;
+    await go("#/item/B");
+    expect(env.win.getComputedStyle(q(".jv-more") as never).flexShrink).toBe("0");
+  });
+});
+
 describe("phone", () => {
   test("no strip; a '▤ n' button counts Chat and documents, opens a list; Esc closes and focus returns", async () => {
     await boot({ width: 400 });
