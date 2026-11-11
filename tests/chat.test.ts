@@ -128,7 +128,7 @@ describe("copilot acp command line", () => {
     expect(args.slice(0, 2)).toEqual(["copilot", "--acp"]);
     expect(args).not.toContain("--model");
     expect(args).not.toContain("--reasoning-effort");
-    expect(args).toContain("--available-tools=");
+    expect(args).toContain("--available-tools=jarvis_*,jarvis-jarvis_*");
   });
   test("a configured chatModel is passed through, still without a reasoning effort a model may reject", () => {
     const args = copilotAcpArgs("gpt-4.1");
