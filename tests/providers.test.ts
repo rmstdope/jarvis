@@ -65,6 +65,15 @@ describe("openai-compatible provider", () => {
     expect(await openaiCompatProvider("openai-compat", { baseUrl: "http://127.0.0.1:1" }).available("x")).toBe(false);
     await expect(openaiCompatProvider("openai-compat", {}).complete("m", "p")).rejects.toThrow(/baseUrl/);
   });
+  test("a 4xx with a JSON error body is reported as its error.message, not the raw body", async () => {
+    const p = openaiCompatProvider("openai-compat", { baseUrl: "http://127.0.0.1:8000/v1" });
+    responder = () => new Response(JSON.stringify({ error: { message: 'Model "gpt-9" is not available' } }), { status: 400 });
+    const err = await p.complete("gpt-9", "hi").then(() => null, (e: Error) => e);
+    expect(err?.message).toBe('openai-compat chat failed (400): Model "gpt-9" is not available');
+    responder = () => new Response("<html>bad gateway</html>", { status: 502 });
+    const raw = await p.complete("m", "hi").then(() => null, (e: Error) => e);
+    expect(raw?.message).toBe("openai-compat chat failed (502): <html>bad gateway</html>"); // a non-JSON body is kept as text
+  });
 });
 
 describe("local (Ollama) provider", () => {
