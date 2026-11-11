@@ -1,0 +1,39 @@
+<!doctype html><html><head><meta charset="utf-8"><title>Linking an own task</title>
+<style>body{font-family:-apple-system,system-ui,sans-serif;background:#f4f4f2;color:#222;max-width:900px;margin:24px auto;padding:0 16px}
+h1{font-size:20px}p.note{color:#555}h1.v{font-size:16px;margin-top:36px;border-top:1px solid #ccc;padding-top:18px}
+pre{background:#1e1f22;color:#d8d8d8;padding:14px 16px;border-radius:8px;font:13px/1.5 ui-monospace,Menlo,monospace;white-space:pre-wrap;margin:0}
+.ok{color:#7ec27e}.w{color:#e3b552}.f{color:#e36f6f}.d{color:#888}.b{font-weight:bold;color:#fff}
+@media (prefers-color-scheme: dark){body{background:#151515;color:#ddd}p.note{color:#aaa}}</style></head><body>
+<h1>jv-z1g — linking an initiative to one of its own tasks</h1>
+<p class="note">Same words as moving a task into the initiative it is already in. Nothing is written, so nothing can hide. The same answer for every relation (--relation contradicts etc.), either way round, CLI and web chat alike. It is not a failure. Links made this way before today are left as they are.</p>
+<h1 class="v">The case</h1>
+<pre>$ jarvis link 01JD4K7M 01JD4M2X
+01JD4M2X  Export last year's invoices  <span class="d">is already a task in Move billing to the new ledger — nothing linked</span></pre>
+<h1 class="v">Either way round</h1>
+<pre>$ jarvis link 01JD4M2X 01JD4K7M
+01JD4M2X  Export last year's invoices  <span class="d">is already a task in Move billing to the new ledger — nothing linked</span></pre>
+<h1 class="v">Several at once — each says its own line</h1>
+<pre>$ jarvis link 01JD4K7M 01JD4M2X,01JC77AB
+01JD4M2X  Export last year's invoices  <span class="d">is already a task in Move billing to the new ledger — nothing linked</span>
+<span class="ok">linked</span>: 01JD4K7M → 01JC77AB [references]</pre>
+<h1 class="v">A task of a different initiative — unchanged, it links and shows under "linked directly"</h1>
+<pre>$ jarvis link 01JD4K7M 01JDX900
+<span class="ok">linked</span>: 01JD4K7M → 01JDX900 [references]</pre>
+<h1 class="v">In the web chat</h1>
+<pre><span class="d">you:</span> link the billing initiative to the export task
+<span class="d">jarvis:</span> Export last year's invoices is already a task in Move billing to the new ledger, so I didn't link anything.</pre>
+<h1 class="v">initiative show — unchanged</h1>
+<pre>$ jarvis initiative show 01JD4K7M
+<span class="b">Move billing to the new ledger</span>
+open  owner: anna  progress: <span class="ok">█</span><span class="d">░░░░░░░░</span> 1 of 2 done
+
+All invoices issued from the new ledger by March
+
+tasks (2)
+  01JD4M2X  ○ Export last year's invoices  (anna)
+  01JD9Q11  ✓ Freeze old billing API  (anna)
+
+through its tasks — none
+
+linked directly — none</pre>
+</body></html>
