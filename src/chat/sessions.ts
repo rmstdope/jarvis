@@ -58,6 +58,8 @@ export interface ChatDeps {
 export class ChatService {
   private client: AcpClient | null = null;
   private clientInit: Promise<AcpClient> | null = null;
+  /** The agent spawned by a pending clientInit, until its initialize settles. */
+  private starting: AcpClient | null = null;
   private sessions = new Map<string, ChatSession>();
   private updateHandlers = new Map<string, (u: Record<string, unknown>) => void>();
   private now: () => number;
@@ -70,7 +72,15 @@ export class ChatService {
     this.clientInit = (async () => {
       const spawn = this.deps.spawn ?? spawnCopilotAcp;
       const c = new AcpClient(spawn(chatModel(), this.dataDir));
-      await c.initialize();
+      this.starting = c;
+      try {
+        await c.initialize();
+      } catch (e) {
+        await c.close();
+        throw e;
+      } finally {
+        this.starting = null;
+      }
       c.onUpdate((u) => this.updateHandlers.get(u.sessionId)?.(u.update));
       this.client = c;
       return c;
@@ -208,11 +218,10 @@ export class ChatService {
    * process has exited.
    */
   async shutdown(): Promise<void> {
-    const init = this.clientInit;
-    this.sessions.clear();
-    const c = this.client ?? (init ? await init.catch(() => null) : null);
+    const clients = [this.client, this.starting];
     this.client = null;
-    await c?.close();
+    this.sessions.clear();
+    await Promise.all(clients.map((c) => c?.close()));
   }
 }
 export class ChatError extends Error {

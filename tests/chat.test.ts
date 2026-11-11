@@ -44,15 +44,21 @@ describe("acp client", () => {
 describe("shutdown waits for the agent process (jv-den)", () => {
   // On Windows a live child keeps its cwd (the test's temporary directory) busy, so a close that
   // returns before the child has exited lets cleanup race it into EBUSY.
-  function slowExitTransport(answerDelayMs = 0) {
+  /** A stub agent that exits 50 ms after kill(); `initialize` answers after answerDelayMs, with an error, or never. */
+  function slowExitTransport(answerDelayMs = 0, init: "ok" | "error" | "never" = "ok") {
     const state = { exited: false };
     let exit!: () => void;
     const exited = new Promise<number>((r) => (exit = () => { state.exited = true; r(0); }));
     let push!: (o: unknown) => void;
     const stdout = new ReadableStream<Uint8Array>({ start(c) { push = (o) => c.enqueue(new TextEncoder().encode(JSON.stringify(o) + "\n")); } });
     const answers: Record<string, unknown> = { initialize: { protocolVersion: 1 }, "session/new": { sessionId: "s1" } };
-    const write = (line: string) => { const m = JSON.parse(line); if (m.id !== undefined) setTimeout(() => push({ jsonrpc: "2.0", id: m.id, result: answers[m.method] ?? {} }), answerDelayMs); };
-    return { state, transport: { stdin: { write }, stdout, kill: () => { setTimeout(exit, 50); }, exited } };
+    const write = (line: string) => {
+      const m = JSON.parse(line);
+      if (m.id === undefined || (m.method === "initialize" && init === "never")) return;
+      const reply = m.method === "initialize" && init === "error" ? { error: { code: -32000, message: "boom" } } : { result: answers[m.method] ?? {} };
+      setTimeout(() => push({ jsonrpc: "2.0", id: m.id, ...reply }), answerDelayMs);
+    };
+    return { state, crash: exit, transport: { stdin: { write }, stdout, kill: () => { setTimeout(exit, 50); }, exited } };
   }
   test("AcpClient.close resolves only once the agent process has exited", async () => {
     const { state, transport } = slowExitTransport();
@@ -80,6 +86,38 @@ describe("shutdown waits for the agent process (jv-den)", () => {
     await new Promise((r) => setTimeout(r, 10)); // spawned, initialize not answered yet
     await svc.shutdown();
     expect(starting.state.exited).toBe(true);
+    expect(await created).toMatch(/closed/);
+  });
+  test("ChatService.shutdown after the agent crashed and a restart is starting waits for the restarted agent", async () => {
+    const first = slowExitTransport();
+    const restarted = slowExitTransport(50);
+    const transports = [first, restarted];
+    const svc = new ChatService(t.dir, { spawn: () => transports.shift()!.transport });
+    await svc.create({ type: "jarvis", ids: [] });
+    first.crash();
+    await new Promise((r) => setTimeout(r, 10));
+    const created = svc.create({ type: "jarvis", ids: [] }).then(() => "created", (e: Error) => e.message);
+    await new Promise((r) => setTimeout(r, 10)); // restart spawned, initialize not answered yet
+    await svc.shutdown();
+    expect(restarted.state.exited).toBe(true);
+    expect(await created).toMatch(/closed/);
+  });
+  test("a failed initialize stops the agent it started", async () => {
+    const failing = slowExitTransport(0, "error");
+    const svc = new ChatService(t.dir, { spawn: () => failing.transport });
+    await expect(svc.create({ type: "jarvis", ids: [] })).rejects.toThrow(/boom/);
+    expect(failing.state.exited).toBe(true);
+    await svc.shutdown();
+  });
+  test("ChatService.shutdown stops an agent whose initialize never answers, without waiting for its timeout", async () => {
+    const silent = slowExitTransport(0, "never");
+    const svc = new ChatService(t.dir, { spawn: () => silent.transport });
+    const created = svc.create({ type: "jarvis", ids: [] }).then(() => "created", (e: Error) => e.message);
+    await new Promise((r) => setTimeout(r, 10));
+    const started = Date.now();
+    await svc.shutdown();
+    expect(Date.now() - started).toBeLessThan(1000);
+    expect(silent.state.exited).toBe(true);
     expect(await created).toMatch(/closed/);
   });
 });
