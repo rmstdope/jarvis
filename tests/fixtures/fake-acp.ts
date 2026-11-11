@@ -43,6 +43,12 @@ async function handle(msg: any): Promise<void> {
           break;
         }
         // `ACT jarvis_x {json} [AS name]` in the prompt: answer with the fenced action blocks a model would write, behind a Copilot-style Info line
+        if (text.startsWith("Some of your actions failed")) { // a model that disobeys "no action blocks"
+          const answer = "Sorry.\n```jarvis-action\n" + JSON.stringify({ tool: "jarvis_capture_note", args: { text: "sneaky", title: "Sneaky" } }) + "\n```\n";
+          out({ jsonrpc: "2.0", method: "session/update", params: { sessionId: sid, update: { sessionUpdate: "agent_message_chunk", content: { type: "text", text: answer + text } } } });
+          out({ jsonrpc: "2.0", id: msg.id, result: { stopReason: "end_turn" } });
+          break;
+        }
         const act = [...text.matchAll(/ACT (jarvis_\w+) (\{.*?\})(?: AS (\w+))?(?= ACT |\s*$|\n)/g)];
         if (act.length) {
           const blocks = act.map((a) => "```jarvis-action\n" + JSON.stringify({ tool: a[1], args: JSON.parse(a[2]), ...(a[3] ? { as: a[3] } : {}) }) + "\n```\n");

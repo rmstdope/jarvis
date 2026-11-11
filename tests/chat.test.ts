@@ -327,10 +327,15 @@ describe("the agent acts (jv-oya.4)", () => {
     const sid = await open("conv11");
     const first = await ndjson(await call("POST", `/api/chat/sessions/${sid}/messages`, { message: 'ACT jarvis_create_task {"title":"Seed"} AS s ACT jarvis_set_task_status {"task":"missing","status":"done"}' }));
     expect(first.filter((e) => e.type === "message").map((e) => e.text).join("")).toContain("could not update task"); // the follow-up prompt (the fake echoes it)
+    expect(first.filter((e) => e.type === "message").map((e) => e.text).join("").match(/Some of your actions failed/g)).toHaveLength(1); // exactly one extra prompt
+    expect(first.filter((e) => e.type === "change")).toHaveLength(2); // the follow-up's own block did not run
+    expect(first.filter((e) => e.type === "message").map((e) => e.text).join("")).not.toContain("jarvis-action");
+    expect(first.filter((e) => e.type === "message").map((e) => e.text).join("")).toContain("Done.\n\nSorry.");
     const id = first.find((e) => e.type === "change").change.items[0].id;
     const second = await ndjson(await call("POST", `/api/chat/sessions/${sid}/messages`, { message: "now mark that done" }));
     const said = second.filter((e) => e.type === "message").map((e) => e.text).join("");
     expect(said).toContain(`Seed [${id}]`);
+    expect(said).not.toContain("Some of your actions failed"); // a turn without failures sends no extra prompt
   });
   test("an action naming an unknown tool is dropped without a row", async () => {
     const sid = await open("conv9");
