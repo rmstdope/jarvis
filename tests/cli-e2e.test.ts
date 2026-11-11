@@ -178,6 +178,18 @@ describe("cli end to end (subprocess)", () => {
       "Report every initiative, task and link you create **by id and title**",
     ]) expect(out).toContain(s);
   });
+  test("every jarvis command (and task/initiative subcommand) the skill quotes is registered", () => {
+    const skill = jarvis("skill").out;
+    const usage = jarvis().out;
+    for (const m of skill.matchAll(/`jarvis ([a-z-]+)(?: ([a-z]+))?/g)) {
+      const [, cmd, sub] = m;
+      expect(EXPECTED_COMMANDS).toContain(cmd!);
+      if ((cmd === "task" || cmd === "initiative") && sub && /^[a-z]+$/.test(sub)) {
+        const line = usage.split("\n").find((l) => l.trim().startsWith(`${cmd} `))!;
+        expect(line, `${cmd} ${sub}`).toMatch(new RegExp(`(^|\\| |${cmd} )${sub}( |$)`));
+      }
+    }
+  });
   test("the skill's fallback command, run from the content repo, runs the search", () => {
     const out = jarvis("skill").out.replace(/\s+/g, " ");
     const [, flag, script] = out.match(/If `jarvis` is not found, run `bun (--cwd=.+?) run (jarvis) …` instead/)!;

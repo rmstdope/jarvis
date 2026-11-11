@@ -37,7 +37,7 @@ local and disposable.
   existing task joins or changes initiative with `jarvis task move <task> --initiative <id>`, and
   leaves with `jarvis task move <task> --none`. A task is in at most one initiative.
 - While a task is in play, link what you capture or find to the task: `jarvis link <task> <doc>`
-  (or `--task <id>` on capture). It then belongs to the task's initiative automatically; link to the
+  (or `--task <id>` on `note` / `ingest`). It then belongs to the task's initiative automatically; link to the
   initiative itself only for something that fits no single task.
 - `jarvis initiative show <id>` gives its tasks, progress and everything tied to it. Its suggestions
   (also `jarvis initiative suggest <id>`) are ready-to-run `jarvis link <initiative> <doc>` lines, not
