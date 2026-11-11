@@ -1,0 +1,153 @@
+<!doctype html><html><head><meta charset="utf-8"><title>Initiatives in the CLI</title>
+<style>body{font-family:-apple-system,system-ui,sans-serif;background:#f4f4f2;color:#222;max-width:900px;margin:24px auto;padding:0 16px}
+h1{font-size:20px}p.note{color:#555}h2{font-size:14px;margin:22px 0 6px;color:#333}h1.v{font-size:16px;margin-top:36px;border-top:1px solid #ccc;padding-top:18px}
+pre{background:#1e1f22;color:#d8d8d8;padding:14px 16px;border-radius:8px;font:13px/1.5 ui-monospace,Menlo,monospace;white-space:pre-wrap;margin:0}
+.ok{color:#7ec27e}.w{color:#e3b552}.f{color:#e36f6f}.d{color:#888}.b{font-weight:bold;color:#fff}
+@media (prefers-color-scheme: dark){body{background:#151515;color:#ddd}p.note{color:#aaa}h2{color:#ccc}}</style></head><body>
+<h1>jv-7vj.1 — initiatives in the CLI: every state and every word</h1>
+<p class="note">Agreed so far: the task names its initiative; show in sections; list with bars; suggestions as ready link lines; closing refuses while tasks are open unless --anyway; last-task-done said at once and in list/show; task list shows a dim initiative tail; no model said plainly; tied sections capped at ten with --all; goal required; initiative edit.</p>
+
+<h1 class="v">Create</h1>
+<pre>$ jarvis initiative add "Move billing to the new ledger" --goal "All invoices issued from the new ledger by March" [--owner anna]
+<span class="ok">initiative</span> 01JD4K7M  Move billing to the new ledger  <span class="d">(owner anna)</span></pre>
+<p class="note">Owner defaults to you, as for tasks.</p>
+<pre>$ jarvis initiative add "Move billing to the new ledger"
+<span class="f">An initiative needs a goal.</span> Say what done looks like:
+  jarvis initiative add "Move billing to the new ledger" --goal "&lt;what done looks like&gt;"</pre>
+
+<h1 class="v">Edit</h1>
+<pre>$ jarvis initiative edit 01JD4K7M --owner jonas --goal "All invoices issued from the new ledger by April"   <span class="d"># also --title</span>
+<span class="ok">updated</span>: Move billing to the new ledger  <span class="d">owner anna → jonas, goal changed</span></pre>
+
+<h1 class="v">Tasks in, moved, out</h1>
+<pre>$ jarvis task add "Export last year's invoices" --initiative 01JD4K7M
+task 01JD4M2X  Export last year's invoices  <span class="d">in Move billing to the new ledger (1 of 1 tasks)</span>
+
+$ jarvis task move 01JC9QPA --initiative 01JD4K7M
+01JC9QPA  Freeze old billing API  <span class="ok">→ Move billing to the new ledger</span>
+
+$ jarvis task move 01JC9QPA --initiative 01JDA001
+01JC9QPA  Freeze old billing API  <span class="ok">→ Q1 security review</span>  <span class="d">(was Move billing to the new ledger)</span>
+
+$ jarvis task move 01JC9QPA --none
+01JC9QPA  Freeze old billing API  <span class="d">→ no initiative (was Q1 security review)</span>
+
+$ jarvis task move 01JC9QPA --initiative 01JDA001     <span class="d"># already there</span>
+01JC9QPA  Freeze old billing API  <span class="d">is already in Q1 security review</span>
+
+$ jarvis task move 01JC9QPA
+<span class="f">usage:</span> jarvis task move &lt;task&gt; --initiative &lt;id&gt; | --none</pre>
+
+<h1 class="v">List</h1>
+<pre>$ jarvis initiative list            <span class="d"># open ones; --status closed|all</span>
+01JD4K7M  <span class="ok">████</span><span class="d">░░░░░</span>  4/9   Move billing to the new ledger  <span class="d">(anna)</span>
+01JDA001  <span class="ok">███████</span><span class="d">░░</span>  6/8   Q1 security review  <span class="d">(jonas)</span>
+01JDB3C2  <span class="ok">█████████</span>  3/3   Onboarding revamp  <span class="d">(mira)</span>  <span class="w">✓ all tasks done — close it?</span>
+01JDC9F1  <span class="d">░░░░░░░░░</span>  0/0   Data retention policy  <span class="d">(anna)</span>  <span class="d">no tasks yet</span>
+
+$ jarvis initiative list --status all
+…
+01JD0A00  <span class="d">█████████  5/5   Hiring plan 2026  (mira)  closed 2026-10-30</span>
+
+<span class="d"># nothing yet</span>
+$ jarvis initiative list
+no open initiatives — start one: jarvis initiative add "&lt;title&gt;" --goal "&lt;what done looks like&gt;"</pre>
+<p class="note">Bar is always nine cells wide. On a narrow window the title wraps; id, bar and count stay together at the start.</p>
+
+<h1 class="v">Show</h1>
+<pre>$ jarvis initiative show 01JD4K7M
+<span class="b">Move billing to the new ledger</span>
+open  owner: anna  progress: <span class="ok">████</span><span class="d">░░░░░</span> 4 of 9 done
+
+All invoices issued from the new ledger by March.
+
+<span class="b">tasks (9)</span>
+  01JD4M2X  <span class="ok">✓</span> Export last year's invoices  <span class="d">(anna)</span>
+  …
+  01JD6C02  ○ due 2026-11-20 Dry-run November invoices  <span class="d">(jonas)</span>
+
+<span class="b">through its tasks (5)</span>
+  01JD4N88  Meeting: ledger vendor shortlist  <span class="d">← Pick ledger vendor</span>
+  01JD6A11  Note: dry-run checklist  <span class="d">← Dry-run November invoices, Reconcile credit notes</span>
+
+<span class="b">linked directly (2)</span>
+  01JD4K90  Note: why we are leaving the old billing system
+
+<span class="b">suggested (2)</span>  <span class="d">— not part of it until you accept</span>
+  jarvis link 01JD4K7M 01JD6F70   <span class="d"># Meeting: finance weekly 2026-11-06 — mentions the ledger cut-over date</span>
+
+<span class="d"># many: tasks never cut; each tied section shows the newest ten</span>
+<span class="b">through its tasks (34)</span>
+  01JD9A01  Meeting: cut-over rehearsal  <span class="d">← Dry-run November invoices</span>
+  …  <span class="d">(10 lines)</span>
+  <span class="d">… and 24 more — jarvis initiative show 01JD4K7M --all</span>
+
+<span class="d"># empty sections</span>
+<span class="b">tasks</span>  <span class="d">— none yet: jarvis task add "&lt;title&gt;" --initiative 01JD4K7M</span>
+<span class="b">through its tasks</span>  <span class="d">— none</span>
+<span class="b">linked directly</span>  <span class="d">— none</span>
+<span class="b">suggested</span>  <span class="d">— none found</span>
+<span class="b">suggested</span>  <span class="d">— none: no model is available, so nothing is suggested (jarvis doctor shows why)</span>
+
+<span class="d"># all done</span>
+open  owner: anna  progress: <span class="ok">█████████</span> 9 of 9 done
+<span class="w">✓ all tasks done — close it with: jarvis initiative close 01JD4K7M</span>
+
+<span class="d"># closed</span>
+<span class="d">closed 2026-10-30 by mira</span>  owner: mira  progress: <span class="ok">█████████</span> 5 of 5 done</pre>
+
+<h1 class="v">Suggestions</h1>
+<pre>$ jarvis initiative suggest 01JD4K7M
+suggestions for Move billing to the new ledger:
+  jarvis link 01JD4K7M 01JD6F70   <span class="d"># Meeting: finance weekly 2026-11-06 — mentions the ledger cut-over date</span>
+  jarvis link 01JD4K7M 01JD6F99   <span class="d"># Note: invoice numbering rules — close to Map VAT codes</span>
+
+no suggestions
+no suggestions: no model is available (jarvis doctor shows why)</pre>
+
+<h1 class="v">Last task done</h1>
+<pre>$ jarvis task done 01JD6C2B
+✓ done: Turn off old billing
+  <span class="w">That was the last open task in Move billing to the new ledger (9 of 9 done).</span>
+  <span class="w">It stays open until someone closes it:</span>
+    jarvis initiative close 01JD4K7M</pre>
+
+<h1 class="v">Close and reopen</h1>
+<pre>$ jarvis initiative close 01JD4K7M
+<span class="f">Move billing to the new ledger still has 5 open tasks.</span>
+Finish or move them first, or close it anyway:
+  jarvis initiative close 01JD4K7M --anyway
+
+$ jarvis initiative close 01JD4K7M --anyway
+<span class="ok">closed</span>: Move billing to the new ledger  <span class="d">4 of 9 done, 5 left open</span>
+
+$ jarvis initiative close 01JDB3C2
+<span class="ok">closed</span>: Onboarding revamp  <span class="d">3 of 3 done</span>
+
+$ jarvis task add "Archive old invoices" --initiative 01JD4K7M      <span class="d"># also task move</span>
+<span class="f">Move billing to the new ledger is closed.</span> Reopen it first:
+  jarvis initiative reopen 01JD4K7M
+
+$ jarvis initiative reopen 01JD4K7M
+○ reopened: Move billing to the new ledger</pre>
+
+<h1 class="v">Task list and task show</h1>
+<pre>$ jarvis tasks                      <span class="d"># also task list; --initiative &lt;id&gt; filters</span>
+01JD6C02  ○ due 2026-11-20 Dry-run November invoices  (jonas)  <span class="d">· Move billing to the new ledger</span>
+01JD7020  ○ Book offsite venue  (jonas)
+
+$ jarvis task show 01JD6C02
+Dry-run November invoices
+status: open  owner: jonas  due: 2026-11-20
+initiative: 01JD4K7M  Move billing to the new ledger</pre>
+
+<h1 class="v">Errors</h1>
+<pre>$ jarvis initiative show 01ZZZZZZ
+<span class="f">no initiative 01ZZZZZZ</span> — see them all: jarvis initiative list
+
+$ jarvis initiative show 01JD6C02
+<span class="f">01JD6C02 is a task, not an initiative</span> — jarvis task show 01JD6C02
+
+$ jarvis task add "X" --initiative 01ZZZZZZ
+<span class="f">no initiative 01ZZZZZZ</span> — see them all: jarvis initiative list</pre>
+</body></html>
