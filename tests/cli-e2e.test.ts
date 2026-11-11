@@ -110,7 +110,7 @@ describe("cli end to end (subprocess)", () => {
     expect(jarvis("task", "move", lone).out).toContain("usage: jarvis task move <task> --initiative <id> | --none");
     expect(jarvis("initiative", "show", lone).out).toContain(`${lone} is a task, not an initiative — jarvis task show ${lone}`);
     expect(jarvis("initiative", "show", "01ZZZZZZ").out).toContain("no initiative 01ZZZZZZ — see them all: jarvis initiative list");
-    expect(jarvis("initiative", "close", id).out).toContain(`Move billing still has 1 open tasks.\nFinish or move them first, or close it anyway:\n  jarvis initiative close ${id} --anyway`);
+    expect(jarvis("initiative", "close", id).out).toContain(`Move billing still has 1 open task.\nFinish or move them first, or close it anyway:\n  jarvis initiative close ${id} --anyway`);
     const done = jarvis("task", "done", t1).out;
     expect(done).toContain(`✓ done: Freeze API\n  That was the last open task in Move billing (1 of 1 done).\n  It stays open until someone closes it:\n    jarvis initiative close ${id}`);
     expect(jarvis("initiative", "list").out).toContain("✓ all tasks done — close it?");

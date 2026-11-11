@@ -6,6 +6,7 @@ import { ingest } from "../src/core/ingest.ts";
 import { readDocFile } from "../src/core/docs.ts";
 import { parseDoc, serializeDoc } from "../src/core/frontmatter.ts";
 import { reindex } from "../src/core/reindex.ts";
+import { formatInitiativeList, formatInitiativeShow, progressBar, PLAIN } from "../src/core/initiativeView.ts";
 import { clearEmbedder, tmpDataDir, useFakeEmbedder } from "./helpers.ts";
 import { fakeRouter, noRouter } from "./fakeRouter.ts";
 
@@ -106,7 +107,7 @@ describe("initiatives", () => {
     const t1 = await addTask(t.dir, { title: "one", initiative: a.id });
     await addTask(t.dir, { title: "two", initiative: a.id });
     setTaskStatus(t.dir, t1.id, "done");
-    await expect(closeInitiative(t.dir, a.id, {})).rejects.toThrow(`Alpha still has 1 open tasks.\nFinish or move them first, or close it anyway:\n  jarvis initiative close ${a.id} --anyway`);
+    await expect(closeInitiative(t.dir, a.id, {})).rejects.toThrow(`Alpha still has 1 open task.\nFinish or move them first, or close it anyway:\n  jarvis initiative close ${a.id} --anyway`);
     expect(await closeInitiative(t.dir, a.id, { anyway: true, author: "mira" })).toEqual({ title: "Alpha", done: 1, total: 2, left: 1 });
     expect(readDocFile(t.dir, a.id)!.frontmatter.initiative).toMatchObject({ status: "closed", closed_by: "mira" });
     expect(listTasks(t.dir, { initiative: a.id })).toHaveLength(1); // open task stays in it
@@ -144,5 +145,46 @@ describe("initiatives", () => {
     expect(bad).toEqual({ model: true, suggestions: [] });
     link(t.dir, a.id, [m.id]);
     expect((await initiativeSuggestions(t.dir, a.id, { router: ok })).suggestions).toEqual([]); // already tied
+  });
+});
+
+describe("review fixes", () => {
+  test("no notice for a closed initiative or a repeated done; --none on a standalone task is unchanged", async () => {
+    const a = await addInitiative(t.dir, { title: "Alpha", goal: "g", author: "me" });
+    const t1 = await addTask(t.dir, { title: "one", initiative: a.id });
+    await closeInitiative(t.dir, a.id, { anyway: true });
+    expect(setTaskStatus(t.dir, t1.id, "done").initiativeCompleted).toBeUndefined();
+    await reopenInitiative(t.dir, a.id);
+    setTaskStatus(t.dir, t1.id, "open");
+    expect(setTaskStatus(t.dir, t1.id, "done").initiativeCompleted).toBeDefined();
+    expect(setTaskStatus(t.dir, t1.id, "done").initiativeCompleted).toBeUndefined(); // already done
+    const solo = await addTask(t.dir, { title: "solo" });
+    expect(await moveTask(t.dir, solo.id, null)).toEqual({ status: "unchanged", title: "solo" });
+    await expect(editInitiative(t.dir, a.id, { title: " " })).rejects.toThrow(/needs a title/);
+  });
+  test("llm-judged edges to the initiative are not 'linked directly'", async () => {
+    const a = await addInitiative(t.dir, { title: "Alpha", goal: "g", author: "me" });
+    const n = await ingest(t.dir, { source: "note", title: "N", body: "n", author: "me" });
+    const { withDb } = await import("../src/core/db.ts");
+    withDb(t.dir, (db) => db.run("INSERT INTO edges (src, dst, relation, created_by, weight, created_at) VALUES (?, ?, 'same_topic', 'llm', 1, '2026-01-01')", [n.id, a.id]));
+    expect((await showInitiative(t.dir, a.id)).direct.total).toBe(0);
+  });
+  test("views: bar clamp, empty list per filter, show sections with via, cap line, closed status", async () => {
+    expect([progressBar(4, 9), progressBar(1, 20), progressBar(19, 20), progressBar(0, 0), progressBar(3, 3)]).toEqual(["████░░░░░", "█░░░░░░░░", "████████░", "░░░░░░░░░", "█████████"]);
+    expect(formatInitiativeList([], PLAIN, "closed")).toBe("no closed initiatives");
+    const a = await addInitiative(t.dir, { title: "Alpha", goal: "the goal", author: "me" });
+    const t1 = await addTask(t.dir, { title: "T1", initiative: a.id });
+    const t2 = await addTask(t.dir, { title: "T2", initiative: a.id });
+    const doc = await ingest(t.dir, { source: "note", title: "Shared", body: "s", author: "me" });
+    link(t.dir, t1.id, [doc.id]);
+    link(t.dir, t2.id, [doc.id]);
+    for (let i = 0; i < 11; i++) link(t.dir, a.id, [(await ingest(t.dir, { source: "note", title: `D${i}`, body: `b${i}`, author: "me" })).id]);
+    const out = formatInitiativeShow(await showInitiative(t.dir, a.id), [{ id: "X1", title: "Mtg", source: "meeting", reason: "why" }], PLAIN);
+    expect(out).toContain(`  ${doc.id}  Shared  ← T1, T2`.replace("← T1, T2", out.includes("← T2, T1") ? "← T2, T1" : "← T1, T2"));
+    expect(out).toContain(`… and 1 more — jarvis initiative show ${a.id} --all`);
+    expect(out).toContain("suggested (1)  — not part of it until you accept\n  jarvis link " + a.id + " X1   # Mtg — why");
+    expect(formatInitiativeShow(await showInitiative(t.dir, a.id), [], PLAIN)).toContain("suggested — none found");
+    await closeInitiative(t.dir, a.id, { anyway: true, author: "mira" });
+    expect(formatInitiativeShow(await showInitiative(t.dir, a.id), null, PLAIN)).toMatch(/^Alpha\nclosed \d{4}-\d{2}-\d{2} by mira  owner: me  progress: ░{9} 0 of 2 done/);
   });
 });

@@ -90,6 +90,7 @@ export async function addInitiative(dataDir: string, opts: { title: string; goal
 export async function editInitiative(dataDir: string, id: string, opts: { title?: string; goal?: string; owner?: string; author?: string }): Promise<{ title: string; changes: string[] }> {
   if (opts.title === undefined && opts.goal === undefined && opts.owner === undefined) throw new Error("usage: jarvis initiative edit <id> [--title] [--goal] [--owner]");
   if (opts.goal !== undefined && !opts.goal.trim()) throw new Error(MISSING_GOAL);
+  if (opts.title !== undefined && !opts.title.trim()) throw new Error("an initiative needs a title");
   const { doc, block } = requireInitiative(dataDir, id);
   const changes: string[] = [];
   let bodyChanged = false;
@@ -155,12 +156,12 @@ export async function showInitiative(dataDir: string, id: string, opts: { all?: 
     const mine = tasks.filter((t) => t.initiative?.id === id);
     const mineIds = new Set(mine.map((t) => t.id));
     const titleOf = new Map(mine.map((t) => [t.id, t.title]));
-    const edgesOf = (node: string): EdgeRow[] =>
-      db.query("SELECT e.src, e.dst, COALESCE(d.title, en.name) AS title, d.source AS source, d.created_at AS created_at FROM edges e LEFT JOIN documents d ON d.id = CASE WHEN e.src = ?1 THEN e.dst ELSE e.src END LEFT JOIN entities en ON en.id = CASE WHEN e.src = ?1 THEN e.dst ELSE e.src END WHERE (e.src = ?1 OR e.dst = ?1) AND e.created_by IN ('manual','llm')").all(node) as EdgeRow[];
+    const edgesOf = (node: string, viaTask: boolean): EdgeRow[] =>
+      db.query(`SELECT e.src, e.dst, COALESCE(d.title, en.name) AS title, d.source AS source, d.created_at AS created_at FROM edges e LEFT JOIN documents d ON d.id = CASE WHEN e.src = ?1 THEN e.dst ELSE e.src END LEFT JOIN entities en ON en.id = CASE WHEN e.src = ?1 THEN e.dst ELSE e.src END WHERE (e.src = ?1 OR e.dst = ?1) AND e.created_by IN (${viaTask ? "'manual','llm'" : "'manual'"})`).all(node) as EdgeRow[];
     const collect = (nodes: string[], viaTask: boolean): TiedItem[] => {
       const byId = new Map<string, TiedItem>();
       for (const n of nodes)
-        for (const e of edgesOf(n)) {
+        for (const e of edgesOf(n, viaTask)) {
           const other = e.src === n ? e.dst : e.src;
           if (other === id || mineIds.has(other)) continue;
           const item = byId.get(other) ?? { id: other, title: e.title ?? other, source: e.source, created_at: e.created_at ?? "", via: [] };
@@ -184,7 +185,7 @@ export async function closeInitiative(dataDir: string, id: string, opts: { anywa
   try {
     const s = summarize(dataDir, doc, listTasks(dataDir, { status: "all", owner: "all", db }));
     const left = s.total - s.done;
-    if (left > 0 && !opts.anyway) throw new Error(`${s.title} still has ${left} open tasks.\nFinish or move them first, or close it anyway:\n  jarvis initiative close ${id} --anyway`);
+    if (left > 0 && !opts.anyway) throw new Error(`${s.title} still has ${left} open ${left === 1 ? "task" : "tasks"}.\nFinish or move them first, or close it anyway:\n  jarvis initiative close ${id} --anyway`);
     const who = resolveAuthor(opts.author);
     block.status = "closed";
     block.closed_at = nowIso();
@@ -230,6 +231,7 @@ export async function moveTask(dataDir: string, taskId: string, initiativeId: st
   const target = initiativeId ? requireOpenInitiative(dataDir, initiativeId).doc.frontmatter.title : undefined;
   const from = task.initiative ? readDocFile(dataDir, task.initiative)?.frontmatter.title ?? task.initiative : undefined;
   const title = doc.frontmatter.title;
+  if (!task.initiative && initiativeId === null) return { status: "unchanged", title };
   if ((task.initiative ?? null) === initiativeId) return { status: "unchanged", title, to: target ?? from };
   if (initiativeId) task.initiative = initiativeId;
   else delete task.initiative;

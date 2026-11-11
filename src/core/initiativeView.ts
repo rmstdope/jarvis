@@ -29,7 +29,9 @@ export function taskListLine(t: TaskItem, s: Style): string {
 const day = (iso?: string): string => (iso ?? "").slice(0, 10);
 
 /** `jarvis initiative list` output. */
-export function formatInitiativeList(list: InitiativeSummary[], s: Style): string {
+export function formatInitiativeList(list: InitiativeSummary[], s: Style, status: "open" | "closed" | "all" = "open"): string {
+  if (list.length === 0 && status === "closed") return "no closed initiatives";
+  if (list.length === 0 && status === "all") return 'no initiatives — start one: jarvis initiative add "<title>" --goal "<what done looks like>"';
   if (list.length === 0) return 'no open initiatives — start one: jarvis initiative add "<title>" --goal "<what done looks like>"';
   return list
     .map((i) => {

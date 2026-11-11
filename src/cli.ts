@@ -406,7 +406,7 @@ register("task", 'task add "<title>" [--body --due YYYY-MM-DD --link id[,id] --r
       const target = flagStr(flags, "initiative");
       if (!rest[0] || (!target && !flagBool(flags, "none"))) throw new Error("usage: jarvis task move <task> --initiative <id> | --none");
       const r = await moveTask(dir, rest[0], target ?? null, flagStr(flags, "author"));
-      if (r.status === "unchanged") console.log(`${rest[0]}  ${r.title}  is already in ${r.to}`);
+      if (r.status === "unchanged") console.log(r.to ? `${rest[0]}  ${r.title}  is already in ${r.to}` : `${rest[0]}  ${r.title}  is not in an initiative`);
       else console.log(`${rest[0]}  ${r.title}  → ${r.to ?? "no initiative"}${r.from ? `${r.to ? "  " : " "}(was ${r.from})` : ""}`);
       return;
     }
@@ -421,7 +421,7 @@ register("task", 'task add "<title>" [--body --due YYYY-MM-DD --link id[,id] --r
       throw new Error("usage: jarvis task add|list|show|done|reopen|move|suggest");
   }
 });
-register("tasks", "tasks  (open tasks for the current user)", async ({ dataDir, flags }) => {
+register("tasks", "tasks  (open tasks for the current user) [--initiative <id>]", async ({ dataDir, flags }) => {
   printTasks(listTasks(dataDir(), { status: "open", owner: resolveAuthorCore(flagStr(flags, "author")), initiative: flagStr(flags, "initiative") }));
 });
 register("initiative", 'initiative add "<title>" --goal "<what done looks like>" [--owner] | edit <id> [--title --goal --owner] | list [--status open|closed|all] | show <id> [--all] | suggest <id> | close <id> [--anyway] | reopen <id>', async ({ dataDir, positional, flags }) => {
@@ -447,7 +447,7 @@ register("initiative", 'initiative add "<title>" --goal "<what done looks like>"
     case "list": {
       const status = (flagStr(flags, "status") ?? "open") as "open" | "closed" | "all";
       if (!["open", "closed", "all"].includes(status)) throw new Error("--status must be open|closed|all");
-      console.log(formatInitiativeList(listInitiatives(dir, { status }), style()));
+      console.log(formatInitiativeList(listInitiatives(dir, { status }), style(), status));
       return;
     }
     case "show": {

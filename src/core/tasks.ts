@@ -113,6 +113,7 @@ export function setTaskStatus(dataDir: string, id: string, status: "open" | "don
     const who = resolveAuthor(author);
     const now = nowIso();
     const t = doc.frontmatter.task;
+    const wasOpen = t.status !== "done";
     if (status === "done") {
       t.status = "done";
       t.completed_at = now;
@@ -129,7 +130,8 @@ export function setTaskStatus(dataDir: string, id: string, status: "open" | "don
     upsertDocRow(db, doc, { fileHash: hash });
     if (row) db.run("UPDATE documents SET edged_at = ? WHERE id = ?", [row.edged_at, id]); // status change needs no re-edging
     const item = toItem(dataDir, doc, readSidecar(dataDir, id).filter((l) => l.kind === "edge").length);
-    if (status !== "done" || !item.initiative) return item;
+    if (status !== "done" || !wasOpen || !item.initiative) return item;
+    if (readDocFile(dataDir, item.initiative.id)?.frontmatter.initiative?.status !== "open") return item; // a closed initiative needs no notice
     const mates = listTasks(dataDir, { status: "all", initiative: item.initiative.id, db });
     const done = mates.filter((m) => m.status === "done").length;
     return done === mates.length ? { ...item, initiativeCompleted: { ...item.initiative, done, total: mates.length } } : item;
