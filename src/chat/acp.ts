@@ -109,10 +109,15 @@ export class AcpClient {
   get isClosed(): boolean {
     return this.closed;
   }
-  close(): void {
+  /**
+   * Stop the agent and resolve once its process has exited. Callers that remove the agent's
+   * working directory must await this: on Windows a live child keeps its cwd busy (EBUSY).
+   */
+  close(): Promise<void> {
     this.fail(new Error("ACP client closed"));
     try { this.writer?.close().catch(() => {}); } catch {}
     try { this.t.kill(); } catch {}
+    return this.t.exited.then(() => {}, () => {});
   }
   // ---- protocol helpers ----
   async initialize(): Promise<unknown> {

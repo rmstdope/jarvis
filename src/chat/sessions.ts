@@ -203,10 +203,12 @@ export class ChatService {
     this.sessions.delete(id);
     this.updateHandlers.delete(this.sessions.get(id)?.acpSessionId ?? "");
   }
-  shutdown(): void {
-    this.client?.close();
+  /** Drop every session and stop the agent; resolves once its process has exited. */
+  async shutdown(): Promise<void> {
+    const c = this.client;
     this.client = null;
     this.sessions.clear();
+    await c?.close();
   }
 }
 export class ChatError extends Error {

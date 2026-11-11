@@ -58,7 +58,7 @@ export function tmpDataDir(): { dir: string; cleanup: () => void } {
         try { rmSync(dir, { recursive: true, force: true }); } catch {} // Windows: EBUSY, by definition
         throw new Error(`database still open at cleanup: ${held.join(", ")}`);
       }
-      // Retries ride out a child process (an ACP agent, git) that Windows still counts in the
+      // Retries ride out a child process (git) that Windows still counts in the
       // directory for a moment after it was killed; a leaked database never frees itself.
       rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
     },

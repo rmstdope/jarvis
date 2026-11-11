@@ -12,7 +12,7 @@ const FAKE = join(import.meta.dir, "fixtures", "fake-acp.ts");
 const spawn = (_model: string, cwd: string) => spawnBunAcp(FAKE, cwd);
 let t: ReturnType<typeof tmpDataDir>;
 beforeEach(() => { t = tmpDataDir(); useFakeEmbedder(); });
-afterEach(() => { resetChatServices(); t.cleanup(); clearEmbedder(); });
+afterEach(async () => { await resetChatServices(); t.cleanup(); clearEmbedder(); });
 
 async function collect(gen: AsyncGenerator<{ type: string }>) {
   const out: { type: string; [k: string]: unknown }[] = [];
@@ -36,8 +36,42 @@ describe("acp client", () => {
     const slow = c.prompt(sid, "SLOW");
     await c.cancel(sid);
     expect((await slow).stopReason).toBe("cancelled");
-    c.close();
+    await c.close();
     await expect(c.prompt(sid, "x")).rejects.toThrow();
+  });
+});
+
+describe("shutdown waits for the agent process (jv-den)", () => {
+  // On Windows a live child keeps its cwd (the test's temporary directory) busy, so a close that
+  // returns before the child has exited lets cleanup race it into EBUSY.
+  function slowExitTransport() {
+    const state = { exited: false };
+    let exit!: () => void;
+    const exited = new Promise<number>((r) => (exit = () => { state.exited = true; r(0); }));
+    let push!: (o: unknown) => void;
+    const stdout = new ReadableStream<Uint8Array>({ start(c) { push = (o) => c.enqueue(new TextEncoder().encode(JSON.stringify(o) + "\n")); } });
+    const answers: Record<string, unknown> = { initialize: { protocolVersion: 1 }, "session/new": { sessionId: "s1" } };
+    const write = (line: string) => { const m = JSON.parse(line); if (m.id !== undefined) push({ jsonrpc: "2.0", id: m.id, result: answers[m.method] ?? {} }); };
+    return { state, transport: { stdin: { write }, stdout, kill: () => { setTimeout(exit, 50); }, exited } };
+  }
+  test("AcpClient.close resolves only once the agent process has exited", async () => {
+    const { state, transport } = slowExitTransport();
+    const c = new AcpClient(transport);
+    await c.close();
+    expect(state.exited).toBe(true);
+  });
+  test("ChatService.shutdown and resetChatServices resolve only once the agent process has exited", async () => {
+    const one = slowExitTransport();
+    const svc = new ChatService(t.dir, { spawn: () => one.transport });
+    await svc.create({ type: "jarvis", ids: [] });
+    await svc.shutdown();
+    expect(one.state.exited).toBe(true);
+    const two = slowExitTransport();
+    const ctx = { dataDir: t.dir, chatDeps: { spawn: () => two.transport } };
+    const r = await handle(new Request("http://127.0.0.1:7281/api/chat/sessions", { method: "POST", body: JSON.stringify({ scope: { type: "jarvis", ids: [] } }), headers: { "content-type": "application/json" } }), ctx);
+    expect(r.status).toBe(200);
+    await resetChatServices();
+    expect(two.state.exited).toBe(true);
   });
 });
 
@@ -83,7 +117,7 @@ describe("chat service", () => {
     const b = createBriefing(t.dir, { title: "B", body: "briefing body\n" });
     const bs = await svc.create({ type: "briefing", ids: [b.id] });
     expect(svc.buildPrompt(bs, "q").prompt).toContain("briefing body");
-    svc.shutdown();
+    await svc.shutdown();
   });
   test("HTTP routes stream NDJSON and map errors", async () => {
     const ctx = { dataDir: t.dir, chatDeps: { spawn } };

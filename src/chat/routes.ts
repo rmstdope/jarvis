@@ -11,9 +11,11 @@ export function chatService(ctx: ServerContext): ChatService {
   }
   return s;
 }
-export function resetChatServices(): void {
-  for (const s of services.values()) s.shutdown();
+/** Shut every chat service down; resolves once their agent processes have exited. */
+export async function resetChatServices(): Promise<void> {
+  const all = [...services.values()];
   services.clear();
+  await Promise.all(all.map((s) => s.shutdown()));
 }
 const wrap = async (fn: () => Promise<Response>): Promise<Response> => {
   try {
