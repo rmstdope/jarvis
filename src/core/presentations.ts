@@ -209,11 +209,20 @@ export function indexPresentations(db: Database, dataDir: string, result: Reinde
 registerProjectionHook(indexPresentations);
 
 // ---- Slidecraft discovery ----
-/** Whether a deck can be presented in Slidecraft right now, and where. */
-export type SlidecraftStatus = { status: "ready"; base: string; vault: string } | { status: "not-running" } | { status: "no-vault"; base: string };
+/**
+ * Whether a deck can be presented in Slidecraft right now, and where. `no-vault`: Slidecraft runs but
+ * the content repo is not one of its vaults; `no-include`: it is, but the vault's include globs miss
+ * `presentations/<slug>/index.mdx` (fixed in Slidecraft's config file, which `configFile` names).
+ */
+export type SlidecraftStatus =
+  | { status: "ready"; base: string; vault: string }
+  | { status: "not-running" }
+  | { status: "no-vault"; base: string }
+  | { status: "no-include"; base: string; vault: string; configFile?: string };
 
 /** The include glob a Slidecraft vault needs for the content repo's decks to be listed in it. */
 export const SLIDECRAFT_DECK_GLOB = "presentations/*/index.mdx";
+const SAMPLE_DECK = "presentations/deck/index.mdx";
 
 /**
  * Where to look for Slidecraft: `JARVIS_SLIDECRAFT_URL` alone when it is set, otherwise the dev
@@ -226,26 +235,41 @@ export const SLIDECRAFT_CANDIDATES = (): string[] => {
 
 const realOr = (p: string): string => { try { return realpathSync(p); } catch { return resolve(p); } };
 
+type VaultInfo = { id?: unknown; path?: unknown; include?: unknown };
+
+/** Ask one base URL; undefined when nothing that calls itself Slidecraft answers there. */
+async function probeSlidecraft(base: string, real: string, fetchImpl: typeof fetch): Promise<SlidecraftStatus | undefined> {
+  try {
+    const h = await fetchImpl(`${base}/api/health`, { signal: AbortSignal.timeout(PROBE_TIMEOUT_MS) });
+    if (!h.ok || ((await h.json()) as { app?: string }).app !== "slidecraft") return undefined;
+  } catch { return undefined; }
+  // Slidecraft answered: from here on, anything unusable means the repo was not found among its vaults.
+  let listed: { vaults?: unknown; configFile?: unknown } = {};
+  try {
+    const v = await fetchImpl(`${base}/api/vaults`, { signal: AbortSignal.timeout(PROBE_TIMEOUT_MS) });
+    if (v.ok) listed = (await v.json()) as typeof listed;
+  } catch {}
+  const vaults = (Array.isArray(listed.vaults) ? listed.vaults : []) as VaultInfo[];
+  const mine = vaults.filter((x) => typeof x.id === "string" && typeof x.path === "string" && realOr(x.path) === real);
+  // Slidecraft matches include globs against vault-relative paths; Bun.Glob has the same * and ** rules.
+  const listsDecks = (x: VaultInfo) => Array.isArray(x.include) && x.include.some((g) => typeof g === "string" && new Bun.Glob(g).match(SAMPLE_DECK));
+  const hit = mine.find(listsDecks);
+  if (hit) return { status: "ready", base, vault: hit.id as string };
+  if (mine.length) return { status: "no-include", base, vault: mine[0].id as string, configFile: typeof listed.configFile === "string" ? listed.configFile : undefined };
+  return { status: "no-vault", base };
+}
+
 /**
  * Find a running Slidecraft whose vaults include the content repo. Slidecraft answers
- * `GET /api/health` with `app: "slidecraft"` and `GET /api/vaults` with `{vaults:[{id, path, include}]}`;
+ * `GET /api/health` with `app: "slidecraft"` and `GET /api/vaults` with `{vaults:[{id, path, include}], configFile}`;
  * the content repo is presentable when one vault's real path is the repo's and its include globs
- * cover `presentations/<slug>/index.mdx`.
+ * cover `presentations/<slug>/index.mdx`. Candidates are probed together, and the first in
+ * `SLIDECRAFT_CANDIDATES` order that answers wins, so an absent Slidecraft costs one timeout, not two.
  */
 export async function discoverSlidecraft(dataDir: string, fetchImpl: typeof fetch = fetch): Promise<SlidecraftStatus> {
   const real = realOr(dataDir);
-  for (const base of SLIDECRAFT_CANDIDATES()) {
-    try {
-      const h = await fetchImpl(`${base}/api/health`, { signal: AbortSignal.timeout(PROBE_TIMEOUT_MS) });
-      if (!h.ok) continue;
-      if (((await h.json()) as { app?: string }).app !== "slidecraft") continue;
-      const v = await fetchImpl(`${base}/api/vaults`, { signal: AbortSignal.timeout(PROBE_TIMEOUT_MS) });
-      const vj = v.ok ? ((await v.json()) as { vaults?: { id: string; path: string; include?: string[] }[] }) : {};
-      const hit = (vj.vaults ?? []).find((x) => realOr(x.path) === real && (x.include ?? []).includes(SLIDECRAFT_DECK_GLOB));
-      return hit ? { status: "ready", base, vault: hit.id } : { status: "no-vault", base };
-    } catch {}
-  }
-  return { status: "not-running" };
+  const answers = await Promise.all(SLIDECRAFT_CANDIDATES().map((base) => probeSlidecraft(base, real, fetchImpl)));
+  return answers.find((a) => a !== undefined) ?? { status: "not-running" };
 }
 
 /** The Slidecraft page that presents a deck: `<base>/v/<vault>/presentations/<slug>`. */

@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { Window } from "happy-dom";
 import { h, append, clear, toast, modal, metaLine } from "../web/src/ui.ts";
+import { presentControl } from "../web/src/presentations.ts";
 
 const win = new Window();
 const saved: Record<string, unknown> = {};
@@ -50,5 +51,25 @@ describe("web ui helpers under happy-dom", () => {
   });
   test("metaLine omits missing parts", () => {
     expect(metaLine({ source: "note", created_at: "2026-02-03T00:00:00Z", author: "a" })).toBe("note · added 2026-02-03 by a");
+  });
+});
+
+describe("presenting a deck", () => {
+  test("Present in Slidecraft when ready; otherwise what to do, never a dead link", () => {
+    const ready = presentControl({ status: "ready", launchUrl: "http://localhost:6110/v/team/presentations/q3" }, false);
+    const link = ready.querySelector("a") ?? (ready.tagName === "A" ? ready : null);
+    expect(link?.getAttribute("href")).toBe("http://localhost:6110/v/team/presentations/q3");
+    expect(link?.getAttribute("target")).toBe("_blank");
+    expect(ready.textContent).toBe("Present in Slidecraft");
+    // Inside the macOS app the deck opens in the same window.
+    expect(presentControl({ status: "ready", launchUrl: "http://x/v/t/presentations/q3" }, true).getAttribute("target")).toBe("_self");
+    for (const status of ["not-running", "no-vault", "no-include"] as const) {
+      const el = presentControl({ status }, false);
+      expect(el.querySelector("a")).toBeNull();
+      expect(el.textContent).toContain("jarvis doctor");
+    }
+    expect(presentControl({ status: "not-running" }, false).textContent).toContain("Start Slidecraft");
+    expect(presentControl({ status: "no-vault" }, false).textContent).toContain("vault");
+    expect(presentControl({ status: "no-include" }, false).textContent).toContain("vault");
   });
 });

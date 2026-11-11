@@ -43,11 +43,17 @@ local and disposable.
 - Decks are Slidecraft decks: `presentations/<slug>/index.mdx`, a `<Presentation>` body, and a YAML
   frontmatter block that J.A.R.V.I.S. owns (`id`, `source: presentation`, `title`, `author`,
   `created_at`). Slidecraft keeps the frontmatter byte for byte; never remove or rewrite it.
-- Bring a deck in with `jarvis presentation share <file-or-dir> --slug <slug>` (adds the frontmatter),
-  or turn a captured doc whose body is a deck into one with `jarvis presentation promote <id> --slug <slug>`.
-- Write and change decks with Slidecraft: when the content repo is a writable Slidecraft vault,
-  Slidecraft keeps its `slidecraft-presentations` skill in the repo's `.claude/skills/`; follow it.
-  Slugs are lowercase words joined by hyphens.
+- Every deck lives in `presentations/<slug>/` (slugs are lowercase words joined by hyphens). Anything
+  outside `presentations/` is never indexed and never shared by `jarvis sync`.
+- A **new** deck: write it outside the content repo (a scratch folder, or another Slidecraft vault),
+  then bring it in with `jarvis presentation share <file-or-dir> --slug <slug>`, which adds the
+  frontmatter. Never create one with Slidecraft's `create_presentation` tool, or at `<repo>/<name>/`
+  as Slidecraft's skill would: Slidecraft creates decks at its vault's top level, which here is the
+  content repo's root.
+- A captured doc whose body is a deck becomes one with `jarvis presentation promote <id> --slug <slug>`.
+- **Changing** a deck already under `presentations/`: follow Slidecraft's `slidecraft-presentations`
+  skill (Slidecraft keeps it in the repo's `.claude/skills/` when the content repo is a writable vault),
+  addressing the deck as `presentations/<slug>`.
 - To present, the user opens the deck in the web UI and presses *Present in Slidecraft*. If that
   button is missing, run `jarvis doctor` and quote its `slidecraft` fix line.
 - `jarvis sync` afterwards, as for any other change.

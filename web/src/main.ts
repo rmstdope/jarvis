@@ -4,6 +4,7 @@ import { renderMarkdown } from "../../src/briefings/markdown.ts";
 import { renderBriefingHtml } from "../../src/briefings/render.ts";
 import type { Node as BriefingNode } from "../../src/briefings/parser.ts";
 import { openDiscuss } from "./discuss.ts";
+import { presentControl } from "./presentations.ts";
 
 declare global {
   interface Window { __JARVIS_APP__?: boolean; }
@@ -186,7 +187,7 @@ async function viewPresentations() {
 }
 async function viewPresentation(id: string) {
   const p = await api.presentation(id);
-  const present = p.slidecraft.status === "ready" && p.slidecraft.launchUrl ? h("a", { href: p.slidecraft.launchUrl, target: inApp() ? "_self" : "_blank", rel: "noopener" }, h("button", { class: "primary" }, "Present in Slidecraft")) : h("span", { class: "muted small" }, p.slidecraft.status === "not-running" ? "Start Slidecraft to present this deck (jarvis doctor says how)." : "Add this content repo as a Slidecraft vault to present this deck (jarvis doctor says how).");
+  const present = presentControl(p.slidecraft, inApp());
   main.append(h("h1", {}, p.title), h("div", { class: "muted small" }, `${p.slug} · added ${fmtDate(p.created_at)} by ${p.author} `, h("span", { class: `pill ${p.indexed ? "green" : ""}` }, p.indexed ? "indexed" : "not indexed")), h("p", {}, present), h("h3", {}, "MDX source"), h("pre", { class: "body-md" }, h("code", {}, p.body)));
 }
 

@@ -150,6 +150,8 @@ export function formatDoctor(r: DoctorReport): string {
 function slidecraftCheck(s: SlidecraftStatus, dataDir: string): Check {
   if (s.status === "ready") return ok("slidecraft", false, `decks present in Slidecraft at ${s.base}, vault "${s.vault}"`);
   if (s.status === "not-running")
-    return warn("slidecraft", "Slidecraft is not running (decks are listed and searchable, but cannot be presented)", "start Slidecraft (`slidecraft` from a release, or `bun run dev` in its checkout)   or   set JARVIS_SLIDECRAFT_URL to where it runs");
-  return warn("slidecraft", `Slidecraft at ${s.base} has no vault for the content repo that includes ${SLIDECRAFT_DECK_GLOB}`, `add ${dataDir} as a vault on ${s.base}/settings (its default include covers ${SLIDECRAFT_DECK_GLOB})`);
+    return warn("slidecraft", "Slidecraft is not running (decks are listed and searchable, but cannot be presented)", "start Slidecraft (its release binary, or `bun run dev` in its checkout)   or   set JARVIS_SLIDECRAFT_URL to where it runs");
+  if (s.status === "no-include")
+    return warn("slidecraft", `Slidecraft vault "${s.vault}" is the content repo, but its include does not cover ${SLIDECRAFT_DECK_GLOB}`, `add "${SLIDECRAFT_DECK_GLOB}" to the "include" of vault "${s.vault}" in ${s.configFile ?? "Slidecraft's config.json"}, then restart Slidecraft`);
+  return warn("slidecraft", `Slidecraft at ${s.base} has no vault for the content repo`, `add ${dataDir} as a vault on ${s.base}/settings (its default include covers ${SLIDECRAFT_DECK_GLOB})`);
 }

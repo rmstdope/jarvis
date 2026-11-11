@@ -112,6 +112,14 @@ describe("doctor", () => {
     expect(missing.fix).toContain(data);
     expect(missing.fix).toContain("http://localhost:6110/settings");
     expect(missing.fix).toContain("presentations/*/index.mdx");
+    // The repo is a vault already, but its include misses the decks: the settings page cannot change
+    // include, so the fix names the vault and Slidecraft's config file.
+    const narrow = await check({ status: "no-include", base: "http://localhost:6110", vault: "team", configFile: "/home/u/.config/slidecraft/config.json" });
+    expect(narrow.status).toBe("warn");
+    expect(narrow.fix).toContain('"team"');
+    expect(narrow.fix).toContain("/home/u/.config/slidecraft/config.json");
+    expect(narrow.fix).toContain("presentations/*/index.mdx");
+    expect(narrow.fix).not.toContain("/settings");
     // Presenting is optional: a missing Slidecraft never makes doctor unhealthy, and --core-only skips it.
     expect((await doctor({ which, port: 0, slidecraft: async () => ({ status: "not-running" }) })).summary.healthy).toBe(true);
     expect((await doctor({ coreOnly: true, which, slidecraft: async () => ({ status: "not-running" }) })).checks.some((c) => c.name === "slidecraft")).toBe(false);
