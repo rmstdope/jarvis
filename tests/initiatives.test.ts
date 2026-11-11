@@ -8,7 +8,7 @@ import { ingest } from "../src/core/ingest.ts";
 import { readDocFile } from "../src/core/docs.ts";
 import { parseDoc, serializeDoc } from "../src/core/frontmatter.ts";
 import { reindex } from "../src/core/reindex.ts";
-import { formatInitiativeList, formatInitiativeShow, progressBar, PLAIN } from "../src/core/initiativeView.ts";
+import { ANSI, formatInitiativeList, formatInitiativeShow, memberLinkLine, progressBar, PLAIN } from "../src/core/initiativeView.ts";
 import { clearEmbedder, tmpDataDir, useFakeEmbedder } from "./helpers.ts";
 import { fakeRouter, noRouter } from "./fakeRouter.ts";
 
@@ -207,5 +207,15 @@ describe("linking an initiative to its own task", () => {
     const filed = await addTask(t.dir, { title: "Filed and linked", initiative: ini.id, links: [ini.id] });
     expect(existsSync(join(t.dir, "edges", `${filed.id}.jsonl`))).toBe(false);
     expect(link(t.dir, ini.id, [own.id, foreign.id, loose.id]).map((r) => r.status)).toEqual(["member", "linked", "linked"]);
+  });
+});
+
+describe("memberLinkLine", () => {
+  const r = { task: "T1", title: "Standalone", initiative: "Move billing" };
+  test("dims the whole 'is already a task in … — nothing linked' tail on a terminal", () => {
+    expect(memberLinkLine(r, ANSI)).toBe("T1  Standalone  \x1b[2mis already a task in Move billing — nothing linked\x1b[22m");
+  });
+  test("is plain text when piped", () => {
+    expect(memberLinkLine(r, PLAIN)).toBe("T1  Standalone  is already a task in Move billing — nothing linked");
   });
 });

@@ -26,6 +26,11 @@ export function taskListLine(t: TaskItem, s: Style): string {
   return taskLine(t) + (t.initiative ? "  " + s.dim(`· ${t.initiative.title}`) : "");
 }
 
+/** The `jarvis link` line for an initiative and its own task: nothing was linked, and the whole explanation is dim. */
+export function memberLinkLine(r: { task?: string; title?: string; initiative?: string }, s: Style): string {
+  return `${r.task}  ${r.title}  ${s.dim(`is already a task in ${r.initiative} — nothing linked`)}`;
+}
+
 const day = (iso?: string): string => (iso ?? "").slice(0, 10);
 
 /** `jarvis initiative list` output. */
