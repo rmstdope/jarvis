@@ -137,7 +137,7 @@ describe("sync edge cases", () => {
     expect(s.pushed).toBe(true);
     expect(s.committed).toBe(1);
     const log = gitOk(a, ["log", "--oneline"]);
-    expect(log).toContain("brain: capture 1 item(s)");
+    expect(log).toContain("jarvis: capture 1 item(s)");
     expect(log).toContain("b moved");
     gitOk(b, ["pull", "-q", "--no-rebase"]);
     expect(existsSync(join(b, "docs"))).toBe(true);
@@ -178,19 +178,19 @@ describe("browse filters and config precedence", () => {
     expect(browse(t.dir, { limit: 1000 }).pagination.added.limit).toBe(100);
   });
   test("author/data/port precedence and team policy", () => {
-    const saved = { h: process.env.SECOND_BRAIN_HOME, a: process.env.SECOND_BRAIN_AUTHOR, d: process.env.SECOND_BRAIN_DATA };
-    process.env.SECOND_BRAIN_HOME = join(t.dir, "home");
-    delete process.env.SECOND_BRAIN_AUTHOR;
-    delete process.env.SECOND_BRAIN_DATA;
+    const saved = { h: process.env.JARVIS_HOME, a: process.env.JARVIS_AUTHOR, d: process.env.JARVIS_DATA };
+    process.env.JARVIS_HOME = join(t.dir, "home");
+    delete process.env.JARVIS_AUTHOR;
+    delete process.env.JARVIS_DATA;
     resetConfigCache();
     try {
-      expect(() => resolveDataDir()).toThrow(/brain init/);
+      expect(() => resolveDataDir()).toThrow(/jarvis init/);
       saveConfig({ author: "cfg", dataDir: "/cfg/data", port: 9000 });
       expect(resolveAuthor()).toBe("cfg");
       expect(resolveDataDir()).toBe("/cfg/data");
       expect(resolvePort()).toBe(9000);
-      process.env.SECOND_BRAIN_AUTHOR = "env";
-      process.env.SECOND_BRAIN_DATA = "/env/data";
+      process.env.JARVIS_AUTHOR = "env";
+      process.env.JARVIS_DATA = "/env/data";
       expect(resolveAuthor()).toBe("env");
       expect(resolveDataDir()).toBe("/env/data");
       expect(resolveAuthor("explicit")).toBe("explicit");
@@ -206,7 +206,7 @@ describe("browse filters and config precedence", () => {
       writeFileSync(join(t.dir, "config", "team.toml"), "not toml [[[");
       expect(loadTeamConfig(t.dir).projection.mode).toBe("local");
     } finally {
-      for (const [k, v] of [["SECOND_BRAIN_HOME", saved.h], ["SECOND_BRAIN_AUTHOR", saved.a], ["SECOND_BRAIN_DATA", saved.d]] as const) { if (v === undefined) delete process.env[k]; else process.env[k] = v; }
+      for (const [k, v] of [["JARVIS_HOME", saved.h], ["JARVIS_AUTHOR", saved.a], ["JARVIS_DATA", saved.d]] as const) { if (v === undefined) delete process.env[k]; else process.env[k] = v; }
       resetConfigCache();
     }
   });
@@ -243,8 +243,8 @@ describe("ask context budget, reindex warnings, doctor optional checks", () => {
   });
   test("doctor flags a busy port and an inbox inside the content repo", async () => {
     const srv = Bun.serve({ hostname: "127.0.0.1", port: 0, fetch: () => new Response("") });
-    const saved = process.env.SECOND_BRAIN_INBOX;
-    process.env.SECOND_BRAIN_INBOX = join(t.dir, "inbox");
+    const saved = process.env.JARVIS_INBOX;
+    process.env.JARVIS_INBOX = join(t.dir, "inbox");
     try {
       const r = await doctor({ port: srv.port, dataDir: t.dir, which: (b) => `/bin/${b}` });
       const by = Object.fromEntries(r.checks.map((c) => [c.name, c]));
@@ -253,7 +253,7 @@ describe("ask context budget, reindex warnings, doctor optional checks", () => {
       expect(by.inbox.fix).toContain("set-inbox");
     } finally {
       srv.stop(true);
-      if (saved === undefined) delete process.env.SECOND_BRAIN_INBOX; else process.env.SECOND_BRAIN_INBOX = saved;
+      if (saved === undefined) delete process.env.JARVIS_INBOX; else process.env.JARVIS_INBOX = saved;
     }
   });
 });

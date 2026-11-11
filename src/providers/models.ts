@@ -9,10 +9,10 @@ import { REASONING_EFFORTS, TASK_KINDS, type Quality, type ReasoningEffort, type
 export type ProviderName = "local" | "copilot" | "openai-compat";
 export const PROVIDER_NAMES: ProviderName[] = ["local", "copilot", "openai-compat"];
 export const DEFAULT_PREFERENCE: ProviderName[] = ["local", "openai-compat", "copilot"];
-/** Copilot model id used by live detection; override with SECOND_BRAIN_COPILOT_MODEL. Must be an id your entitlement offers (`copilot --help`). */
-export const COPILOT_DEFAULT_MODEL = () => process.env.SECOND_BRAIN_COPILOT_MODEL ?? "gpt-4.1";
-/** Model id used when OPENAI_API_KEY is detected; override with SECOND_BRAIN_OPENAI_MODEL. */
-export const OPENAI_DEFAULT_MODEL = () => process.env.SECOND_BRAIN_OPENAI_MODEL ?? "gpt-4o";
+/** Copilot model id used by live detection; override with JARVIS_COPILOT_MODEL. Must be an id your entitlement offers (`copilot --help`). */
+export const COPILOT_DEFAULT_MODEL = () => process.env.JARVIS_COPILOT_MODEL ?? "gpt-4.1";
+/** Model id used when OPENAI_API_KEY is detected; override with JARVIS_OPENAI_MODEL. */
+export const OPENAI_DEFAULT_MODEL = () => process.env.JARVIS_OPENAI_MODEL ?? "gpt-4o";
 
 export interface ModelEntry {
   provider: ProviderName;
@@ -34,7 +34,7 @@ export interface ModelsConfig {
 }
 
 export function modelsPath(): string {
-  return process.env.SECOND_BRAIN_MODELS ?? join(configHome(), "models.toml");
+  return process.env.JARVIS_MODELS ?? join(configHome(), "models.toml");
 }
 
 function asQuality(q: unknown): Quality {

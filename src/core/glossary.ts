@@ -14,9 +14,9 @@ export interface Glossary {
 }
 export const GLOSSARY_SECTIONS = ["abbreviations", "people", "products", "teams", "projects"];
 
-/** Lookup order: SECOND_BRAIN_GLOSSARY → <repo>/config/glossary.toml → ~/.config/second-brain/glossary.toml. Missing = empty. */
+/** Lookup order: JARVIS_GLOSSARY → <repo>/config/glossary.toml → ~/.config/jarvis/glossary.toml. Missing = empty. */
 export function glossaryPath(dataDir?: string): string | undefined {
-  const candidates = [process.env.SECOND_BRAIN_GLOSSARY, dataDir ? join(dataDir, "config", "glossary.toml") : undefined, join(homedir(), ".config", "second-brain", "glossary.toml")];
+  const candidates = [process.env.JARVIS_GLOSSARY, dataDir ? join(dataDir, "config", "glossary.toml") : undefined, join(homedir(), ".config", "jarvis", "glossary.toml")];
   return candidates.find((p) => p && existsSync(p));
 }
 

@@ -16,11 +16,11 @@ beforeEach(() => {
   t = tmpDataDir();
   home = join(t.dir, "home");
   mkdirSync(home);
-  for (const k of ["SECOND_BRAIN_HOME", "SECOND_BRAIN_DATA", "SECOND_BRAIN_MODELS", "SECOND_BRAIN_INBOX"]) {
+  for (const k of ["JARVIS_HOME", "JARVIS_DATA", "JARVIS_MODELS", "JARVIS_INBOX"]) {
     envBackup[k] = process.env[k];
     delete process.env[k];
   }
-  process.env.SECOND_BRAIN_HOME = home;
+  process.env.JARVIS_HOME = home;
   resetConfigCache();
   useFakeEmbedder();
 });
@@ -63,12 +63,12 @@ describe("doctor", () => {
     const byName = Object.fromEntries(r0.checks.map((c) => [c.name, c]));
     expect(byName.bun.status).toBe("fail");
     expect(byName.bun.fix).toContain("bun.sh");
-    expect(byName["user-config"]).toMatchObject({ status: "fail", fix: "brain init" });
+    expect(byName["user-config"]).toMatchObject({ status: "fail", fix: "jarvis init" });
     expect(byName["data-dir"].status).toBe("fail");
     expect(byName["embedding-server"].status).toBe("ok");
     expect(byName["embed-model"].detail).toContain("512");
     expect(r0.summary.healthy).toBe(false);
-    expect(formatDoctor(r0)).toContain("fix: brain init");
+    expect(formatDoctor(r0)).toContain("fix: jarvis init");
     // malformed config
     writeFileSync(join(home, "config.toml"), "not = [toml");
     resetConfigCache();

@@ -16,7 +16,7 @@ export function register(name: string, help: string, run: Handler): void {
 
 register("note", 'note "<text>" [--title --author --task <id>]', async ({ dataDir, positional, flags }) => {
   const text = positional.join(" ");
-  if (!text) throw new Error("usage: brain note \"<text>\"");
+  if (!text) throw new Error("usage: jarvis note \"<text>\"");
   const title = flagStr(flags, "title") ?? text.slice(0, 60);
   const r = await ingest(dataDir(), { source: "note", title, body: text, author: flagStr(flags, "author") });
   printIngest(r);
@@ -25,7 +25,7 @@ register("note", 'note "<text>" [--title --author --task <id>]', async ({ dataDi
 
 register("ingest", "ingest --file <path|-|x.pdf> [--source --title --url --author --task <id>]", async ({ dataDir, flags }) => {
   const file = flagStr(flags, "file");
-  if (!file) throw new Error("usage: brain ingest --file <path|->");
+  if (!file) throw new Error("usage: jarvis ingest --file <path|->");
   if (file !== "-" && file.toLowerCase().endsWith(".pdf")) {
     const payload = await pdfToPayload(file, { title: flagStr(flags, "title"), author: flagStr(flags, "author") });
     const pr = await ingest(dataDir(), payload);
@@ -53,7 +53,7 @@ register("reindex", "reindex [--full]", async ({ dataDir, flags }) => {
 
 register("search", 'search "<q>" [--mode hybrid|semantic|keyword --limit]', async ({ dataDir, positional, flags }) => {
   const q = positional.join(" ");
-  if (!q) throw new Error('usage: brain search "<query>"');
+  if (!q) throw new Error('usage: jarvis search "<query>"');
   const hits = await search(dataDir(), q, { mode: (flagStr(flags, "mode") as SearchMode) ?? "hybrid", limit: flagInt(flags, "limit", 10) });
   if (hits.length === 0) console.log("no results");
   for (const h of hits) console.log(`${h.docId}  ${h.score.toFixed(4)}  [${h.source}] ${h.title}\n    ${h.snippet.replace(/\s+/g, " ").slice(0, 200)}`);
@@ -61,14 +61,14 @@ register("search", 'search "<q>" [--mode hybrid|semantic|keyword --limit]', asyn
 
 function printIngest(r: { id: string; status: string; title: string; chunks: number; embedded: number; embedError?: string }) {
   console.log(`${r.status} ${r.id}  ${r.title}  (${r.chunks} new chunk(s), ${r.embedded} embedded)`);
-  if (r.embedError) console.log(`⚠ ${r.embedError} — run \`brain reindex\` later to embed`);
+  if (r.embedError) console.log(`⚠ ${r.embedError} — run \`jarvis reindex\` later to embed`);
 }
 
 export async function main(argv: string[]): Promise<number> {
   const { positional, flags } = parseArgs(argv);
   const [cmd, ...rest] = positional;
   if (!cmd || cmd === "help" || flagBool(flags, "help")) {
-    console.log("usage: brain <command> [--data <dir>]\n");
+    console.log("usage: jarvis <command> [--data <dir>]\n");
     for (const [n, c] of Object.entries(commands).sort()) if (c.help) console.log(`  ${c.help}`);
     return 0;
   }
@@ -99,7 +99,7 @@ register("serve", "serve [--port]", async ({ dataDir, flags }) => {
   const port = resolvePort(flagStr(flags, "port"));
   const dist = _join(import.meta.dir, "..", "web", "dist");
   const server = startServer({ dataDir: dir }, port, _exists(dist) ? dist : undefined);
-  console.log(`second-brain service on http://127.0.0.1:${server.port}  (content repo: ${dir})`);
+  console.log(`jarvis service on http://127.0.0.1:${server.port}  (content repo: ${dir})`);
   console.log("routes: /api/health /api/capture /api/search /api/browse /api/recent /api/item/:id /api/sync /api/filters …");
   await new Promise(() => {});
 });
@@ -146,7 +146,7 @@ import { meetingToPayload } from "./producers/meeting.ts";
 
 register("youtube", "youtube <url> [--author]", async ({ dataDir, positional, flags }) => {
   const url = positional[0];
-  if (!url) throw new Error("usage: brain youtube <url>");
+  if (!url) throw new Error("usage: jarvis youtube <url>");
   const payload = await youtubeToPayload(url, { author: flagStr(flags, "author") });
   if (!payload) throw new Error("could not fetch a transcript for that video (is yt-dlp installed and does the video have subtitles?)");
   printIngest(await ingest(dataDir(), payload));
@@ -154,7 +154,7 @@ register("youtube", "youtube <url> [--author]", async ({ dataDir, positional, fl
 
 register("meeting", "meeting <file> [--title --lang --author]", async ({ dataDir, positional, flags }) => {
   const file = positional[0];
-  if (!file) throw new Error("usage: brain meeting <audio|.vtt|.md|.txt>");
+  if (!file) throw new Error("usage: jarvis meeting <audio|.vtt|.md|.txt>");
   const dir = dataDir();
   const payload = meetingToPayload(file, { title: flagStr(flags, "title"), lang: flagStr(flags, "lang"), author: flagStr(flags, "author"), dataDir: dir });
   printIngest(await ingest(dir, payload));
@@ -193,7 +193,7 @@ register("cleanup", "cleanup [--limit --llm --doc id,id --dry-run]", async ({ da
   for (const d of r.details) console.log(`  ${d.id}: ${d.fixes.length ? d.fixes.join(", ") : "no deterministic fixes"}${d.llm ? " + llm" : ""}${d.reason ? ` (${d.reason})` : ""}`);
 });
 register("entities", "entities dedup [--dry-run]", async ({ dataDir, positional, flags }) => {
-  if (positional[0] !== "dedup") throw new Error("usage: brain entities dedup [--dry-run]");
+  if (positional[0] !== "dedup") throw new Error("usage: jarvis entities dedup [--dry-run]");
   const r = dedupEntities(dataDir(), { dryRun: flagBool(flags, "dry-run") });
   if (r.merged.length === 0) console.log("no duplicate entities");
   for (const m of r.merged) console.log(`${m.survivor} ← ${m.into.join(", ")}`);
@@ -201,7 +201,7 @@ register("entities", "entities dedup [--dry-run]", async ({ dataDir, positional,
 });
 register("ask", 'ask "<question>" [--mode --limit]', async ({ dataDir, positional, flags }) => {
   const q = positional.join(" ");
-  if (!q) throw new Error('usage: brain ask "<question>"');
+  if (!q) throw new Error('usage: jarvis ask "<question>"');
   const r = await ask(dataDir(), await getRouter(), q, { mode: flagStr(flags, "mode") as SearchMode | undefined, limit: flagInt(flags, "limit") });
   console.log(r.answer);
   if (r.citations.length) console.log("\nSources:\n" + r.citations.map((c) => `  [${c.docId}] ${c.title}`).join("\n"));
@@ -273,7 +273,7 @@ register("briefing", "briefing create --title [--kind --trail --author] | compon
   switch (sub) {
     case "create": {
       const title = flagStr(flags, "title");
-      if (!title) throw new Error("usage: brain briefing create --title <t> [--kind briefing|lesson|meeting-summary --trail <id> --author <a>]");
+      if (!title) throw new Error("usage: jarvis briefing create --title <t> [--kind briefing|lesson|meeting-summary --trail <id> --author <a>]");
       const b = createBriefing(dataDir(), { title, kind: flagStr(flags, "kind") as BriefingKind | undefined, trail: flagStr(flags, "trail"), author: resolveAuthorFlag(flags) });
       console.log(`created ${b.id}  briefings/${b.id}.brief.mdx`);
       await reindex(dataDir(), { embed: false });
@@ -305,13 +305,13 @@ register("briefing", "briefing create --title [--kind --trail --author] | compon
     }
     case "comment": {
       const text = rest.join(" ");
-      if (!id || !text) throw new Error('usage: brain briefing comment <id> "<text>"');
+      if (!id || !text) throw new Error('usage: jarvis briefing comment <id> "<text>"');
       const c = addBriefingComment(dataDir(), id, { comment: text, author: resolveAuthorFlag(flags) });
       console.log(`comment ${c.id} added to ${id}`);
       return;
     }
     case "approve": {
-      if (!id) throw new Error("usage: brain briefing approve <id>");
+      if (!id) throw new Error("usage: jarvis briefing approve <id>");
       approveBriefing(dataDir(), id);
       console.log(`approved ${id}`);
       return;
@@ -325,7 +325,7 @@ register("briefing", "briefing create --title [--kind --trail --author] | compon
       return;
     }
     default:
-      throw new Error("usage: brain briefing create|components|list|show|comment|approve|publish");
+      throw new Error("usage: jarvis briefing create|components|list|show|comment|approve|publish");
   }
 });
 function resolveAuthorFlag(flags: Record<string, string | boolean>): string {
@@ -367,12 +367,12 @@ register("task", 'task add "<title>" [--body --due YYYY-MM-DD --link id[,id] --r
   switch (sub) {
     case "add": {
       const title = rest.join(" ");
-      if (!title) throw new Error('usage: brain task add "<title>"');
+      if (!title) throw new Error('usage: jarvis task add "<title>"');
       const links = flagStr(flags, "link")?.split(",").map((s) => s.trim()).filter(Boolean);
       const r = await addTask(dir, { title, body: flagStr(flags, "body"), due: flagStr(flags, "due"), owner: flagStr(flags, "owner"), author: flagStr(flags, "author"), links, relation: flagStr(flags, "relation") as Relation | undefined });
       console.log(`task ${r.id}  ${title}${r.linked ? `  (${r.linked} link(s))` : ""}`);
       const sug = await suggestLinks(dir, r.id, { limit: 3 });
-      if (sug.length) console.log("link suggestions:\n" + sug.map((s) => `  brain link ${r.id} ${s.id}   # ${s.title} — ${s.reason}`).join("\n"));
+      if (sug.length) console.log("link suggestions:\n" + sug.map((s) => `  jarvis link ${r.id} ${s.id}   # ${s.title} — ${s.reason}`).join("\n"));
       return;
     }
     case "list":
@@ -386,20 +386,20 @@ register("task", 'task add "<title>" [--body --due YYYY-MM-DD --link id[,id] --r
     }
     case "done":
     case "reopen": {
-      if (!rest[0]) throw new Error(`usage: brain task ${sub} <id>`);
+      if (!rest[0]) throw new Error(`usage: jarvis task ${sub} <id>`);
       const t = setTaskStatus(dir, rest[0], sub === "done" ? "done" : "open", flagStr(flags, "author"));
       console.log(`${t.status === "done" ? "✓ done" : "○ reopened"}: ${t.title}`);
       return;
     }
     case "suggest": {
-      if (!rest[0]) throw new Error("usage: brain task suggest <id>");
+      if (!rest[0]) throw new Error("usage: jarvis task suggest <id>");
       const s = await suggestLinks(dir, rest[0], { limit: flagInt(flags, "limit", 5) });
       if (!s.length) console.log("no suggestions");
       for (const x of s) console.log(`${x.id}  [${x.source}] ${x.title}  — ${x.reason}`);
       return;
     }
     default:
-      throw new Error("usage: brain task add|list|show|done|reopen|suggest");
+      throw new Error("usage: jarvis task add|list|show|done|reopen|suggest");
   }
 });
 register("tasks", "tasks  (open tasks for the current user)", async ({ dataDir, flags }) => {
@@ -407,7 +407,7 @@ register("tasks", "tasks  (open tasks for the current user)", async ({ dataDir, 
 });
 register("link", `link <src> <dst[,dst]> [--relation ${LINK_RELATIONS.join("|")} --author]`, async ({ dataDir, positional, flags }) => {
   const [src, dsts] = positional;
-  if (!src || !dsts) throw new Error("usage: brain link <src> <dst[,dst]> [--relation]");
+  if (!src || !dsts) throw new Error("usage: jarvis link <src> <dst[,dst]> [--relation]");
   for (const r of linkItems(dataDir(), src, dsts.split(",").map((s) => s.trim()).filter(Boolean), { relation: flagStr(flags, "relation") as Relation | undefined, author: flagStr(flags, "author") })) console.log(`${r.status}: ${r.src} → ${r.dst} [${r.relation}]`);
 });
 
@@ -419,14 +419,14 @@ import { draftMeetingSummary } from "./core/meetingSummary.ts";
 register("presentation", "presentation share <file-or-dir> --slug <slug> [--title --author] | promote <docId> --slug <slug>", async ({ dataDir, positional, flags }) => {
   const [sub, target] = positional;
   const slug = flagStr(flags, "slug");
-  if (!slug || !target) throw new Error("usage: brain presentation share <path> --slug <slug> | promote <docId> --slug <slug>");
+  if (!slug || !target) throw new Error("usage: jarvis presentation share <path> --slug <slug> | promote <docId> --slug <slug>");
   if (sub === "share") {
     const p = sharePresentation(dataDir(), target, { slug, title: flagStr(flags, "title"), author: flagStr(flags, "author") });
     console.log(`shared ${p.id}  presentations/${p.slug}/index.mdx  "${p.title}"`);
   } else if (sub === "promote") {
     const p = promotePresentation(dataDir(), target, slug);
     console.log(`promoted ${p.id} → presentations/${p.slug}/index.mdx`);
-  } else throw new Error("usage: brain presentation share|promote");
+  } else throw new Error("usage: jarvis presentation share|promote");
   await reindex(dataDir(), { embed: false });
 });
 register("scan-inbox", "scan-inbox [--inbox <dir> --llm --commit --dry-run --limit]", async ({ dataDir, flags }) => {
@@ -435,14 +435,14 @@ register("scan-inbox", "scan-inbox [--inbox <dir> --llm --commit --dry-run --lim
   for (const x of r.results) console.log(`  ${x.slug}: ${x.status}${x.reason ? ` (${x.reason})` : ""}${x.docId ? `  doc ${x.docId}` : ""}${x.briefingId ? `  briefing ${x.briefingId}` : ""}`);
 });
 register("summarize", "summarize <docId> [--commit]", async ({ dataDir, positional, flags }) => {
-  if (!positional[0]) throw new Error("usage: brain summarize <docId> [--commit]");
+  if (!positional[0]) throw new Error("usage: jarvis summarize <docId> [--commit]");
   const b = await draftMeetingSummary(dataDir(), await getRouter(), positional[0], { commit: flagBool(flags, "commit"), author: flagStr(flags, "author") });
   console.log(`${b.status} briefing ${b.id}  "${b.title}"`);
   await reindex(dataDir(), { embed: false });
 });
 
 // ---- M10: agent instructions ----
-register("skill", "skill  (print the agent instructions; `brain skill > AGENTS.md`)", async () => {
+register("skill", "skill  (print the agent instructions; `jarvis skill > AGENTS.md`)", async () => {
   const { readFileSync: rf } = await import("node:fs");
   process.stdout.write(rf(_join(import.meta.dir, "..", "docs", "AGENT-INSTRUCTIONS.md"), "utf8"));
 });

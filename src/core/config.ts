@@ -18,9 +18,9 @@ export interface MachineConfig {
 }
 
 export function configHome(): string {
-  if (process.env.SECOND_BRAIN_HOME) return process.env.SECOND_BRAIN_HOME;
+  if (process.env.JARVIS_HOME) return process.env.JARVIS_HOME;
   const base = process.platform === "win32" ? process.env.USERPROFILE ?? homedir() : homedir();
-  return join(base, ".second-brain");
+  return join(base, ".jarvis");
 }
 export function configPath(): string {
   return join(configHome(), "config.toml");
@@ -78,15 +78,15 @@ export function updateConfig(patch: Partial<MachineConfig>): MachineConfig {
   return cfg;
 }
 
-/** content repo = --data → SECOND_BRAIN_DATA → config dataDir → error */
+/** content repo = --data → JARVIS_DATA → config dataDir → error */
 export function resolveDataDir(explicit?: string): string {
-  const d = explicit || process.env.SECOND_BRAIN_DATA || loadConfig().dataDir;
-  if (!d) throw new Error("No content repo configured: run `brain init` or pass --data <dir> / SECOND_BRAIN_DATA");
+  const d = explicit || process.env.JARVIS_DATA || loadConfig().dataDir;
+  if (!d) throw new Error("No content repo configured: run `jarvis init` or pass --data <dir> / JARVIS_DATA");
   return d;
 }
-/** author = explicit → SECOND_BRAIN_AUTHOR → config → OS user → unknown */
+/** author = explicit → JARVIS_AUTHOR → config → OS user → unknown */
 export function resolveAuthor(explicit?: string): string {
-  return explicit || process.env.SECOND_BRAIN_AUTHOR || loadConfig().author || osUsername() || "unknown";
+  return explicit || process.env.JARVIS_AUTHOR || loadConfig().author || osUsername() || "unknown";
 }
 export function resolvePort(explicit?: number | string): number {
   const n = Number(explicit ?? loadConfig().port ?? DEFAULT_PORT);

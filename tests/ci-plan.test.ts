@@ -60,7 +60,7 @@ describe("ci planner", () => {
     const f = planFromChanges(["tests/fixtures/teams.vtt"]);
     expect(f.tests).toContain("tests/producers.test.ts");
     expect(f.tests).not.toContain("tests/router.test.ts");
-    const a = planFromChanges(["second-brain-app/main.swift"]);
+    const a = planFromChanges(["jarvis-app/main.swift"]);
     expect(a.swift).toBe(true);
     expect(only(a.tests)).toEqual([]);
     const s = planFromChanges(["scripts/ci-plan.ts"]);

@@ -88,7 +88,7 @@ describe("presentations", () => {
     writeFileSync(src, DECK);
     const p = sharePresentation(t.dir, src, { slug: "deck", author: "me" });
     const { realpathSync } = await import("node:fs");
-    process.env.SECOND_BRAIN_DECK_VIEWER_URL = "http://localhost:6100";
+    process.env.JARVIS_DECK_VIEWER_URL = "http://localhost:6100";
     const mk = (health: unknown, sources: unknown[]) => (async (url: string) => {
       if (url.startsWith("http://localhost:6100")) return new Response(JSON.stringify(url.endsWith("/api/health") ? health : { sources }));
       throw new Error("refused");
@@ -97,7 +97,7 @@ describe("presentations", () => {
     expect(await discoverDeckViewer(t.dir, mk({ app: "deck-viewer" }, [{ id: "s1", path: "/elsewhere" }]))).toEqual({ status: "content-not-mounted", base: "http://localhost:6100" });
     expect(await discoverDeckViewer(t.dir, mk({ app: "other" }, []))).toEqual({ status: "not-running" });
     expect(launchUrl({ status: "ready", base: "http://localhost:6100", sourceId: "s 1" }, "deck")).toBe("http://localhost:6100/deck?source=s%201&path=presentations%2Fdeck");
-    process.env.SECOND_BRAIN_DECK_VIEWER_URL = "http://127.0.0.1:1";
+    process.env.JARVIS_DECK_VIEWER_URL = "http://127.0.0.1:1";
     const call = (path: string) => handle(new Request(`http://127.0.0.1:7281${path}`), { dataDir: t.dir });
     const list = await (await call("/api/presentations")).json();
     expect(list[0]).toMatchObject({ slug: "deck", id: p.id, indexed: false, viewer: { status: "not-running" } });
@@ -106,7 +106,7 @@ describe("presentations", () => {
     expect(detail).toMatchObject({ slug: "deck", indexed: true, filePath: "presentations/deck/index.mdx" });
     expect(detail.body).toContain("<Presentation>");
     expect((await call("/api/presentation/nope")).status).toBe(404);
-    delete process.env.SECOND_BRAIN_DECK_VIEWER_URL;
+    delete process.env.JARVIS_DECK_VIEWER_URL;
   });
 });
 

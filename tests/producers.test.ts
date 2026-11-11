@@ -86,7 +86,7 @@ describe("meeting", () => {
   test("audio uses a mocked backend, glossary prompt and sibling vtt", () => {
     const { mkdtempSync, writeFileSync, mkdirSync } = require("node:fs");
     const { tmpdir } = require("node:os");
-    const dir = mkdtempSync(join(tmpdir(), "sb-meet-"));
+    const dir = mkdtempSync(join(tmpdir(), "jv-meet-"));
     mkdirSync(join(dir, "config"));
     writeFileSync(join(dir, "config", "glossary.toml"), '[products]\n# Misheard as: "a corn", "ay corn"\nAcorn = "Acorn Application Platform"\nStreamlite = "video compression"\n');
     writeFileSync(join(dir, "call.m4a"), "not really audio");
@@ -108,13 +108,13 @@ describe("meeting", () => {
     expect(p.metadata).toMatchObject({ whisper_backend: "mlx_whisper", lang: "sv" });
   });
   test("no backend gives an actionable error", () => {
-    const old = process.env.SECOND_BRAIN_WHISPER;
-    delete process.env.SECOND_BRAIN_WHISPER;
+    const old = process.env.JARVIS_WHISPER;
+    delete process.env.JARVIS_WHISPER;
     try {
       expect(detectWhisperBackend(() => ({ code: 0, stdout: "", stderr: "" }), () => null)).toBeNull();
       expect(detectWhisperBackend(() => ({ code: 0, stdout: "usage: whisper.cpp", stderr: "" }), (b) => (b === "main" ? "/usr/bin/main" : null))).toBe("whisper-cli");
     } finally {
-      if (old) process.env.SECOND_BRAIN_WHISPER = old;
+      if (old) process.env.JARVIS_WHISPER = old;
     }
     expect(() => meetingToPayload("x.mp3", { run: () => ({ code: 0, stdout: "", stderr: "" }), backend: undefined })).toThrow();
   });

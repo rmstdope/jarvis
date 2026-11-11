@@ -1,12 +1,12 @@
 {
   "manifest_version": 3,
-  "name": "Second Brain capture",
+  "name": "J.A.R.V.I.S. capture",
   "version": "0.2.0",
-  "description": "Capture pages into your team's Second Brain (auto-capture is opt-in).",
+  "description": "Capture pages into your team's J.A.R.V.I.S. (auto-capture is opt-in).",
   "permissions": ["activeTab", "storage", "tabs", "scripting", "alarms"],
   "host_permissions": ["http://localhost:7281/*", "http://127.0.0.1:7281/*"],
   "background": { "service_worker": "background.js", "type": "module" },
   "content_scripts": [{ "matches": ["http://*/*", "https://*/*"], "js": ["content.js"], "run_at": "document_idle" }],
-  "action": { "default_popup": "popup.html", "default_title": "Second Brain" },
+  "action": { "default_popup": "popup.html", "default_title": "J.A.R.V.I.S." },
   "options_page": "options.html"
 }

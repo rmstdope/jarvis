@@ -14,10 +14,10 @@ const CLI = join(import.meta.dir, "..", "src", "cli.ts");
 let t: ReturnType<typeof tmpDataDir>;
 let home: string;
 let data: string;
-function brain(...args: string[]): { code: number; out: string } {
+function jarvis(...args: string[]): { code: number; out: string } {
   const p = Bun.spawnSync(["bun", "run", CLI, ...args, "--data", data], {
     stdout: "pipe", stderr: "pipe",
-    env: { ...process.env, SECOND_BRAIN_HOME: home, SECOND_BRAIN_MODELS: join(home, "models.toml"), SECOND_BRAIN_EMBED_FAKE: "1", SECOND_BRAIN_AUTHOR: "cli-tester", SECOND_BRAIN_INBOX: join(home, "inbox") },
+    env: { ...process.env, JARVIS_HOME: home, JARVIS_MODELS: join(home, "models.toml"), JARVIS_EMBED_FAKE: "1", JARVIS_AUTHOR: "cli-tester", JARVIS_INBOX: join(home, "inbox") },
   });
   return { code: p.exitCode, out: new TextDecoder().decode(p.stdout) + new TextDecoder().decode(p.stderr) };
 }
@@ -49,81 +49,81 @@ describe("cli registry", () => {
 
 describe("cli end to end (subprocess)", () => {
   test("help lists commands; unknown command exits 1", () => {
-    const h = brain("help");
+    const h = jarvis("help");
     expect(h.code).toBe(0);
     for (const c of ["note", "search", "sync", "briefing", "doctor"]) expect(h.out).toContain(`  ${c}`);
-    const u = brain("nope");
+    const u = jarvis("nope");
     expect(u.code).toBe(1);
     expect(u.out).toContain("unknown command");
   });
   test("note → search → reindex → task → link → tasks", () => {
-    const n = brain("note", "The X1656 firmware fixes zoom drift", "--title", "Zoom");
+    const n = jarvis("note", "The X1656 firmware fixes zoom drift", "--title", "Zoom");
     expect(n.code).toBe(0);
     expect(n.out).toMatch(/^captured [0-9A-Z]{26}  Zoom/);
     const id = n.out.match(/captured ([0-9A-Z]{26})/)![1];
     expect(readFileSync(join(data, "docs", `${id}.md`), "utf8")).toContain("author: cli-tester");
-    const s = brain("search", "zoom drift", "--mode", "keyword");
+    const s = jarvis("search", "zoom drift", "--mode", "keyword");
     expect(s.code).toBe(0);
     expect(s.out).toContain(id);
-    expect(brain("search", "nothing-matches-this", "--mode", "keyword").out).toContain("no results");
-    const r = brain("reindex");
+    expect(jarvis("search", "nothing-matches-this", "--mode", "keyword").out).toContain("no results");
+    const r = jarvis("reindex");
     expect(r.out).toMatch(/indexed 0 doc\(s\), skipped 1/);
-    const ta = brain("task", "add", "Ship the fix", "--due", "2026-12-01", "--link", id);
+    const ta = jarvis("task", "add", "Ship the fix", "--due", "2026-12-01", "--link", id);
     expect(ta.code).toBe(0);
     const taskId = ta.out.match(/task ([0-9A-Z]{26})/)![1];
-    expect(brain("task", "add", "bad", "--due", "soon").code).toBe(1);
-    const tl = brain("tasks");
+    expect(jarvis("task", "add", "bad", "--due", "soon").code).toBe(1);
+    const tl = jarvis("tasks");
     expect(tl.out).toContain("Ship the fix");
     expect(tl.out).not.toContain("no links");
-    const n2 = brain("note", "follow-up note", "--task", taskId);
+    const n2 = jarvis("note", "follow-up note", "--task", taskId);
     expect(n2.out).toContain(`linked task ${taskId}`);
-    const show = brain("task", "show", taskId);
+    const show = jarvis("task", "show", taskId);
     expect(show.out).toContain("linked (2)");
-    expect(brain("task", "done", taskId).out).toContain("✓ done");
-    expect(brain("tasks").out).toContain("no tasks");
-    const l = brain("link", id, taskId, "--relation", "follows_up");
+    expect(jarvis("task", "done", taskId).out).toContain("✓ done");
+    expect(jarvis("tasks").out).toContain("no tasks");
+    const l = jarvis("link", id, taskId, "--relation", "follows_up");
     expect(l.out).toContain("linked:");
-    expect(brain("link", id, id).code).toBe(1);
+    expect(jarvis("link", id, id).code).toBe(1);
   });
   test("passes without models skip cleanly; process and sync run local-only", () => {
-    expect(brain("enrich").out).toMatch(/skipped \d+/);
-    expect(brain("edges").code).toBe(0);
-    expect(brain("refine").out).toMatch(/no edge-judge model|0 candidate\(s\)/);
-    expect(brain("models").out).toContain("no models configured");
-    const p = brain("process");
+    expect(jarvis("enrich").out).toMatch(/skipped \d+/);
+    expect(jarvis("edges").code).toBe(0);
+    expect(jarvis("refine").out).toMatch(/no edge-judge model|0 candidate\(s\)/);
+    expect(jarvis("models").out).toContain("no models configured");
+    const p = jarvis("process");
     expect(p.code).toBe(0);
     expect(p.out).toMatch(/indexed \d+ doc/);
-    const sy = brain("sync", "--no-push");
+    const sy = jarvis("sync", "--no-push");
     expect(sy.code).toBe(0);
     expect(sy.out).toContain("remote=false");
-    expect(Bun.spawnSync(["git", "log", "--oneline"], { cwd: data }).stdout.toString()).toContain("brain: capture");
-    expect(brain("dedup").out).toContain("no source_url collisions");
+    expect(Bun.spawnSync(["git", "log", "--oneline"], { cwd: data }).stdout.toString()).toContain("jarvis: capture");
+    expect(jarvis("dedup").out).toContain("no source_url collisions");
   });
   test("briefing create/list/show/comment/approve; config show; doctor --json", () => {
-    const c = brain("briefing", "create", "--title", "My brief");
+    const c = jarvis("briefing", "create", "--title", "My brief");
     expect(c.code).toBe(0);
     const bid = c.out.match(/created ([0-9A-Z]{26})/)![1];
-    expect(brain("briefing", "list").out).toContain("My brief");
-    expect(brain("briefing", "comment", bid, "nice work").out).toContain("added");
-    expect(brain("briefing", "approve", bid).out).toContain("approved");
-    const show = brain("briefing", "show", bid);
+    expect(jarvis("briefing", "list").out).toContain("My brief");
+    expect(jarvis("briefing", "comment", bid, "nice work").out).toContain("added");
+    expect(jarvis("briefing", "approve", bid).out).toContain("approved");
+    const show = jarvis("briefing", "show", bid);
     expect(show.out).toContain("status: approved");
     expect(show.out).toContain("nice work");
-    expect(brain("briefing", "components", "--search", "timeline").out).toContain("Timeline");
-    expect(brain("briefing", "publish", bid, "--dry-run").out).toContain("<h2>Overview</h2>");
-    expect(brain("config", "show").out).toContain("config.toml");
-    const d = brain("doctor", "--json", "--core-only");
+    expect(jarvis("briefing", "components", "--search", "timeline").out).toContain("Timeline");
+    expect(jarvis("briefing", "publish", bid, "--dry-run").out).toContain("<h2>Overview</h2>");
+    expect(jarvis("config", "show").out).toContain("config.toml");
+    const d = jarvis("doctor", "--json", "--core-only");
     const rep = JSON.parse(d.out.slice(d.out.indexOf("{")));
     expect(rep.checks.find((c: { name: string }) => c.name === "data-dir").status).toBe("ok");
-    expect(brain("skill").out).toContain("brain tasks");
+    expect(jarvis("skill").out).toContain("jarvis tasks");
   });
   test("ingest from stdin-less file and a PDF; meeting from vtt", () => {
     const f = join(t.dir, "notes.md");
     Bun.write(f, "# Notes\n\nsome notes about pasta");
     Bun.spawnSync(["sleep", "0.05"]);
-    expect(brain("ingest", "--file", f, "--source", "paste").out).toMatch(/^captured/);
-    expect(brain("ingest", "--file", join(import.meta.dir, "fixtures", "hello.pdf")).out).toContain("Fixture Title");
-    expect(brain("meeting", join(import.meta.dir, "fixtures", "teams.vtt"), "--title", "Sync").out).toContain("Sync");
-    expect(brain("search", "pasta", "--mode", "keyword").out).toContain("notes.md");
+    expect(jarvis("ingest", "--file", f, "--source", "paste").out).toMatch(/^captured/);
+    expect(jarvis("ingest", "--file", join(import.meta.dir, "fixtures", "hello.pdf")).out).toContain("Fixture Title");
+    expect(jarvis("meeting", join(import.meta.dir, "fixtures", "teams.vtt"), "--title", "Sync").out).toContain("Sync");
+    expect(jarvis("search", "pasta", "--mode", "keyword").out).toContain("notes.md");
   });
 });

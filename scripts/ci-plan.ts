@@ -129,7 +129,7 @@ export function planFromChanges(changed: string[], opts: { full?: boolean; root?
   plan.typecheck.extension = files.some((f) => f.startsWith("extension/"));
   plan.buildWeb = plan.typecheck.web || files.some((f) => f.startsWith("scripts/build-web"));
   plan.buildExtension = plan.typecheck.extension || files.some((f) => f.startsWith("scripts/build-extension"));
-  plan.swift = files.some((f) => f.startsWith("second-brain-app/"));
+  plan.swift = files.some((f) => f.startsWith("jarvis-app/"));
   if (plan.tests.length === 0 && !plan.typecheck.core && !plan.typecheck.web && !plan.typecheck.extension && !plan.swift) plan.reasons.push("no test depends on the changed files");
   void changedSet;
   return plan;

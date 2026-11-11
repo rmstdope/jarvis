@@ -24,7 +24,7 @@ interface Check { name: string; weight: number; pass: boolean; detail?: string }
 const { flags } = parseArgs(process.argv.slice(2));
 const wanted = flagStr(flags, "model");
 const effort = flagStr(flags, "effort") as ReasoningEffort | undefined;
-const dataDir = flagStr(flags, "data") ?? mkdtempSync(join(tmpdir(), "sb-eval-"));
+const dataDir = flagStr(flags, "data") ?? mkdtempSync(join(tmpdir(), "jv-eval-"));
 
 const base = await createRouter({ config: await loadModelsConfig() });
 const calls: { kind: string; ms: number; chars: number }[] = [];
@@ -45,7 +45,7 @@ const router: Router = {
   },
 };
 if (!router.resolve({ kind: "summary" })) {
-  console.error("no available model matches; see `brain models`");
+  console.error("no available model matches; see `jarvis models`");
   process.exit(1);
 }
 

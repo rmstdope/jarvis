@@ -25,12 +25,12 @@ describe("extension", () => {
     const manifest = JSON.parse(readFileSync(join(out, "manifest.json"), "utf8"));
     expect(manifest.manifest_version).toBe(3);
     expect(manifest.host_permissions).toContain("http://localhost:7281/*");
-    expect(manifest.name).toBe("Second Brain capture");
+    expect(manifest.name).toBe("J.A.R.V.I.S. capture");
     expect(readFileSync(join(out, "content.js"), "utf8")).toContain("Readability");
     expect(readFileSync(join(out, "background.js"), "utf8")).toContain("isBlocked");
   }, 30000);
   test("agent instructions ship with the repo", () => {
     const doc = readFileSync(join(import.meta.dir, "..", "docs", "AGENT-INSTRUCTIONS.md"), "utf8");
-    expect(doc).toContain("brain tasks");
+    expect(doc).toContain("jarvis tasks");
   });
 });

@@ -212,12 +212,12 @@ registerProjectionHook(indexPresentations);
 export type DeckViewerStatus = { status: "ready"; base: string; sourceId: string } | { status: "not-running" } | { status: "content-not-mounted"; base: string };
 /**
  * Optional deck-viewer integration. Any local app that serves the content repo's presentations can be
- * used: set SECOND_BRAIN_DECK_VIEWER_URL to its base URL. It must answer `GET /api/health` with JSON
- * whose `app` field equals SECOND_BRAIN_DECK_VIEWER_APP (default "deck-viewer") and `GET /api/contents`
+ * used: set JARVIS_DECK_VIEWER_URL to its base URL. It must answer `GET /api/health` with JSON
+ * whose `app` field equals JARVIS_DECK_VIEWER_APP (default "deck-viewer") and `GET /api/contents`
  * with `{sources:[{id, path}]}` listing the mounted directories.
  */
-export const DECK_VIEWER_CANDIDATES = () => [process.env.SECOND_BRAIN_DECK_VIEWER_URL].filter((x): x is string => !!x);
-export const DECK_VIEWER_APP = () => process.env.SECOND_BRAIN_DECK_VIEWER_APP ?? "deck-viewer";
+export const DECK_VIEWER_CANDIDATES = () => [process.env.JARVIS_DECK_VIEWER_URL].filter((x): x is string => !!x);
+export const DECK_VIEWER_APP = () => process.env.JARVIS_DECK_VIEWER_APP ?? "deck-viewer";
 
 export async function discoverDeckViewer(dataDir: string, fetchImpl: typeof fetch = fetch): Promise<DeckViewerStatus> {
   let real: string;

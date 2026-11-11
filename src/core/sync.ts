@@ -57,7 +57,7 @@ export interface ProcessResult {
   enrichedFiles: boolean;
 }
 
-/** reindex → (enrich → reindex) → edges → refine → dedup scan. Also `brain process`. */
+/** reindex → (enrich → reindex) → edges → refine → dedup scan. Also `jarvis process`. */
 export async function processContent(dataDir: string, opts: { router?: unknown; db?: Database } = {}): Promise<ProcessResult> {
   const db = opts.db ?? openDb(dataDir);
   const consumer = isConsumer(dataDir);
@@ -158,7 +158,7 @@ async function syncInner(dataDir: string, opts: { push?: boolean; router?: unkno
     res.notes.push("unresolved merge conflicts; resolve them and run sync again");
     return res;
   }
-  res.committed = commitAuthored(dataDir, (n) => `brain: capture ${n} item(s)`);
+  res.committed = commitAuthored(dataDir, (n) => `jarvis: capture ${n} item(s)`);
 
   let pullOk = !remote;
   if (remote) {
@@ -182,9 +182,9 @@ async function syncInner(dataDir: string, opts: { push?: boolean; router?: unkno
   res.collisions = p.collisions;
   res.counts = p.counts;
   res.notes.push(...p.notes);
-  if (p.collisions.length) res.notes.push(`${p.collisions.length} source_url collision(s): run \`brain dedup\``);
+  if (p.collisions.length) res.notes.push(`${p.collisions.length} source_url collision(s): run \`jarvis dedup\``);
 
-  if (!isConsumer(dataDir)) res.committedEnriched = commitAuthored(dataDir, (n) => `brain: enrich ${n} item(s)`);
+  if (!isConsumer(dataDir)) res.committedEnriched = commitAuthored(dataDir, (n) => `jarvis: enrich ${n} item(s)`);
   if (loadTeamConfig(dataDir).projection.mode === "published") res.notes.push("published projection mode: snapshot publish/download is not implemented yet");
 
   if (opts.push !== false && remote && pullOk) {

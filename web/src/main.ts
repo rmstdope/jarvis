@@ -6,9 +6,9 @@ import type { Node as BriefingNode } from "../../src/briefings/parser.ts";
 import { openDiscuss } from "./discuss.ts";
 
 declare global {
-  interface Window { __SECOND_BRAIN_APP__?: boolean; }
+  interface Window { __JARVIS_APP__?: boolean; }
 }
-const inApp = () => window.__SECOND_BRAIN_APP__ === true;
+const inApp = () => window.__JARVIS_APP__ === true;
 
 // ---- chrome ----
 const app = document.getElementById("app")!;
@@ -27,9 +27,9 @@ function go(delta: number) {
   location.hash = history[i];
 }
 const syncBtn = h("button", { onClick: () => confirmSync() }, "Sync");
-const discussBtn = h("button", { onClick: () => openDiscuss({ type: "brain", ids: [] }) }, "Discuss");
+const discussBtn = h("button", { onClick: () => openDiscuss({ type: "jarvis", ids: [] }) }, "Discuss");
 app.append(
-  h("header", { class: "top" }, h("span", { class: "brand" }, "Second Brain"), h("span", { class: "hist" }, back, fwd), nav, h("span", { class: "spacer" }), discussBtn, syncBtn),
+  h("header", { class: "top" }, h("span", { class: "brand" }, "J.A.R.V.I.S."), h("span", { class: "hist" }, back, fwd), nav, h("span", { class: "spacer" }), discussBtn, syncBtn),
   main,
 );
 const NAV = [["browse", "Browse"], ["capture", "Capture"], ["briefings", "Briefings"], ["presentations", "Presentations"]];
@@ -78,7 +78,7 @@ function escapeSnippet(s: string): string {
 
 const browseState = { q: "", mode: "hybrid", source: "", author: "", tag: "", days: "", addedOffset: 0, updatedOffset: 0 };
 async function viewBrowse() {
-  const qInput = h("input", { type: "search", placeholder: "Search the brain…", value: browseState.q });
+  const qInput = h("input", { type: "search", placeholder: "Search J.A.R.V.I.S.…", value: browseState.q });
   const mode = h("select", {}, ...["hybrid", "semantic", "keyword"].map((m) => h("option", { value: m, selected: browseState.mode === m }, m)));
   const form = h("form", { class: "row", onSubmit: (e: Event) => { e.preventDefault(); browseState.q = qInput.value.trim(); browseState.mode = mode.value; browseState.addedOffset = browseState.updatedOffset = 0; render(); } }, h("div", { style: "flex:1;min-width:240px" }, qInput), mode, h("button", { class: "primary" }, "Search"));
   const facets = h("div", { class: "facets" });
@@ -151,7 +151,7 @@ async function viewBriefings() {
     const q = briefState.filter.toLowerCase();
     const items = list.filter((b) => !q || b.title.toLowerCase().includes(q) || (b.subtitle ?? "").toLowerCase().includes(q) || (b.tags ?? []).some((t) => t.toLowerCase().includes(q)))
       .sort((a, b) => briefState.sort === "title" ? a.title.localeCompare(b.title) : briefState.sort === "created" ? b.createdAt.localeCompare(a.createdAt) : b.updatedAt.localeCompare(a.updatedAt));
-    append(box, items.length ? items.map((b) => h("div", { class: "card" }, h("h3", {}, h("a", { href: `#/briefing/${b.id}` }, b.title)), h("div", { class: "muted small" }, `${b.kind} · updated ${fmtDate(b.updatedAt)}${b.author ? ` by ${b.author}` : ""} `, b.status ? h("span", { class: `pill ${b.status === "approved" ? "green" : "orange"}` }, b.status) : null), b.subtitle ? h("div", { class: "small" }, b.subtitle) : null)) : [h("p", { class: "muted" }, "No briefings yet. Create one with `brain briefing create --title …`.")]);
+    append(box, items.length ? items.map((b) => h("div", { class: "card" }, h("h3", {}, h("a", { href: `#/briefing/${b.id}` }, b.title)), h("div", { class: "muted small" }, `${b.kind} · updated ${fmtDate(b.updatedAt)}${b.author ? ` by ${b.author}` : ""} `, b.status ? h("span", { class: `pill ${b.status === "approved" ? "green" : "orange"}` }, b.status) : null), b.subtitle ? h("div", { class: "small" }, b.subtitle) : null)) : [h("p", { class: "muted" }, "No briefings yet. Create one with `jarvis briefing create --title …`.")]);
   }
   draw();
 }
@@ -186,7 +186,7 @@ async function viewPresentations() {
 }
 async function viewPresentation(id: string) {
   const p = await api.presentation(id);
-  const present = p.viewer.status === "ready" && p.viewer.launchUrl ? h("a", { href: p.viewer.launchUrl, target: inApp() ? "_self" : "_blank", rel: "noopener" }, h("button", { class: "primary" }, "Present in deck viewer")) : h("span", { class: "muted small" }, p.viewer.status === "not-running" ? "Deck viewer is not running (set SECOND_BRAIN_DECK_VIEWER_URL)" : p.viewer.status === "content-not-mounted" ? "Content repo is not mounted in the deck viewer" : p.viewer.status);
+  const present = p.viewer.status === "ready" && p.viewer.launchUrl ? h("a", { href: p.viewer.launchUrl, target: inApp() ? "_self" : "_blank", rel: "noopener" }, h("button", { class: "primary" }, "Present in deck viewer")) : h("span", { class: "muted small" }, p.viewer.status === "not-running" ? "Deck viewer is not running (set JARVIS_DECK_VIEWER_URL)" : p.viewer.status === "content-not-mounted" ? "Content repo is not mounted in the deck viewer" : p.viewer.status);
   main.append(h("h1", {}, p.title), h("div", { class: "muted small" }, `${p.slug} · added ${fmtDate(p.created_at)} by ${p.author} `, h("span", { class: `pill ${p.indexed ? "green" : ""}` }, p.indexed ? "indexed" : "not indexed")), h("p", {}, present), h("h3", {}, "MDX source"), h("pre", { class: "body-md" }, h("code", {}, p.body)));
 }
 

@@ -2,11 +2,11 @@
 export const EMBEDDING_DIMS = 512;
 export const OLLAMA_EMBED_MODEL = "qwen3-embedding:0.6b";
 export const OMLX_EMBED_MODEL = "Qwen3-Embedding-0.6B-8bit";
-export const OLLAMA_URL = process.env.SECOND_BRAIN_OLLAMA_URL ?? "http://localhost:11434";
-export const OMLX_URL = process.env.SECOND_BRAIN_OMLX_URL ?? "http://127.0.0.1:8000/v1";
+export const OLLAMA_URL = process.env.JARVIS_OLLAMA_URL ?? "http://localhost:11434";
+export const OMLX_URL = process.env.JARVIS_OMLX_URL ?? "http://127.0.0.1:8000/v1";
 
-export const EMBED_BATCH_SIZE = Number(process.env.SECOND_BRAIN_EMBED_BATCH_SIZE ?? 8) || 8;
-export const EMBED_CONCURRENCY = Number(process.env.SECOND_BRAIN_EMBED_CONCURRENCY ?? 1) || 1;
+export const EMBED_BATCH_SIZE = Number(process.env.JARVIS_EMBED_BATCH_SIZE ?? 8) || 8;
+export const EMBED_CONCURRENCY = Number(process.env.JARVIS_EMBED_CONCURRENCY ?? 1) || 1;
 
 export const CHUNK_TARGET_TOKENS = 400;
 export const CHUNK_OVERLAP_TOKENS = 50;
@@ -49,7 +49,7 @@ export const ASK_CONTEXT_CHARS = 24_000;
 export const ASK_MAX_CONTEXT_CHARS = 100_000;
 export const ASK_MAX_TOKENS = 2000;
 
-export const LLM_TIMEOUT_MS = Number(process.env.SECOND_BRAIN_LLM_TIMEOUT_MS ?? 120_000) || 120_000;
+export const LLM_TIMEOUT_MS = Number(process.env.JARVIS_LLM_TIMEOUT_MS ?? 120_000) || 120_000;
 export const PROBE_TIMEOUT_MS = 2000;
 export const OLLAMA_TAGS_CACHE_MS = 10_000;
 

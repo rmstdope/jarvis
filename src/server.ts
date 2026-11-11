@@ -128,7 +128,7 @@ export async function handle(req: Request, ctx: ServerContext, webDist?: string)
       return new Response(Bun.file(file), { headers: { "content-type": MIME[ext] ?? "application/octet-stream" } });
     }
   }
-  return new Response("second-brain service. Web UI not built (run `bun run web:build`).", { status: 200 });
+  return new Response("jarvis service. Web UI not built (run `bun run web:build`).", { status: 200 });
 }
 
 export function startServer(ctx: ServerContext, port: number, webDist?: string) {

@@ -77,11 +77,11 @@ export function setEmbedderForTests(e: Embedder | null): void {
 }
 export function getEmbedder(): Embedder {
   if (override) return override;
-  if (process.env.SECOND_BRAIN_EMBED_FAKE === "1") return fakeHashEmbedder();
+  if (process.env.JARVIS_EMBED_FAKE === "1") return fakeHashEmbedder();
   return resolveEmbeddingProvider() === "omlx" ? omlxEmbedder() : ollamaEmbedder();
 }
 
-/** Deterministic bag-of-words embedder for tests and offline demos (SECOND_BRAIN_EMBED_FAKE=1). */
+/** Deterministic bag-of-words embedder for tests and offline demos (JARVIS_EMBED_FAKE=1). */
 export function fakeHashEmbedder(): Embedder {
   return {
     name: "fake",

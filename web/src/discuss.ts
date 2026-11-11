@@ -2,7 +2,7 @@
 import { h, clear, toast } from "./ui.ts";
 import { renderMarkdown } from "../../src/briefings/markdown.ts";
 
-export interface Scope { type: "brain" | "item" | "briefing"; ids: string[]; }
+export interface Scope { type: "jarvis" | "item" | "briefing"; ids: string[]; }
 type ChatEvent = { type: "source"; docId?: string; title?: string } | { type: "message"; text: string } | { type: "status"; text: string } | { type: "usage"; used: number; size: number } | { type: "done"; stopReason?: string } | { type: "error"; error: string };
 
 /** Split a byte stream into NDJSON objects; partial trailing lines carry over between chunks. */
@@ -21,7 +21,7 @@ export function ndjsonDecoder(onEvent: (e: ChatEvent) => void): (chunk: string, 
 }
 
 const SUGGESTIONS: Record<Scope["type"], string[]> = {
-  brain: ["What did we decide about firmware last month?", "Summarise the newest captures", "Which items mention Acorn?"],
+  jarvis: ["What did we decide about firmware last month?", "Summarise the newest captures", "Which items mention Acorn?"],
   item: ["Summarise this item in three bullets", "What questions does this raise?", "Draft a task from this"],
   briefing: ["What is the key takeaway?", "List the open decisions", "Suggest a diagram for section 2"],
 };

@@ -1,10 +1,10 @@
 {
-  "name": "second-brain",
+  "name": "jarvis",
   "version": "0.1.0",
   "private": true,
   "type": "module",
   "scripts": {
-    "brain": "bun run src/cli.ts",
+    "jarvis": "bun run src/cli.ts",
     "test": "bun test",
     "typecheck": "tsc --noEmit && tsc --noEmit -p web/tsconfig.json && tsc --noEmit -p extension/tsconfig.json",
     "web:build": "bun run scripts/build-web.ts",

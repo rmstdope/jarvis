@@ -116,7 +116,7 @@ export class AcpClient {
   }
   // ---- protocol helpers ----
   async initialize(): Promise<unknown> {
-    return this.request("initialize", { protocolVersion: 1, clientCapabilities: { fs: { readTextFile: false, writeTextFile: false }, terminal: false }, clientInfo: { name: "second-brain", version: "0.1.0" } }, 30_000);
+    return this.request("initialize", { protocolVersion: 1, clientCapabilities: { fs: { readTextFile: false, writeTextFile: false }, terminal: false }, clientInfo: { name: "jarvis", version: "0.1.0" } }, 30_000);
   }
   async newSession(cwd: string): Promise<string> {
     const r = await this.request<{ sessionId: string }>("session/new", { cwd, mcpServers: [] }, 30_000);

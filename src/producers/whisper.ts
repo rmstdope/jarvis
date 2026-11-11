@@ -17,7 +17,7 @@ export type Which = (bin: string) => string | null;
 
 /** Preference: mlx_whisper → faster-whisper → whisper-cli (whisper.cpp; legacy `main` only if --help reads as whisper.cpp). */
 export function detectWhisperBackend(run: Runner = defaultRunner, which: Which = (b) => Bun.which(b)): WhisperBackend | null {
-  const forced = process.env.SECOND_BRAIN_WHISPER as WhisperBackend | undefined;
+  const forced = process.env.JARVIS_WHISPER as WhisperBackend | undefined;
   if (forced) return forced;
   const onPath = (bin: string) => which(bin) !== null;
   if (onPath("mlx_whisper")) return "mlx_whisper";
@@ -35,7 +35,7 @@ export const NO_BACKEND_MESSAGE = [
   "  macOS (Apple Silicon): pipx install mlx-whisper",
   "  any:                   pipx install faster-whisper",
   "  whisper.cpp:           brew install whisper-cpp   (provides whisper-cli)",
-  "or use a no-Whisper path: `brain meeting <teams-export>.vtt` or `brain meeting <pasted-transcript>.md`",
+  "or use a no-Whisper path: `jarvis meeting <teams-export>.vtt` or `jarvis meeting <pasted-transcript>.md`",
 ].join("\n");
 
 export interface TranscribeOpts {
@@ -50,7 +50,7 @@ export function transcribeAudio(file: string, opts: TranscribeOpts = {}): { text
   const run = opts.run ?? defaultRunner;
   const backend = opts.backend ?? detectWhisperBackend(run);
   if (!backend) throw new Error(NO_BACKEND_MESSAGE);
-  const out = mkdtempSync(join(tmpdir(), "second-brain-whisper-"));
+  const out = mkdtempSync(join(tmpdir(), "jarvis-whisper-"));
   try {
     let r;
     if (backend === "mlx_whisper") {
@@ -64,7 +64,7 @@ export function transcribeAudio(file: string, opts: TranscribeOpts = {}): { text
       if (opts.initialPrompt) args.push("--initial_prompt", opts.initialPrompt);
       r = run(args, { timeoutMs: WHISPER_TIMEOUT_MS });
     } else {
-      const model = process.env.SECOND_BRAIN_WHISPER_MODEL;
+      const model = process.env.JARVIS_WHISPER_MODEL;
       const args = ["whisper-cli", "-f", file, "-otxt", "-of", join(out, "out"), "-np"];
       if (model) args.push("-m", model);
       if (opts.lang) args.push("-l", opts.lang);
