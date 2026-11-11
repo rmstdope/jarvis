@@ -1,5 +1,6 @@
 import { route, json, error, body, HttpError, type ServerContext } from "../http.ts";
-import { ChatService, ChatError, type ChatScope } from "./sessions.ts";
+import { ChatService, ChatError, type ChatFile, type ChatScope } from "./sessions.ts";
+import { UndoConflict } from "./changes.ts";
 
 const services = new Map<string, ChatService>();
 export function chatService(ctx: ServerContext): ChatService {
@@ -34,16 +35,22 @@ route("GET", "/api/chat/status", (_r, _u, _p, ctx) => {
   return json({ available });
 });
 route("POST", "/api/chat/sessions", (req, _u, _p, ctx) => wrap(async () => {
-  const b = await body<{ scope?: ChatScope }>(req);
+  const b = await body<{ scope?: ChatScope; conversationId?: string }>(req);
   if (!b.scope) return error("scope is required");
-  const s = await chatService(ctx).create(b.scope);
+  const s = await chatService(ctx).create(b.scope, b.conversationId);
   return json({ sessionId: s.id, sources: s.sources, model: undefined });
 }));
 route("POST", "/api/chat/sessions/:id/messages", (req, _u, p, ctx) => wrap(async () => {
-  const b = await body<{ message?: string }>(req);
-  if (!b.message) return error("message is required");
+  let message: string | undefined;
+  const files: ChatFile[] = [];
+  if ((req.headers.get("content-type") ?? "").startsWith("multipart/form-data")) {
+    const form = await req.formData();
+    message = String(form.get("message") ?? "");
+    for (const f of form.getAll("files")) if (typeof f !== "string") files.push({ name: f.name, bytes: new Uint8Array(await f.arrayBuffer()) });
+  } else message = (await body<{ message?: string }>(req)).message;
+  if (!message) return error("message is required");
   const svc = chatService(ctx);
-  const gen = svc.send(p.id, b.message);
+  const gen = svc.send(p.id, message, files);
   const first = await gen.next(); // surface 404/409/400 before streaming
   const enc = new TextEncoder();
   const stream = new ReadableStream<Uint8Array>({
@@ -67,4 +74,20 @@ route("POST", "/api/chat/sessions/:id/cancel", (_r, _u, p, ctx) => wrap(async ()
 route("DELETE", "/api/chat/sessions/:id", (_r, _u, p, ctx) => wrap(async () => {
   chatService(ctx).delete(p.id);
   return json({ ok: true });
+}));
+route("POST", "/api/chat/sessions/:id/actions", (req, _u, p, ctx) => wrap(async () => {
+  const b = await body<{ tool?: string; args?: Record<string, unknown> }>(req);
+  if (!b.tool) return error("tool is required");
+  const r = await chatService(ctx).act(p.id, b.tool, b.args ?? {});
+  return json(r);
+}));
+route("GET", "/api/chat/conversations/:cid/changes", (_r, _u, p, ctx) => wrap(async () => json({ changes: chatService(ctx).changes(p.cid).list() })));
+route("POST", "/api/chat/conversations/:cid/changes/undo-all", (_r, _u, p, ctx) => wrap(async () => json(await chatService(ctx).changes(p.cid).undoAll())));
+route("POST", "/api/chat/conversations/:cid/changes/:changeId/undo", (_r, _u, p, ctx) => wrap(async () => {
+  try {
+    return json({ change: await chatService(ctx).changes(p.cid).undo(p.changeId) });
+  } catch (e) {
+    if (e instanceof UndoConflict) return error(e.message, 409);
+    throw e;
+  }
 }));

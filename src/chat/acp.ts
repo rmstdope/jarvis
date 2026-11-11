@@ -1,7 +1,8 @@
 /**
  * Minimal Agent Client Protocol client: JSON-RPC 2.0 over newline-delimited stdio.
- * The client advertises no filesystem or terminal capabilities and answers every
- * permission request "cancelled", so the agent is strictly read-only.
+ * The client advertises no filesystem or terminal capabilities. It answers a permission request
+ * for one of J.A.R.V.I.S.'s own tools (`jarvis_*`, which record every change so it can be undone)
+ * "allow once", and every other request "cancelled".
  */
 export interface AcpUpdate {
   sessionId: string;
@@ -13,7 +14,17 @@ export interface AcpTransport {
   kill(): void;
   exited: Promise<number>;
 }
+/** A stdio MCP server the agent may start for a session (ACP `session/new`). */
+export interface McpServer { name: string; command: string; args: string[]; env: { name: string; value: string }[] }
 type Pending = { resolve: (v: unknown) => void; reject: (e: Error) => void };
+
+/** Our own tools are allowed once; anything else is cancelled. */
+export function permissionOutcome(params: Record<string, unknown>): { outcome: "selected"; optionId: string } | { outcome: "cancelled" } {
+  const title = String((params.toolCall as { title?: unknown } | undefined)?.title ?? "");
+  const options = (params.options as { optionId: string; kind?: string }[] | undefined) ?? [];
+  const allow = options.find((o) => o.kind === "allow_once");
+  return /\bjarvis_[a-z_]+/.test(title) && allow ? { outcome: "selected", optionId: allow.optionId } : { outcome: "cancelled" };
+}
 
 export class AcpClient {
   private nextId = 1;
@@ -93,7 +104,7 @@ export class AcpClient {
       const params = (msg.params ?? {}) as Record<string, unknown>;
       if (msg.id !== undefined) {
         // agent → client request: never grant anything
-        if (msg.method === "session/request_permission") this.send({ jsonrpc: "2.0", id: msg.id, result: { outcome: { outcome: "cancelled" } } });
+        if (msg.method === "session/request_permission") this.send({ jsonrpc: "2.0", id: msg.id, result: { outcome: permissionOutcome(params) } });
         else this.send({ jsonrpc: "2.0", id: msg.id, error: { code: -32601, message: `client does not support ${msg.method}` } });
         return;
       }
@@ -123,8 +134,8 @@ export class AcpClient {
   async initialize(): Promise<unknown> {
     return this.request("initialize", { protocolVersion: 1, clientCapabilities: { fs: { readTextFile: false, writeTextFile: false }, terminal: false }, clientInfo: { name: "jarvis", version: "0.1.0" } }, 30_000);
   }
-  async newSession(cwd: string): Promise<string> {
-    const r = await this.request<{ sessionId: string }>("session/new", { cwd, mcpServers: [] }, 30_000);
+  async newSession(cwd: string, mcpServers: McpServer[] = []): Promise<string> {
+    const r = await this.request<{ sessionId: string }>("session/new", { cwd, mcpServers }, 30_000);
     return r.sessionId;
   }
   prompt(sessionId: string, text: string): Promise<{ stopReason?: string }> {
@@ -136,15 +147,15 @@ export class AcpClient {
 }
 
 /**
- * The Copilot CLI command line for ACP mode with a read-only tool surface. With no model the
+ * The Copilot CLI command line for ACP mode with built-in tools off and only J.A.R.V.I.S.'s own `jarvis_*` tools on. With no model the
  * CLI picks its own default, and no reasoning effort is forced: Copilot refuses to open a
  * session when the model does not support one (e.g. gpt-4.1).
  */
 export function copilotAcpArgs(model: string | undefined): string[] {
-  return ["copilot", "--acp", ...(model ? ["--model", model] : []), "--available-tools=", "--disable-builtin-mcps", "--no-custom-instructions", "--no-auto-update"];
+  return ["copilot", "--acp", ...(model ? ["--model", model] : []), "--available-tools=jarvis_*,jarvis-jarvis_*", "--disable-builtin-mcps", "--no-custom-instructions", "--no-auto-update"];
 }
 
-/** Spawn the Copilot CLI in ACP mode with a read-only tool surface. */
+/** Spawn the Copilot CLI in ACP mode (see `copilotAcpArgs`). */
 export function spawnCopilotAcp(model: string | undefined, cwd: string): AcpTransport {
   const p = Bun.spawn(copilotAcpArgs(model), { cwd, stdin: "pipe", stdout: "pipe", stderr: "pipe", env: { ...process.env, NO_COLOR: "1" } });
   return { stdin: p.stdin as unknown as WritableStream<Uint8Array>, stdout: p.stdout as ReadableStream<Uint8Array>, kill: () => p.kill(), exited: p.exited };

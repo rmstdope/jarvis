@@ -100,15 +100,16 @@ export function resolveEmbeddingProvider(): "ollama" | "omlx" {
 }
 
 /** Shared team policy from <dataDir>/config/team.toml */
-export function loadTeamConfig(dataDir: string): { projection: { mode: "local" | "published" } } {
+export function loadTeamConfig(dataDir: string): { projection: { mode: "local" | "published" }; privacy: { transcriptsToCloud: boolean } } {
+  const none = { projection: { mode: "local" as const }, privacy: { transcriptsToCloud: false } };
   const p = join(dataDir, "config", "team.toml");
-  if (!existsSync(p)) return { projection: { mode: "local" } };
+  if (!existsSync(p)) return none;
   try {
-    const t = Bun.TOML.parse(readFileSync(p, "utf8")) as { projection?: { mode?: string } };
+    const t = Bun.TOML.parse(readFileSync(p, "utf8")) as { projection?: { mode?: string }; privacy?: { transcripts_to_cloud?: unknown } };
     const mode = t.projection?.mode === "published" ? "published" : "local";
-    return { projection: { mode } };
+    return { projection: { mode }, privacy: { transcriptsToCloud: t.privacy?.transcripts_to_cloud === true } };
   } catch {
-    return { projection: { mode: "local" } };
+    return none;
   }
 }
 /** True when this machine only consumes a published projection (never embeds or runs LLMs). */
