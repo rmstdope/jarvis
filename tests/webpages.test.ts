@@ -133,8 +133,8 @@ describe("Browse & search", () => {
     expect((qa(".jv-fp")[2] as HTMLSelectElement).value).toBe("gone");
   });
   describe("filters that match nothing", () => {
-    const withFilter = (added: unknown[], updated: unknown[]) => (e: WebEnv) => {
-      localStorage.setItem("jv.browse", JSON.stringify({ mode: "keyword", source: "slack", days: "7", addedOffset: 0, updatedOffset: 0 }));
+    const withFilter = (added: unknown[], updated: unknown[], filters: Record<string, string> = { source: "slack", author: "mia", tag: "ops", days: "7" }) => (e: WebEnv) => {
+      localStorage.setItem("jv.browse", JSON.stringify({ mode: "keyword", addedOffset: 0, updatedOffset: 0, ...filters }));
       e.routes.set("GET /api/browse", () => ({ json: { ...emptyBrowse, added, updated, pagination: { added: pg(0, added.length), updated: pg(0, updated.length) }, facets: { sources: [{ value: "slack", count: 1 }], authors: [], tags: [] } } }));
     };
     test("both lists empty: one message replaces both columns, with Clear filters", async () => {
@@ -147,6 +147,12 @@ describe("Browse & search", () => {
       expect(button("＋ Capture") === undefined).toBe(true);
       expect((qa(".jv-fp")[0] as HTMLSelectElement).value).toBe("slack");
     });
+    for (const f of <Record<string, string>[]>[{ source: "slack" }, { author: "mia" }, { tag: "ops" }, { days: "7" }]) {
+      test(`${Object.keys(f)[0]} alone counts as a filter`, async () => {
+        env = await boot("#/browse", { setup: withFilter([], [], f) });
+        expect(text(".jv-empty")).toContain("Nothing matches these filters.");
+      });
+    }
     test("Clear filters resets the four filters, keeps the kind, reloads and focuses the search box", async () => {
       env = await boot("#/browse", { setup: withFilter([], []) });
       const before = env.calls.length;
