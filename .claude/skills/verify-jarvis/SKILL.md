@@ -99,7 +99,14 @@ never pass `--repo` or `--data` pointing outside `$V`. Never read, copy or print
 ### Models
 
 The default look has **no chat model** (an empty `$V/no-models.toml`), which is also how J.A.R.V.I.S.
-must work for a user without one: every model step is skipped, never failed. A skip that reads as an
+must work for a user without one: every model step is skipped, never failed.
+
+**An empty `JARVIS_MODELS` does not switch the chat off.** The web chat starts the Copilot CLI
+whenever `copilot` is on `PATH` (`src/chat/routes.ts`), whatever `models.toml` says, and the Discuss
+panel then sends the seeded content to a cloud model. So a no-model look serves with copilot
+unreachable: a `PATH` holding `bun` and the system directories only (see *Launching the service*),
+and the chat must show its no-model notice. Only a look the navigator approved for a real model
+serves with the normal `PATH`. A skip that reads as an
 error, or a command that fails without a model, is a finding.
 
 When a bead changes what a model step produces (enrich, edges, refine, cleanup, `ask`, summaries,
@@ -151,8 +158,15 @@ worktree, with the variables exported:
 
 ```bash
 bun run web:build
-bun run jarvis serve --port <port>       # on the first free port from 7282 to 7299
+# no-model look (the default): copilot unreachable, so the chat cannot reach a cloud model
+mkdir -p "$V/bin" && ln -sf "$(command -v bun)" "$V/bin/bun"
+PATH="$V/bin:/usr/bin:/bin" command -v copilot         # must print nothing; if it prints a path, stop
+PATH="$V/bin:/usr/bin:/bin" bun run jarvis serve --port <port>   # on the first free port from 7282 to 7299
+# a look the navigator approved for a real model: the same command with the normal PATH
 ```
+
+For a no-model look, open the chat once and confirm it shows its no-model notice rather than a
+reply; a reply means copilot was reachable, which is a blocker to report.
 
 - **Never use 7281 for a web UI look.** 7281 belongs to the navigator's own service or macOS app
   (against their real content repo), and their browser extension sends captures to whatever holds
@@ -166,9 +180,10 @@ bun run jarvis serve --port <port>       # on the first free port from 7282 to 7
 - **Clear the web UI's saved state before every look.** Every look serves on the first free port
   from 7282, so earlier looks share one origin and its `localStorage`, including the chat's saved
   conversation and attachment (`jv.chat`), which survives a reload by design. Open a tab on
-  `http://127.0.0.1:<port>/`, run `localStorage.clear(); sessionStorage.clear();
+  `http://127.0.0.1:<port>/api/health` (a same-origin page that is not the app: the app rewrites
+  `jv.tabs` on unload, which undoes a clear made from its own page), run `localStorage.clear(); sessionStorage.clear();
   [localStorage.length, sessionStorage.length]` in the page (javascript_tool) and confirm `[0, 0]`,
-  then reload. The page writes its own empty tab-strip key on load, so after the reload check
+  then open `http://127.0.0.1:<port>/`. The page writes its own empty tab-strip key on load, so after the reload check
   `localStorage.getItem("jv.chat") === null` and that the chat shows the unscoped first screen with
   no scope chip, not a length of 0. Do this once per batch, again before a bead kept apart in its
   own look, and again before a bead whose criteria open on the chat first screen or depend on chat
