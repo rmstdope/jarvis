@@ -140,7 +140,7 @@ describe("initiatives", () => {
     const ok = fakeRouter((prompt) => JSON.stringify({ results: [{ id: m.id, keep: true, reason: "mentions the cut-over date" }, { id: "made-up", keep: true, reason: "x" }] }));
     const r = await initiativeSuggestions(t.dir, a.id, { router: ok });
     expect(r.model).toBe(true);
-    expect(r.suggestions).toEqual([{ id: m.id, title: "Finance weekly", source: "meeting", reason: "mentions the cut-over date" }]);
+    expect(r.suggestions).toEqual([{ id: m.id, title: "Finance weekly", source: "meeting", author: "me", reason: "mentions the cut-over date" }]);
     const none = await initiativeSuggestions(t.dir, a.id, { router: fakeRouter(() => JSON.stringify({ results: [] })) });
     expect(none).toEqual({ model: true, suggestions: [] });
     const bad = await initiativeSuggestions(t.dir, a.id, { router: fakeRouter(() => "not json") });

@@ -30,6 +30,8 @@ export interface TiedItem {
   id: string;
   title: string;
   source: string | null;
+  /** Who added it; null for an entity or a capture missing from the index. */
+  author: string | null;
   created_at: string;
   via: string[];
 }
@@ -141,7 +143,7 @@ export function listInitiatives(dataDir: string, opts: { status?: "open" | "clos
   }
 }
 
-type EdgeRow = { src: string; dst: string; title: string | null; source: string | null; created_at: string | null };
+type EdgeRow = { src: string; dst: string; title: string | null; source: string | null; author: string | null; created_at: string | null };
 function section(items: TiedItem[], all: boolean): TiedSection {
   const sorted = [...items].sort((a, b) => b.created_at.localeCompare(a.created_at) || a.id.localeCompare(b.id));
   return { total: sorted.length, items: all ? sorted : sorted.slice(0, INITIATIVE_SECTION_LIMIT) };
@@ -162,14 +164,14 @@ export function readInitiative(dataDir: string, id: string, opts: { all?: boolea
     const mineIds = new Set(mine.map((t) => t.id));
     const titleOf = new Map(mine.map((t) => [t.id, t.title]));
     const edgesOf = (node: string, viaTask: boolean): EdgeRow[] =>
-      db.query(`SELECT e.src, e.dst, COALESCE(d.title, en.name) AS title, d.source AS source, d.created_at AS created_at FROM edges e LEFT JOIN documents d ON d.id = CASE WHEN e.src = ?1 THEN e.dst ELSE e.src END LEFT JOIN entities en ON en.id = CASE WHEN e.src = ?1 THEN e.dst ELSE e.src END WHERE (e.src = ?1 OR e.dst = ?1) AND e.created_by IN (${viaTask ? "'manual','llm'" : "'manual'"})`).all(node) as EdgeRow[];
+      db.query(`SELECT e.src, e.dst, COALESCE(d.title, en.name) AS title, d.source AS source, d.author AS author, d.created_at AS created_at FROM edges e LEFT JOIN documents d ON d.id = CASE WHEN e.src = ?1 THEN e.dst ELSE e.src END LEFT JOIN entities en ON en.id = CASE WHEN e.src = ?1 THEN e.dst ELSE e.src END WHERE (e.src = ?1 OR e.dst = ?1) AND e.created_by IN (${viaTask ? "'manual','llm'" : "'manual'"})`).all(node) as EdgeRow[];
     const collect = (nodes: string[], viaTask: boolean): TiedItem[] => {
       const byId = new Map<string, TiedItem>();
       for (const n of nodes)
         for (const e of edgesOf(n, viaTask)) {
           const other = e.src === n ? e.dst : e.src;
           if (other === id || mineIds.has(other)) continue;
-          const item = byId.get(other) ?? { id: other, title: e.title ?? other, source: e.source, created_at: e.created_at ?? "", via: [] };
+          const item = byId.get(other) ?? { id: other, title: e.title ?? other, source: e.source, author: e.author, created_at: e.created_at ?? "", via: [] };
           if (viaTask && !item.via.includes(titleOf.get(n)!)) item.via.push(titleOf.get(n)!);
           byId.set(other, item);
         }
@@ -251,8 +253,11 @@ export async function moveTask(dataDir: string, taskId: string, initiativeId: st
   return { status: "moved", title, from, to: target };
 }
 
+/** A capture the model thinks belongs, with who added it so an accepted one reads like any linked row. */
+export type InitiativeSuggestion = Suggestion & { author: string };
+
 /** Model-judged captures that seem to belong. Without a model: `{model:false}`, never an error. */
-export async function initiativeSuggestions(dataDir: string, id: string, opts: { router: Router | null; limit?: number; db?: Database }): Promise<{ model: boolean; suggestions: Suggestion[] }> {
+export async function initiativeSuggestions(dataDir: string, id: string, opts: { router: Router | null; limit?: number; db?: Database }): Promise<{ model: boolean; suggestions: InitiativeSuggestion[] }> {
   const { doc } = requireInitiative(dataDir, id);
   const model = opts.router?.resolve({ kind: "edge-judge", minQuality: "standard" }) ?? null;
   if (!model) return { model: false, suggestions: [] };
@@ -263,12 +268,12 @@ export async function initiativeSuggestions(dataDir: string, id: string, opts: {
     const query = `${doc.frontmatter.title}\n${doc.body}\n${detail.tasks.map((t) => t.title).join("\n")}`.slice(0, 600);
     const limit = opts.limit ?? INITIATIVE_SUGGEST_LIMIT;
     const hits = await search(dataDir, query, { limit: limit * 4, db });
-    const cands = new Map<string, { id: string; title: string; source: string; blurb: string }>();
+    const cands = new Map<string, { id: string; title: string; source: string; author: string; blurb: string }>();
     for (const h of hits) {
       if (tied.has(h.docId) || cands.has(h.docId) || h.source === "task" || h.source === "initiative") continue;
       const row = getDocRow(db, h.docId);
       if (!row) continue;
-      cands.set(h.docId, { id: h.docId, title: h.title, source: h.source, blurb: (row.summary ?? row.body.slice(0, REFINE_BLURB_CHARS)).replace(/\s+/g, " ") });
+      cands.set(h.docId, { id: h.docId, title: h.title, source: h.source, author: row.author, blurb: (row.summary ?? row.body.slice(0, REFINE_BLURB_CHARS)).replace(/\s+/g, " ") });
     }
     if (cands.size === 0) return { model: true, suggestions: [] };
     let results: { id: string; keep: boolean; reason: string }[];
@@ -280,11 +285,11 @@ export async function initiativeSuggestions(dataDir: string, id: string, opts: {
     } catch {
       return { model: true, suggestions: [] };
     }
-    const out: Suggestion[] = [];
+    const out: InitiativeSuggestion[] = [];
     for (const r of results) {
       const c = cands.get(r.id);
       if (!c || !r.keep || out.some((s) => s.id === c.id) || out.length >= limit) continue;
-      out.push({ id: c.id, title: c.title, source: c.source, reason: r.reason || "seems related" });
+      out.push({ id: c.id, title: c.title, source: c.source, author: c.author, reason: r.reason || "seems related" });
     }
     return { model: true, suggestions: out };
   } finally {

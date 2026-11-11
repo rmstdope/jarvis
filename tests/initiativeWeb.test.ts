@@ -40,6 +40,7 @@ describe("initiative routes", () => {
     expect(d.initiative.updated_at).toBeTruthy(); // the tab's "updated <when>"
     expect(d.tasks.length).toBe(12);
     expect(d.direct.items.map((i: { id: string }) => i.id)).toEqual([note.id]);
+    expect(d.direct.items[0].author).toBe("me"); // a Linked directly row's "<kind> · <who> · <when>"
     expect((await call("GET", "/api/initiative/NOPE")).status).toBe(404);
     expect((await call("GET", `/api/initiative/${d.tasks[0].id}`)).status).toBe(404);
   });
@@ -64,7 +65,7 @@ describe("initiative routes", () => {
     expect(await (await call("GET", `/api/initiative/${a.id}/suggest`)).json()).toEqual({ model: false, suggestions: [] });
     const router = fakeRouter(() => JSON.stringify({ results: [{ id: m.id, keep: true, reason: "mentions the cut-over date" }] }));
     const s = await (await call("GET", `/api/initiative/${a.id}/suggest`, undefined, router)).json();
-    expect(s.suggestions).toEqual([{ id: m.id, title: "Finance weekly", source: "meeting", reason: "mentions the cut-over date" }]);
+    expect(s.suggestions).toEqual([{ id: m.id, title: "Finance weekly", source: "meeting", author: "me", reason: "mentions the cut-over date" }]);
     expect((await call("POST", "/api/link", { src: a.id, dst: m.id })).status).toBe(200);
     expect((await (await call("GET", `/api/initiative/${a.id}`)).json()).direct.items.map((i: { id: string }) => i.id)).toEqual([m.id]);
   });
@@ -85,6 +86,8 @@ describe("which initiative a task or card belongs to", () => {
     const hits = await (await call("GET", "/api/search?q=alpha&mode=keyword")).json();
     expect(hits.find((h: { docId: string }) => h.docId === t1.id).initiative).toEqual({ id: a.id, title: "Alpha" });
     expect(hits.find((h: { docId: string }) => h.docId === a.id).progress).toMatchObject({ done: 1, total: 2 });
+    expect(hits.find((h: { docId: string }) => h.docId === a.id).progress.updated_at).toBe(readDocFile(t.dir, a.id)!.frontmatter.updated_at ?? readDocFile(t.dir, a.id)!.frontmatter.created_at); // a search card's "updated <when>"
+    expect(hits.find((h: { docId: string }) => h.docId === a.id).progress.updated_at).toBeTruthy();
     const item = await (await call("GET", `/api/item/${t1.id}`)).json();
     expect(item.initiative).toEqual({ id: a.id, title: "Alpha", done: 1, total: 2 });
     expect((await (await call("GET", `/api/item/${solo.id}`)).json()).initiative).toBeUndefined();

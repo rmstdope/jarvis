@@ -6,7 +6,7 @@ import { withDb } from "./db.ts";
 /** What a card or task row needs to show its initiative; present only for tasks in an initiative. */
 export interface InitiativeRef { id: string; title: string }
 /** Progress and facts an initiative card shows, present only on initiative rows. */
-export interface InitiativeProgress { done: number; total: number; owner: string; status: "open" | "closed"; closed_at?: string; goal: string }
+export interface InitiativeProgress { done: number; total: number; owner: string; status: "open" | "closed"; closed_at?: string; goal: string; updated_at?: string }
 
 /**
  * Adds `initiative` to task rows and `progress` to initiative rows, so the web cards can show them.
@@ -24,7 +24,9 @@ export function decorateItems<T extends { source: string }>(dataDir: string, ite
         return ref ? { ...i, initiative: ref } : i;
       }
       const s = i.source === "initiative" ? inis.get(id) : undefined;
-      return s ? { ...i, progress: { done: s.done, total: s.total, owner: s.owner, status: s.status, closed_at: s.closed_at, goal: readDocFile(dataDir, id)?.body.trim() ?? "" } } : i;
+      if (!s) return i;
+      const doc = readDocFile(dataDir, id);
+      return { ...i, progress: { done: s.done, total: s.total, owner: s.owner, status: s.status, closed_at: s.closed_at, goal: doc?.body.trim() ?? "", updated_at: doc ? doc.frontmatter.updated_at ?? doc.frontmatter.created_at : undefined } };
     });
   });
 }
