@@ -156,7 +156,7 @@ export function createChat(opts: { navigate: (hash: string) => void; onChange?: 
     if (m.role === "user") return h("div", { class: "jv-msg jv-user" }, m.files?.length ? h("div", { class: "jv-fchips" }, ...m.files.map((f) => h("span", { class: "jv-file", title: f.name }, h("span", { class: "jv-fn" }, `📄 ${f.name}`), ` · ${fileSize(f.size)}`))) : null, m.text);
     const parts: (HTMLElement | null)[] = [];
     const steps = m.steps ?? [];
-    const empty = m.status === "done" && !m.text && !m.changes?.length;
+    const empty = m.status === "done" && !m.text.trim() && !m.changes?.length;
     const list = () => h("div", { class: "jv-steps" }, ...steps.map((s) => h("div", { class: "jv-step" }, `${s.done ? "✓" : "●"} ${s.text}`)));
     if (m.status === "streaming") { if (steps.length) parts.push(list()); }
     else if (steps.length) {
@@ -271,7 +271,7 @@ export function createChat(opts: { navigate: (hash: string) => void; onChange?: 
   }
   function retry(m: Msg): void {
     const i = conv.messages.indexOf(m);
-    if (i < 1 || !m.question) return;
+    if (i < 1 || !m.question || answering || available === false) return;
     conv.messages.splice(i - 1, 2);
     void send(m.question);
   }

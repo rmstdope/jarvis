@@ -304,6 +304,33 @@ describe("one conversation that survives", () => {
       expect(qa(".jv-user").length).toBe(1);
       expect(document.querySelector(".jv-noanswer")).toBeNull();
     });
+    test("an answer of only whitespace counts as empty", async () => {
+      await setup({ answer: () => ({ stream: async (push) => { push({ type: "message", text: "\n " }); push({ type: "done" }); } }) });
+      await ask("q");
+      expect(q(".jv-noanswer")).not.toBeNull();
+    });
+    test("a failed answer shows only the red notice", async () => {
+      await setup({ answer: () => ({ status: 500, json: { error: "x" } }) });
+      await ask("q");
+      expect(q(".jv-failed")).not.toBeNull();
+      expect(document.querySelector(".jv-noanswer")).toBeNull();
+    });
+    test("an answer with no text but a change card gets no notice", async () => {
+      await setup({ answer: () => ({ stream: async (push) => { push({ type: "change", change: { id: "C1", ok: true, verb: "capture", items: [{ title: "T" }] } }); push({ type: "done" }); } }) });
+      await ask("q");
+      expect(document.querySelector(".jv-noanswer")).toBeNull();
+    });
+    test("Try again on an old empty answer while another answer is coming does nothing and keeps the question", async () => {
+      let n = 0;
+      await setup({ answer: () => (++n === 1 ? { stream: async (push) => { push({ type: "done" }); } } : { stream: async (_push, signal) => { await new Promise<void>((r) => signal.addEventListener("abort", () => r())); } }) });
+      await ask("first");
+      type("second");
+      (q(".jv-send") as HTMLElement).click();
+      await env.tick(40);
+      (q(".jv-noanswer .jv-retry") as HTMLElement).click();
+      await env.tick(20);
+      expect(qa(".jv-user").map((e) => e.textContent)).toEqual(["first", "second"]);
+    });
     test("a reload shows the notice again with the steps unfolded", async () => {
       await setup({ answer: emptyWithSteps as never });
       await ask("q");
