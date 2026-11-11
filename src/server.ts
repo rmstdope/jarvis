@@ -1,4 +1,4 @@
-import { loadConfig } from "./core/config.ts";
+import { loadConfig, resolveAuthor } from "./core/config.ts";
 import { existsSync, statSync } from "node:fs";
 import { join, normalize } from "node:path";
 import { addFilter, readFilters } from "./core/filters.ts";
@@ -161,7 +161,7 @@ route("POST", "/api/briefing/:id/comments", async (req, _u, p, ctx) => {
   const b = await body<{ comment?: string; text?: string; author?: string; selectedText?: string; contextText?: string; anchor?: Record<string, unknown> }>(req);
   const text = b.comment ?? b.text;
   if (!text) return error("comment is required");
-  return json(addComment(ctx.dataDir, p.id, { comment: text, author: b.author, selectedText: b.selectedText, contextText: b.contextText, anchor: b.anchor as never }));
+  return json(addComment(ctx.dataDir, p.id, { comment: text, author: resolveAuthor(b.author), selectedText: b.selectedText, contextText: b.contextText, anchor: b.anchor as never }));
 });
 
 // ---- M7: tasks + manual links (the routes the extension expects) ----
