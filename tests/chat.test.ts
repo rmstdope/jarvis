@@ -44,14 +44,14 @@ describe("acp client", () => {
 describe("shutdown waits for the agent process (jv-den)", () => {
   // On Windows a live child keeps its cwd (the test's temporary directory) busy, so a close that
   // returns before the child has exited lets cleanup race it into EBUSY.
-  function slowExitTransport() {
+  function slowExitTransport(answerDelayMs = 0) {
     const state = { exited: false };
     let exit!: () => void;
     const exited = new Promise<number>((r) => (exit = () => { state.exited = true; r(0); }));
     let push!: (o: unknown) => void;
     const stdout = new ReadableStream<Uint8Array>({ start(c) { push = (o) => c.enqueue(new TextEncoder().encode(JSON.stringify(o) + "\n")); } });
     const answers: Record<string, unknown> = { initialize: { protocolVersion: 1 }, "session/new": { sessionId: "s1" } };
-    const write = (line: string) => { const m = JSON.parse(line); if (m.id !== undefined) push({ jsonrpc: "2.0", id: m.id, result: answers[m.method] ?? {} }); };
+    const write = (line: string) => { const m = JSON.parse(line); if (m.id !== undefined) setTimeout(() => push({ jsonrpc: "2.0", id: m.id, result: answers[m.method] ?? {} }), answerDelayMs); };
     return { state, transport: { stdin: { write }, stdout, kill: () => { setTimeout(exit, 50); }, exited } };
   }
   test("AcpClient.close resolves only once the agent process has exited", async () => {
@@ -72,6 +72,15 @@ describe("shutdown waits for the agent process (jv-den)", () => {
     expect(r.status).toBe(200);
     await resetChatServices();
     expect(two.state.exited).toBe(true);
+  });
+  test("ChatService.shutdown while the agent is still starting waits for that agent too", async () => {
+    const starting = slowExitTransport(50);
+    const svc = new ChatService(t.dir, { spawn: () => starting.transport });
+    const created = svc.create({ type: "jarvis", ids: [] }).then(() => "created", (e: Error) => e.message);
+    await new Promise((r) => setTimeout(r, 10)); // spawned, initialize not answered yet
+    await svc.shutdown();
+    expect(starting.state.exited).toBe(true);
+    expect(await created).toMatch(/closed/);
   });
 });
 
