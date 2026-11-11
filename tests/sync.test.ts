@@ -127,7 +127,7 @@ describe("sync across two clones", () => {
     const refused = fakeRouter(() => { throw new Error('Model "gpt-4.1" from --model flag is not available.'); });
     const s = await sync(a, { router: refused });
     expect(s.pushed).toBe(true);
-    expect(s.failures).toEqual([{ step: "enrich", failed: 1, reason: 'Model "gpt-4.1" from --model flag is not available.' }]);
+    expect(s.failures).toEqual([{ step: "enrich", failed: 1, reason: 'Model "gpt-4.1" from --model flag is not available.', doctor: true }]);
   });
 });
 
@@ -136,13 +136,14 @@ describe("POST /api/sync through the running service", () => {
   // the server committed and pushed while the browser saw a dropped socket and said "Sync failed".
   test("a sync slower than ten seconds still answers with what it did", async () => {
     await ingest(a, { source: "note", title: "Slow", body: "alpha", author: "a" });
-    const slow = fakeRouter(async () => { await Bun.sleep(14_000); throw new Error("refused"); });
+    // Bun's idle timer is coarse: it dropped a 14 s request at about 12 s but answered a 12 s one. 15 s keeps a margin.
+    const slow = fakeRouter(async () => { await Bun.sleep(15_000); throw new Error("refused"); });
     const server = startServer({ dataDir: a, router: slow }, 0);
     try {
       const r = await fetch(`http://127.0.0.1:${server.port}/api/sync`, { method: "POST" });
       const body = (await r.json()) as { pushed: boolean; failures: unknown[] };
       expect(body.pushed).toBe(true);
-      expect(body.failures).toEqual([{ step: "enrich", failed: 1, reason: "refused" }]);
+      expect(body.failures).toEqual([{ step: "enrich", failed: 1, reason: "refused", doctor: false }]);
     } finally {
       while (isSyncRunning()) await Bun.sleep(100); // the server goes on when the socket drops; let it finish
       server.stop(true);

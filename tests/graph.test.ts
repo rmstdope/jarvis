@@ -245,4 +245,13 @@ describe("process pipeline with passes", () => {
     const r2 = await processContent(t.dir, { router });
     expect(r2.counts.enrich).toBeUndefined();
   });
+
+  test("a refused edge-judge is reported as a refine failure with doctor's fix; a garbled answer without it (jv-m9l)", async () => {
+    for (const w of ["fix", "notes", "again"]) await ingest(t.dir, { source: "note", title: w, body: `camera firmware zoom drift ${w}`, author: "me" });
+    const refusal = 'Model "gpt-4.1" from --model flag is not available.';
+    const r = await processContent(t.dir, { router: fakeRouter(() => { throw new Error(refusal); }, ["edge-judge"]) });
+    expect(r.failures).toEqual([{ step: "refine", failed: 1, reason: refusal, doctor: true }]);
+    const r2 = await processContent(t.dir, { router: fakeRouter(() => "not json", ["edge-judge"]) });
+    expect(r2.failures).toEqual([{ step: "refine", failed: 1, reason: expect.any(String), doctor: false }]);
+  });
 });

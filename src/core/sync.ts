@@ -33,6 +33,16 @@ export interface StepFailure {
   step: string;
   failed: number;
   reason: string;
+  /** True when `jarvis doctor` has a fix for this reason (a refused model id, an unreachable provider). */
+  doctor: boolean;
+}
+
+/** Reasons `jarvis doctor` checks and prints a fix for: copilot-model (a refused id) and models-available (unreachable). */
+const DOCTOR_FIXABLE = /is not available|ECONNREFUSED|Unable to connect|Executable not found/i;
+
+/** Build a {@link StepFailure}, marking whether doctor has its fix. */
+export function stepFailure(step: string, failed: number, reason: string): StepFailure {
+  return { step, failed, reason, doctor: DOCTOR_FIXABLE.test(reason) };
 }
 
 /** Pluggable authoring passes (enrich, edges, refine) registered by later modules. */

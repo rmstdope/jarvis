@@ -12,7 +12,7 @@ export interface BriefingDetail extends BriefingSummary { frontmatter: Record<st
 export interface Comment { id: string; status: string; author?: string; comment: string; createdAt: string; }
 export interface SyncResult { remote: boolean; committed: number; committedEnriched: number; pulled: boolean; pushed: boolean; conflicted: string[]; reindexed?: { docsIndexed: number; chunksEmbedded: number }; collisions: { source_url: string; ids: string[] }[]; notes: string[]; failures: SyncStepFailure[]; }
 /** A model step a sync ran that failed for `failed` units (items for enrich, batches for refine). */
-export interface SyncStepFailure { step: string; failed: number; reason: string; }
+export interface SyncStepFailure { step: string; failed: number; reason: string; doctor: boolean; }
 export interface PresentationSummary { id: string; slug: string; title: string; author: string; created_at: string; updated_at?: string; indexed: boolean; viewer: { status: string; launchUrl?: string }; }
 
 export interface InitiativeRef { id: string; title: string; }

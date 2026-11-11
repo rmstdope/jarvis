@@ -42,10 +42,10 @@ function lastSyncState(failedSteps?: string) {
 }
 const STEP_LABEL: Record<string, [label: string, unit: string]> = { enrich: ["enrichment", "item(s)"], refine: ["link refinement", "batch(es)"] };
 const stepLabel = (f: SyncStepFailure) => STEP_LABEL[f.step]?.[0] ?? f.step;
-/** The toast for a sync whose model steps failed: whether the work was shared, then each step, its count and why. */
+/** The toast for a sync whose model steps failed: whether the work was shared, each step with its count and why, and doctor where it has the fix. */
 function failedStepsToast(r: { pushed: boolean }, failures: SyncStepFailure[]): string {
-  const steps = failures.map((f) => `${stepLabel(f)} failed for ${f.failed} ${STEP_LABEL[f.step]?.[1] ?? "time(s)"}${f.reason ? `: ${f.reason}` : "."}`).join(" ");
-  return `${r.pushed ? "Shared with the team" : "Committed here, not pushed"}, but ${steps} Run \`jarvis doctor\` for the fix.`;
+  const steps = failures.map((f) => `${stepLabel(f)} failed for ${f.failed} ${STEP_LABEL[f.step]?.[1] ?? "time(s)"}${f.reason ? `: ${f.reason.replace(/\.$/, "")}` : ""}`).join("; ");
+  return `${r.pushed ? "Shared with the team" : "Not shared with the team"}, but ${steps}.${failures.some((f) => f.doctor) ? " Run \`jarvis doctor\` for the fix." : ""}`;
 }
 async function runSync() {
   shell.setSync({ kind: "syncing" });

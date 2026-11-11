@@ -92,7 +92,7 @@ export async function main(argv: string[]): Promise<number> {
 import { join as _join } from "node:path";
 import { existsSync as _exists } from "node:fs";
 import { resolvePort } from "./core/config.ts";
-import { dedupScan, processContent, sync } from "./core/sync.ts";
+import { dedupScan, processContent, sync, type StepFailure } from "./core/sync.ts";
 import { startServer } from "./server.ts";
 
 register("serve", "serve [--port]", async ({ dataDir, flags }) => {
@@ -117,8 +117,13 @@ register("sync", "sync [--no-push]", async ({ dataDir, flags }) => {
   for (const [k, v] of Object.entries(r.counts)) console.log(`${k}: ${JSON.stringify(v)}`);
   for (const c of r.collisions) console.log(`⚠ collision ${c.source_url}: ${c.ids.join(", ")}`);
   for (const n of r.notes) console.log(`note: ${n}`);
-  for (const f of r.failures) console.log(`⚠ ${f.step} failed for ${f.failed}: ${f.reason}   (jarvis doctor shows the fix)`);
+  printFailures(r.failures);
 });
+
+/** One ⚠ line per failed model step, pointing at doctor only when it has the fix. */
+function printFailures(failures: StepFailure[]): void {
+  for (const f of failures) console.log(`⚠ ${f.step} failed for ${f.failed}: ${f.reason}${f.doctor ? "   (jarvis doctor shows the fix)" : ""}`);
+}
 
 const processCmd: Parameters<typeof register>[2] = async ({ dataDir }) => {
   const r = await processContent(dataDir());
@@ -126,6 +131,7 @@ const processCmd: Parameters<typeof register>[2] = async ({ dataDir }) => {
   for (const [k, v] of Object.entries(r.counts)) console.log(`${k}: ${JSON.stringify(v)}`);
   for (const c of r.collisions) console.log(`⚠ collision ${c.source_url}: ${c.ids.join(", ")}`);
   for (const n of r.notes) console.log(`note: ${n}`);
+  printFailures(r.failures);
 };
 register("process", "process | pipeline  (local passes without git)", processCmd);
 register("pipeline", "", processCmd);
