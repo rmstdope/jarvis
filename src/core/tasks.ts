@@ -140,6 +140,48 @@ export function setTaskStatus(dataDir: string, id: string, status: "open" | "don
   }
 }
 
+/** Changes only a task's due date and/or owner (`due: null` clears it); `from`/`to` report what moved. */
+export async function updateTask(dataDir: string, id: string, opts: { due?: string | null; owner?: string; author?: string; db?: Database }): Promise<{ title: string; due?: { from?: string; to?: string }; owner?: { from: string; to: string } }> {
+  if (typeof opts.due === "string" && !isValidDue(opts.due)) throw new Error("due must be YYYY-MM-DD");
+  const doc = readDocFile(dataDir, id);
+  if (!doc || doc.frontmatter.source !== "task" || !doc.frontmatter.task) throw new Error(`task ${id} not found`);
+  const t = doc.frontmatter.task;
+  const out: Awaited<ReturnType<typeof updateTask>> = { title: doc.frontmatter.title };
+  if (opts.due !== undefined && (opts.due ?? undefined) !== t.due) {
+    out.due = { from: t.due, to: opts.due ?? undefined };
+    if (opts.due === null) delete t.due;
+    else t.due = opts.due;
+  }
+  if (opts.owner !== undefined && opts.owner !== t.owner) {
+    out.owner = { from: t.owner, to: opts.owner };
+    t.owner = opts.owner;
+  }
+  if (out.due || out.owner) writeTaskDoc(dataDir, doc, resolveAuthor(opts.author), opts.db);
+  return out;
+}
+
+/** Puts a task's whole `task:` block back (used to undo a change); `null` block is refused. */
+export function restoreTaskBlock(dataDir: string, id: string, block: TaskBlock, author?: string, db?: Database): void {
+  const doc = readDocFile(dataDir, id);
+  if (!doc || doc.frontmatter.source !== "task") throw new Error(`task ${id} not found`);
+  doc.frontmatter.task = { ...block };
+  writeTaskDoc(dataDir, doc, resolveAuthor(author), db);
+}
+
+function writeTaskDoc(dataDir: string, doc: { frontmatter: DocFrontmatter; body: string }, who: string, dbIn?: Database): void {
+  const db = dbIn ?? openDb(dataDir);
+  try {
+    doc.frontmatter.updated_at = nowIso();
+    doc.frontmatter.updated_by = who;
+    const { hash } = writeDocFile(dataDir, doc);
+    const row = getDocRow(db, doc.frontmatter.id);
+    upsertDocRow(db, doc, { fileHash: hash });
+    if (row) db.run("UPDATE documents SET edged_at = ? WHERE id = ?", [row.edged_at, doc.frontmatter.id]);
+  } finally {
+    if (!dbIn) db.close();
+  }
+}
+
 export interface Suggestion {
   id: string;
   title: string;

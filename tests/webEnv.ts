@@ -40,7 +40,8 @@ export function installWebEnv(width = 1280): WebEnv {
   const fakeFetch = async (input: string | URL | Request, init?: RequestInit): Promise<Response> => {
     const url = new URL(String(input), "http://127.0.0.1:7281");
     const method = (init?.method ?? "GET").toUpperCase();
-    const body = init?.body ? JSON.parse(String(init.body)) : undefined;
+    const raw = init?.body;
+    const body = raw instanceof FormData ? { message: raw.get("message"), files: raw.getAll("files").map((f) => (f as File).name) } : raw ? JSON.parse(String(raw)) : undefined;
     const path = url.pathname + url.search;
     calls.push({ method, path, body });
     const h = routes.get(`${method} ${url.pathname}`) ?? routes.get(`${method} ${path}`);

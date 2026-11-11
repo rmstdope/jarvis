@@ -1,3 +1,4 @@
+import type { WebChange } from "./changes.ts";
 /** Same-origin thin client for the local service. */
 export interface ItemSummary { id: string; source: string; title: string; author: string; created_at: string; updated_at: string | null; updated_by: string | null; source_url: string | null; starred: boolean; summary: string | null; tags: string[]; metadata: Record<string, unknown> | null; }
 export interface Item extends ItemSummary { body: string; proc_version: number; file_path: string | null; }
@@ -39,6 +40,9 @@ export const api = {
   capture: (title: string, body: string) => req<{ id: string; status: string }>("POST", "/api/capture", { source: "paste", title, body }),
   me: () => req<{ name?: string }>("GET", "/api/me"),
   chatStatus: () => req<{ available: boolean }>("GET", "/api/chat/status"),
+  chatChanges: (cid: string) => req<{ changes: WebChange[] }>("GET", `/api/chat/conversations/${encodeURIComponent(cid)}/changes`),
+  undoChange: (cid: string, id: string) => req<{ change: WebChange }>("POST", `/api/chat/conversations/${encodeURIComponent(cid)}/changes/${encodeURIComponent(id)}/undo`, {}),
+  undoAll: (cid: string, turn?: string) => req<{ changes: WebChange[]; error?: string }>("POST", `/api/chat/conversations/${encodeURIComponent(cid)}/changes/undo-all`, { turn }),
   tasks: (owner?: string) => req<{ tasks: TaskRow[] }>("GET", `/api/tasks${qs({ status: "open", owner })}`),
   taskDone: (id: string) => req<unknown>("POST", `/api/task/${encodeURIComponent(id)}/done`, {}),
   taskReopen: (id: string) => req<unknown>("POST", `/api/task/${encodeURIComponent(id)}/reopen`, {}),

@@ -128,7 +128,7 @@ describe("copilot acp command line", () => {
     expect(args.slice(0, 2)).toEqual(["copilot", "--acp"]);
     expect(args).not.toContain("--model");
     expect(args).not.toContain("--reasoning-effort");
-    expect(args).toContain("--available-tools=");
+    expect(args).toContain("--available-tools=jarvis_*,jarvis-jarvis_*");
   });
   test("a configured chatModel is passed through, still without a reasoning effort a model may reject", () => {
     const args = copilotAcpArgs("gpt-4.1");
@@ -215,5 +215,123 @@ describe("chat status route", () => {
     expect(await status({ spawn })).toEqual({ available: true });
     expect(await status({ available: () => true })).toEqual({ available: true });
     expect(await status({ available: () => false })).toEqual({ available: false });
+  });
+});
+
+describe("the agent acts (jv-oya.4)", () => {
+  let server: ReturnType<typeof Bun.serve>;
+  let ctx: { dataDir: string; chatDeps: Record<string, unknown> };
+  beforeEach(() => {
+    ctx = { dataDir: t.dir, chatDeps: { spawn } };
+    server = Bun.serve({ port: 0, hostname: "127.0.0.1", fetch: (req) => handle(req, ctx as never) });
+    ctx.chatDeps.serverUrl = () => `http://127.0.0.1:${server.port}`;
+  });
+  afterEach(() => { server.stop(true); });
+  const call = (method: string, path: string, body?: unknown | FormData) =>
+    handle(new Request(`http://127.0.0.1:7281${path}`, { method, body: body === undefined ? undefined : body instanceof FormData ? body : JSON.stringify(body), headers: body instanceof FormData ? undefined : { "content-type": "application/json" } }), ctx as never);
+  const ndjson = async (r: Response) => (await r.text()).trim().split("\n").map((l) => JSON.parse(l));
+  const open = async (conversationId = "conv1") => (await (await call("POST", "/api/chat/sessions", { scope: { type: "jarvis", ids: [] }, conversationId })).json()).sessionId as string;
+
+  test("a tool call through the MCP server makes a change, streams it, and Undo works over HTTP", async () => {
+    const sid = await open();
+    const evs = await ndjson(await call("POST", `/api/chat/sessions/${sid}/messages`, { message: 'ACT jarvis_create_task {"title":"Ring the vendor","due":"2026-11-13"} ACT jarvis_link {"src":"nope","dst":"x"}' }));
+    const changes = evs.filter((e) => e.type === "change").map((e) => e.change);
+    expect(changes.map((c) => [c.kind, c.ok])).toEqual([["task.create", true], ["link", false]]);
+    expect(changes[0].turn).toBe(changes[1].turn);
+    const listed = (await (await call("GET", "/api/chat/conversations/conv1/changes")).json()).changes;
+    expect(listed.map((c: { id: string }) => c.id)).toEqual(changes.map((c) => c.id));
+    const undone = await (await call("POST", `/api/chat/conversations/conv1/changes/${changes[0].id}/undo`)).json();
+    expect(undone.change.undone).toBe(true);
+    expect((await call("POST", `/api/chat/conversations/conv1/changes/${changes[0].id}/undo`)).status).toBe(200); // already undone: unchanged
+    expect((await call("POST", "/api/chat/conversations/conv1/changes/undo-all")).status).toBe(200);
+  });
+  test("the change log outlives the chat session", async () => {
+    const sid = await open("conv2");
+    await ndjson(await call("POST", `/api/chat/sessions/${sid}/messages`, { message: 'ACT jarvis_capture_note {"text":"remember this","title":"Remember"}' }));
+    await call("DELETE", `/api/chat/sessions/${sid}`);
+    const listed = (await (await call("GET", "/api/chat/conversations/conv2/changes")).json()).changes;
+    expect(listed).toHaveLength(1);
+    expect(listed[0].items[0].title).toBe("Remember");
+  });
+  test("a conflicting Undo is a 409 with the sentence", async () => {
+    const sid = await open("conv3");
+    const evs = await ndjson(await call("POST", `/api/chat/sessions/${sid}/messages`, { message: 'ACT jarvis_create_task {"title":"Mine"}' }));
+    const c = evs.find((e) => e.type === "change").change;
+    const { writeFileSync, readFileSync } = await import("node:fs");
+    const p = join(t.dir, "docs", `${c.items[0].id}.md`);
+    writeFileSync(p, readFileSync(p, "utf8").replace("title: Mine", "title: Mine v2"));
+    const r = await call("POST", `/api/chat/conversations/conv3/changes/${c.id}/undo`);
+    expect(r.status).toBe(409);
+    expect((await r.json()).error).toBe("Couldn't undo — Mine was changed after the agent changed it.");
+  });
+  test("attachments: kinds and size are checked, files are named in the prompt, a transcript is withheld unless the team allows it", async () => {
+    const sid = await open("conv4");
+    const send = async (files: [string, string | Uint8Array<ArrayBuffer>][], message = "capture these") => {
+      const f = new FormData();
+      f.set("message", message);
+      for (const [n, c] of files) f.append("files", new File([c], n));
+      return call("POST", `/api/chat/sessions/${sid}/messages`, f);
+    };
+    const bad = await send([["demo.mov", "x"]]);
+    expect(bad.status).toBe(400);
+    expect((await bad.json()).error).toBe("demo.mov — can't capture this kind of file");
+    expect((await (await send([["big.pdf", new Uint8Array(new ArrayBuffer(25 * 1024 * 1024 + 1))]])).json()).error).toBe("big.pdf — larger than 25 MB");
+    const ok = await ndjson(await send([["notes.md", "# Notes\nhello"], ["sync.vtt", "WEBVTT\n\n00:00:01.000 --> 00:00:02.000\n<v Sam>We decided to ship."]]));
+    const said = ok.filter((e) => e.type === "message").map((e) => e.text).join("");
+    expect(said).toContain("Attached files");
+    expect(said).toContain("notes.md");
+    expect(said).toContain("# Notes\nhello");
+    expect(said).toContain("You may not read it");
+    expect(said).toContain("I saved the transcript, but your team doesn't allow sending meeting transcripts to the model I'm using, so I can't read it to find the decisions.");
+    expect(said).not.toContain("We decided to ship");
+    const { mkdirSync, writeFileSync } = await import("node:fs");
+    mkdirSync(join(t.dir, "config"), { recursive: true });
+    writeFileSync(join(t.dir, "config", "team.toml"), "[privacy]\ntranscripts_to_cloud = true\n");
+    const allowed = await ndjson(await send([["sync.vtt", "WEBVTT\n\n00:00:01.000 --> 00:00:02.000\n<v Sam>We decided to ship."]], "what was decided"));
+    expect(allowed.filter((e) => e.type === "message").map((e) => e.text).join("")).toContain("We decided to ship");
+  });
+  test("a .srt is accepted and a transcript saved as .txt is withheld too, unless the team allows it", async () => {
+    const sid = await open("conv6");
+    const f = new FormData();
+    f.set("message", "read these");
+    f.append("files", new File(["1\n00:00:01,000 --> 00:00:02,000\nSecret srt line"], "talk.srt"));
+    f.append("files", new File(["00:01 Sam: secret txt line\n00:09 Kim: more\n00:15 Sam: yet more\n"], "talk.txt"));
+    f.append("files", new File(["# Plain notes\nbuy milk"], "plain.md"));
+    const said = (await ndjson(await call("POST", `/api/chat/sessions/${sid}/messages`, f))).filter((e) => e.type === "message").map((e) => e.text).join("");
+    expect(said).not.toContain("Secret srt line");
+    expect(said).not.toContain("secret txt line");
+    expect(said).toContain("buy milk");
+  });
+  test("a captured meeting never reaches the prompt through retrieval unless allowed", async () => {
+    const { ingest } = await import("../src/core/ingest.ts");
+    await ingest(t.dir, { source: "meeting", title: "Standup", body: "zebrafish rollout decision", author: "me" });
+    const sid = await open("conv7");
+    const said = (await ndjson(await call("POST", `/api/chat/sessions/${sid}/messages`, { message: "what about zebrafish rollout" }))).filter((e) => e.type === "message").map((e) => e.text).join("");
+    expect(said).not.toContain("zebrafish rollout decision");
+  });
+  test("capturing an attached file through the tool", async () => {
+    const sid = await open("conv5");
+    const f = new FormData();
+    f.set("message", 'ACT jarvis_capture_file {"attachment":"notes.md"}');
+    f.append("files", new File(["# Notes\nhello"], "notes.md"));
+    const evs = await ndjson(await call("POST", `/api/chat/sessions/${sid}/messages`, f));
+    expect(evs.find((e) => e.type === "change").change).toMatchObject({ kind: "capture.file", ok: true });
+  });
+  test("the MCP server lists the tools and forwards calls", async () => {
+    const { handleMcp } = await import("../src/chat/mcp.ts");
+    const list = (await handleMcp({ id: 1, method: "tools/list" }, async () => ({ text: "", isError: false })))!;
+    expect((list.result as { tools: { name: string }[] }).tools.map((x) => x.name)).toContain("jarvis_create_task");
+    const got: unknown[] = [];
+    const r = (await handleMcp({ id: 2, method: "tools/call", params: { name: "jarvis_link", arguments: { src: "a" } } }, async (tool, args) => { got.push([tool, args]); return { text: "ok", isError: false }; }))!;
+    expect(got).toEqual([["jarvis_link", { src: "a" }]]);
+    expect(r.result).toEqual({ content: [{ type: "text", text: "ok" }], isError: false });
+    expect(await handleMcp({ method: "notifications/initialized" }, async () => ({ text: "", isError: false }))).toBeNull();
+  });
+  test("permission policy: our tools once, everything else cancelled", async () => {
+    const { permissionOutcome } = await import("../src/chat/acp.ts");
+    const options = [{ optionId: "a1", kind: "allow_once" }, { optionId: "r1", kind: "reject_once" }];
+    expect(permissionOutcome({ toolCall: { title: "jarvis_create_task" }, options })).toEqual({ outcome: "selected", optionId: "a1" });
+    expect(permissionOutcome({ toolCall: { title: "write file" }, options })).toEqual({ outcome: "cancelled" });
+    expect(permissionOutcome({ toolCall: { title: "jarvis_create_task" }, options: [] })).toEqual({ outcome: "cancelled" });
   });
 });

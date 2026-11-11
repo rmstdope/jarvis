@@ -1,6 +1,10 @@
 import { ulid } from "ulid";
-import { AcpClient, spawnCopilotAcp, type AcpTransport } from "./acp.ts";
-import { loadConfig } from "../core/config.ts";
+import { mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { basename, extname, join } from "node:path";
+import { AcpClient, spawnCopilotAcp, type AcpTransport, type McpServer } from "./acp.ts";
+import { isTranscriptFile, runTool } from "./actions.ts";
+import { ChangeLog, type Change } from "./changes.ts";
+import { loadConfig, loadTeamConfig, resolvePort } from "../core/config.ts";
 import { ftsQuery, keywordSearchRaw } from "../core/search.ts";
 import { openDb } from "../core/db.ts";
 import { readDocFile } from "../core/docs.ts";
@@ -16,19 +20,41 @@ export type ChatScope = { type: "jarvis" | "item" | "briefing"; ids: string[] };
 export type ChatEvent =
   | { type: "source"; docId: string; title: string; source: string }
   | { type: "message"; text: string }
+  | { type: "change"; change: Change }
   | { type: "status"; text: string }
   | { type: "usage"; used: number; size: number }
   | { type: "done"; stopReason?: string }
   | { type: "error"; error: string };
 
+export const CHAT_MAX_FILE_BYTES = 25 * 1024 * 1024;
+export const CHAT_FILE_EXT = [".txt", ".md", ".markdown", ".pdf", ".vtt", ".srt"];
+/** Text that reads like a transcript (timestamped lines), whatever the file is called. */
+export function looksLikeTranscript(text: string): boolean {
+  return (text.match(/^\s*\[?\(?\d{1,2}:\d{2}(:\d{2})?([.,]\d+)?\]?\)?\s/gm) ?? []).length >= 3;
+}
+/** What the agent says when it captured a transcript it may not read. */
+export const TRANSCRIPT_NOTICE = "I saved the transcript, but your team doesn't allow sending meeting transcripts to the model I'm using, so I can't read it to find the decisions.";
+/** A file sent with a message. */
+export interface ChatFile { name: string; bytes: Uint8Array }
+/** The tool rules every conversation starts with. */
+export const CHAT_RULES = "You can act on the knowledge base with the jarvis_* tools: capture notes, links and attached files; create and update tasks; create initiatives and file tasks under them; link items; draft briefings and presentations. When the user asks for a change, make it straight away without asking first; every change can be undone. Never publish or approve anything: a briefing or presentation you make is a draft, and you say so. Capture an attached file only when the user asks. If a tool fails, say so plainly in your answer. Report each item by title.";
+
 export interface ChatSession {
   id: string;
+  /** The browser's conversation; the change log is keyed by it so Undo outlives this session. */
+  conversationId: string;
+  /** The answer being written now; changes made during it share this id. */
+  turn: string;
+  /** Files of the message in flight: name → saved path. */
+  attachments: Record<string, string>;
   scope: ChatScope;
   acpSessionId: string;
   createdAt: number;
   lastActive: number;
   turns: number;
   busy: boolean;
+  /** Called with each change made during the turn in flight. */
+  onChange?: (c: Change) => void;
   sources: { docId: string; title: string; source: string }[];
 }
 
@@ -50,6 +76,10 @@ export function retrievalTerms(message: string): string[] {
 }
 
 export interface ChatDeps {
+  /** Where the agent's tool server reaches this service. */
+  serverUrl?: () => string;
+  /** The command that starts the tool server (tests may point it elsewhere). */
+  mcpCommand?: { command: string; args: string[] };
   spawn?: (model: string | undefined, cwd: string) => AcpTransport;
   now?: () => number;
 }
@@ -96,7 +126,7 @@ export class ChatService {
   get(id: string): ChatSession | undefined {
     return this.sessions.get(id);
   }
-  async create(scope: ChatScope): Promise<ChatSession> {
+  async create(scope: ChatScope, conversationId?: string): Promise<ChatSession> {
     this.expire();
     if (!["jarvis", "item", "briefing"].includes(scope?.type)) throw new Error("scope.type must be jarvis|item|briefing");
     const ids = Array.isArray(scope.ids) ? scope.ids : [];
@@ -112,13 +142,33 @@ export class ChatService {
       sources.push({ docId: ids[0], title: b.title, source: "briefing" });
     }
     const agent = await this.agent();
-    const acpSessionId = await agent.newSession(this.dataDir);
-    const s: ChatSession = { id: ulid(), scope: { type: scope.type, ids }, acpSessionId, createdAt: this.now(), lastActive: this.now(), turns: 0, busy: false, sources };
+    const id = ulid();
+    const cmd = this.deps.mcpCommand ?? { command: process.execPath, args: ["run", join(import.meta.dir, "mcp.ts")] };
+    const mcp: McpServer = { name: "jarvis", command: cmd.command, args: cmd.args, env: [{ name: "JARVIS_URL", value: (this.deps.serverUrl ?? (() => `http://127.0.0.1:${resolvePort()}`))() }, { name: "JARVIS_CHAT_SESSION", value: id }] };
+    const acpSessionId = await agent.newSession(this.dataDir, [mcp]);
+    new ChangeLog(this.dataDir, conversationId ?? id); // validates the id
+    const s: ChatSession = { id, conversationId: conversationId ?? id, turn: "", attachments: {}, scope: { type: scope.type, ids }, acpSessionId, createdAt: this.now(), lastActive: this.now(), turns: 0, busy: false, sources };
     this.sessions.set(s.id, s);
     return s;
   }
-  /** Build the prompt: grounded body on the first turn for item/briefing; retrieval snippets every turn for jarvis. */
-  buildPrompt(s: ChatSession, message: string): { prompt: string; sources: ChatSession["sources"] } {
+  /** The prompt of a turn: tool rules on the first turn, the question, and a line per attached file. */
+  buildPrompt(s: ChatSession, message: string, files: ChatFile[] = []): { prompt: string; sources: ChatSession["sources"] } {
+    const r = this.buildQuestion(s, message);
+    const readable = loadTeamConfig(this.dataDir).privacy.transcriptsToCloud;
+    const lines = files.map((f) => {
+      const ext = extname(f.name).toLowerCase();
+      const size = `${f.bytes.length} bytes`;
+      if (ext === ".pdf") return `- ${f.name} (PDF, ${size})`;
+      const text = new TextDecoder().decode(f.bytes).slice(0, CHAT_GROUNDED_BODY_CHARS);
+      if (!readable && (isTranscriptFile(f.name) || looksLikeTranscript(text))) return `- ${f.name} (meeting transcript, ${size}). You may not read it. If asked to capture it, call jarvis_capture_file with meeting=true, then tell the user exactly: "${TRANSCRIPT_NOTICE}"`;
+      return `- ${f.name} (${size}):\n${text}`;
+    });
+    const attach = lines.length ? `\n\nAttached files (capture one only if asked; pass its name as attachment):\n${lines.join("\n")}` : "";
+    const question = s.turns === 0 && !r.prompt.includes("User: ") ? `User: ${r.prompt}` : r.prompt;
+    return { prompt: `${s.turns === 0 ? `${CHAT_RULES}\n\n` : ""}${question}${attach}`, sources: r.sources };
+  }
+  /** Grounded body on the first turn for item/briefing; retrieval snippets every turn for jarvis. */
+  private buildQuestion(s: ChatSession, message: string): { prompt: string; sources: ChatSession["sources"] } {
     const sources: ChatSession["sources"] = [];
     if (s.scope.type === "jarvis") {
       const terms = retrievalTerms(message);
@@ -126,8 +176,9 @@ export class ChatService {
       if (terms.length) {
         const db = openDb(this.dataDir);
         try {
-          const hits = keywordSearchRaw(db, terms.map((t) => ftsQuery(t)).join(" OR "), CHAT_RESULTS);
-          for (const h of hits) {
+          const hits = keywordSearchRaw(db, terms.map((t) => ftsQuery(t)).join(" OR "), CHAT_RESULTS * 2);
+          const allowed = loadTeamConfig(this.dataDir).privacy.transcriptsToCloud;
+          for (const h of hits.filter((x) => allowed || x.source !== "meeting").slice(0, CHAT_RESULTS)) { // a transcript the team keeps off cloud models never reaches the prompt
             const part = `[${h.docId}] ${h.title} (${h.source})\n${h.snippet.replace(/[[\]]/g, "")}\n\n`;
             if (ctx.length + part.length > CHAT_SNIPPET_CHARS) break;
             ctx += part;
@@ -158,13 +209,31 @@ export class ChatService {
     return { prompt: message, sources: [] };
   }
   /** Stream one turn. Exactly one in-flight prompt per session. */
-  async *send(id: string, message: string): AsyncGenerator<ChatEvent> {
+  async *send(id: string, message: string, files: ChatFile[] = []): AsyncGenerator<ChatEvent> {
     const s = this.sessions.get(id);
     if (!s) throw new ChatError("session not found", 404);
     if (s.busy) throw new ChatError("a prompt is already in flight for this session", 409);
     if (!message || !message.trim()) throw new ChatError("message is required", 400);
+    for (const f of files) {
+      if (!CHAT_FILE_EXT.includes(extname(f.name).toLowerCase())) throw new ChatError(`${f.name} — can't capture this kind of file`, 400);
+      if (f.bytes.length > CHAT_MAX_FILE_BYTES) throw new ChatError(`${f.name} — larger than 25 MB`, 400);
+    }
     s.busy = true;
     s.lastActive = this.now();
+    s.turn = ulid();
+    s.attachments = {};
+    const names: ChatFile[] = [];
+    if (files.length) {
+      const dir = join(this.dataDir, ".index", "chat", "uploads", s.turn);
+      mkdirSync(dir, { recursive: true });
+      for (const f of files) {
+        let safe = f.name.replace(/[\\/]/g, "_");
+        for (let n = 2; safe in s.attachments; n++) safe = `${basename(f.name, extname(f.name))}-${n}${extname(f.name)}`;
+        writeFileSync(join(dir, safe), f.bytes);
+        s.attachments[safe] = join(dir, safe);
+        names.push({ ...f, name: safe });
+      }
+    }
     const queue: ChatEvent[] = [];
     let wake: (() => void) | null = null;
     const push = (e: ChatEvent) => {
@@ -183,7 +252,8 @@ export class ChatService {
       else if (kind === "agent_thought_chunk") push({ type: "status", text: "thinking" });
     });
     try {
-      const { prompt, sources } = this.buildPrompt(s, message);
+      s.onChange = (change) => push({ type: "change", change });
+      const { prompt, sources } = this.buildPrompt(s, message, names);
       for (const src of sources) push({ type: "source", ...src });
       const agent = await this.agent();
       let finished = false;
@@ -200,9 +270,24 @@ export class ChatService {
       s.turns++;
     } finally {
       s.busy = false;
+      s.onChange = undefined;
+      if (files.length) rmSync(join(this.dataDir, ".index", "chat", "uploads", s.turn), { recursive: true, force: true }); // captured files were copied into the content repo
+      s.attachments = {};
       s.lastActive = this.now();
       this.updateHandlers.delete(s.acpSessionId);
     }
+  }
+  /** Run one tool call of the agent: make the change, record it, tell the turn in flight. */
+  async act(id: string, tool: string, args: Record<string, unknown>): Promise<{ change: Change; text: string }> {
+    const s = this.sessions.get(id);
+    if (!s) throw new ChatError("session not found", 404);
+    const r = await runTool(new ChangeLog(this.dataDir, s.conversationId), s.turn, tool, args, { dataDir: this.dataDir, attachments: s.attachments });
+    s.onChange?.(r.change);
+    return r;
+  }
+  /** The change log of a conversation (it outlives chat sessions). */
+  changes(conversationId: string): ChangeLog {
+    return new ChangeLog(this.dataDir, conversationId);
   }
   async cancel(id: string): Promise<void> {
     const s = this.sessions.get(id);

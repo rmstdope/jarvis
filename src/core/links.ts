@@ -1,10 +1,10 @@
 import type { Database } from "bun:sqlite";
-import { existsSync } from "node:fs";
+import { existsSync, rmSync, writeFileSync } from "node:fs";
 import { resolveAuthor } from "./config.ts";
 import { RELATIONS, type Relation } from "./constants.ts";
 import { openDb } from "./db.ts";
 import { docPath } from "./docs.ts";
-import { appendSidecar, readSidecar } from "./sidecar.ts";
+import { appendSidecar, readSidecar, sidecarPath } from "./sidecar.ts";
 import { nowIso } from "./util.ts";
 
 export const LINK_RELATIONS: Relation[] = ["references", "supplements", "same_topic", "contradicts", "follows_up", "related"];
@@ -55,4 +55,20 @@ export function link(dataDir: string, src: string, dsts: string[], opts: { relat
 }
 export function isRelation(r: unknown): r is Relation {
   return RELATIONS.includes(r as Relation);
+}
+
+/** Remove the manual edge `src → dst` with `relation` from the source sidecar and the index; false when it was not there. */
+export function unlink(dataDir: string, src: string, dst: string, relation: Relation, dbIn?: Database): boolean {
+  const lines = readSidecar(dataDir, src);
+  const keep = lines.filter((l) => !(l.kind === "edge" && l.dst === dst && l.relation === relation && l.created_by === "manual"));
+  if (keep.length === lines.length) return false;
+  if (keep.length) writeFileSync(sidecarPath(dataDir, src), keep.map((l) => JSON.stringify(l) + "\n").join(""));
+  else rmSync(sidecarPath(dataDir, src), { force: true });
+  const db = dbIn ?? openDb(dataDir);
+  try {
+    db.run("DELETE FROM edges WHERE src = ? AND dst = ? AND relation = ? AND created_by = 'manual'", [src, dst, relation]);
+  } finally {
+    if (!dbIn) db.close();
+  }
+  return true;
 }
