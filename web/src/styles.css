@@ -202,7 +202,8 @@ html, body { height:100%; } #app { height:100%; }
 .jv-dhead { display:flex; align-items:center; gap:10px; padding:12px 24px; border-bottom:1px solid var(--border); font-family:var(--sans); flex-wrap:wrap; }
 .jv-dtitle { margin:0; font:600 15px var(--sans); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:60%; outline:0; } .jv-dtitle:focus-visible { outline:2px solid var(--accent); }
 .jv-dkind { font-size:11px; text-transform:uppercase; letter-spacing:.07em; color:var(--accent); background:var(--accent-soft); border-radius:5px; padding:2px 6px; white-space:nowrap; }
-.jv-dbody { padding:22px 30px 60px; font-family:var(--serif); font-size:15.5px; line-height:1.6; }
+.jv-dbody, .jv-doc > .jv-view { padding:22px 30px 60px; } /* .jv-doc > .jv-view: a briefing tab, set off like an item tab */
+.jv-dbody { font-family:var(--serif); font-size:15.5px; line-height:1.6; }
 .jv-dbody.wide { max-width:none; }
 .jv-dbody .jv-meta, .jv-dbody .tag, .jv-dbody .card, .jv-dbody h3, .jv-dbody .edges, .jv-dbody .comments, .jv-dbody .toc, .jv-pdfnote { font-family:var(--sans); }
 .jv-pdfnote { color:var(--muted); border:1px dashed var(--border); border-radius:8px; padding:7px 11px; }
@@ -219,8 +220,7 @@ html, body { height:100%; } #app { height:100%; }
 .jv-docard.jv-on { border-color:var(--accent); box-shadow:0 0 0 1px var(--accent); }
 .jv-docard-i { width:30px; height:34px; border-radius:5px; background:var(--accent-soft); color:var(--accent); display:flex; align-items:center; justify-content:center; flex:none; }
 .jv-docard-b { display:flex; flex-direction:column; min-width:0; } .jv-docard-t { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; } .jv-docard-s { color:var(--muted); font-size:12px; }
-.jv-phone .jv-dbody { padding:16px 14px 60px; } .jv-phone .jv-dhead { padding:10px 14px; }
-.jv-doc > .jv-view { padding:22px 30px 60px; } .jv-phone .jv-doc > .jv-view { padding:16px 14px 60px; } /* a briefing tab: the same side margin as an item tab's body */
+.jv-phone .jv-dbody, .jv-phone .jv-doc > .jv-view { padding:16px 14px 60px; } .jv-phone .jv-dhead { padding:10px 14px; }
 
 /* ---- initiatives ---- */
 .jv-progress { display:flex; align-items:center; gap:10px; margin:8px 0 0; max-width:420px; font-size:13px; color:var(--muted); }
