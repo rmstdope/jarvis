@@ -9,7 +9,10 @@ import { REASONING_EFFORTS, TASK_KINDS, type Quality, type ReasoningEffort, type
 export type ProviderName = "local" | "copilot" | "openai-compat";
 export const PROVIDER_NAMES: ProviderName[] = ["local", "copilot", "openai-compat"];
 export const DEFAULT_PREFERENCE: ProviderName[] = ["local", "openai-compat", "copilot"];
-/** Copilot model id used by live detection; override with JARVIS_COPILOT_MODEL. Must be an id your entitlement offers (`copilot --help`). */
+/**
+ * Copilot model id used by live detection; override with JARVIS_COPILOT_MODEL. Must be an id your entitlement offers (`copilot --help`).
+ * Detection sets no reasoning effort: the Copilot CLI refuses one for a model that lacks it (gpt-4.1 does).
+ */
 export const COPILOT_DEFAULT_MODEL = () => process.env.JARVIS_COPILOT_MODEL ?? "gpt-4.1";
 /** Model id used when OPENAI_API_KEY is detected; override with JARVIS_OPENAI_MODEL. */
 export const OPENAI_DEFAULT_MODEL = () => process.env.JARVIS_OPENAI_MODEL ?? "gpt-4o";
@@ -120,7 +123,7 @@ export async function detectModels(opts: DetectOpts = {}): Promise<{ preference:
   const omlx = await (opts.omlxModels ?? omlxModelsDefault)();
   if (omlx[0]) models.push({ provider: "openai-compat", id: omlx[0], quality: "high", baseUrl: OMLX_URL, apiKeyEnv: "OMLX_API_KEY", extraBody: { chat_template_kwargs: { enable_thinking: false } } });
   if ((opts.copilotOnPath ?? (() => Bun.which("copilot") !== null))()) {
-    models.push({ provider: "copilot", id: COPILOT_DEFAULT_MODEL(), quality: "high", bestFor: [...TASK_KINDS], reasoningEffort: "high", reasoningEffortByTask: { "edge-judge": "xhigh" } });
+    models.push({ provider: "copilot", id: COPILOT_DEFAULT_MODEL(), quality: "high", bestFor: [...TASK_KINDS] });
   }
   if ((opts.openaiKey ?? (() => !!process.env.OPENAI_API_KEY))()) models.push({ provider: "openai-compat", id: OPENAI_DEFAULT_MODEL(), quality: "high", baseUrl: OPENAI_DEFAULTS.baseUrl, apiKeyEnv: OPENAI_DEFAULTS.apiKeyEnv, bestFor: ["synthesis"] });
   return { preference: DEFAULT_PREFERENCE, models };

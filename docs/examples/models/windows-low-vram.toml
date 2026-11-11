@@ -8,8 +8,7 @@ provider = "copilot"
 id = "gpt-4.1"   # replace with a model id your Copilot entitlement offers (`copilot --help`)
 quality = "high"
 bestFor = ["tag", "summary", "entities", "edge-judge", "cleanup", "synthesis"]
-reasoningEffort = "high"
-reasoningEffortByTask = { edge-judge = "xhigh" }
+# reasoningEffort = "high"   # only with a model that supports it; gpt-4.1 refuses any reasoning effort
 
 [[model]]
 provider = "openai-compat"
