@@ -81,7 +81,8 @@ export function createChat(opts: { navigate: (hash: string) => void; onChange?: 
   let available: boolean | null = null;
   let answering = false, stoppedByUser = false;
   let controller: AbortController | null = null;
-  const openSteps = new Set<Msg>();
+  /** Messages whose steps differ from their default fold state: folded by default, except for an empty answer, which starts unfolded. */
+  const flippedSteps = new Set<Msg>();
   const tasks = createTasks({ undoMs: opts.undoMs });
 
   const el = h("section", { class: "jv-chat" });
@@ -155,11 +156,12 @@ export function createChat(opts: { navigate: (hash: string) => void; onChange?: 
     if (m.role === "user") return h("div", { class: "jv-msg jv-user" }, m.files?.length ? h("div", { class: "jv-fchips" }, ...m.files.map((f) => h("span", { class: "jv-file", title: f.name }, h("span", { class: "jv-fn" }, `📄 ${f.name}`), ` · ${fileSize(f.size)}`))) : null, m.text);
     const parts: (HTMLElement | null)[] = [];
     const steps = m.steps ?? [];
+    const empty = m.status === "done" && !m.text && !m.changes?.length;
     const list = () => h("div", { class: "jv-steps" }, ...steps.map((s) => h("div", { class: "jv-step" }, `${s.done ? "✓" : "●"} ${s.text}`)));
     if (m.status === "streaming") { if (steps.length) parts.push(list()); }
     else if (steps.length) {
-      const open = openSteps.has(m);
-      parts.push(h("button", { class: "jv-steps-toggle", "aria-expanded": String(open), onClick: () => { if (open) openSteps.delete(m); else openSteps.add(m); render(); } }, `${open ? "▾" : "▸"} ${steps.length} ${steps.length === 1 ? "step" : "steps"}`));
+      const open = empty !== flippedSteps.has(m);
+      parts.push(h("button", { class: "jv-steps-toggle", "aria-expanded": String(open), onClick: () => { if (flippedSteps.has(m)) flippedSteps.delete(m); else flippedSteps.add(m); render(); } }, `${open ? "▾" : "▸"} ${steps.length} ${steps.length === 1 ? "step" : "steps"}`));
       if (open) parts.push(list());
     }
     parts.push(drawCard(m.changes ?? [], String(conv.messages.indexOf(m)), { onUndo: (c) => void undoOne(m, c), onUndoAll: () => void undoEverything(m) }, { me: name, now: now() }));
@@ -167,6 +169,7 @@ export function createChat(opts: { navigate: (hash: string) => void; onChange?: 
     else {
       if (m.text) parts.push(h("div", { class: "jv-answer", html: renderMarkdown(m.text) }));
       else if (m.status === "streaming" && !steps.length) parts.push(h("div", { class: "jv-answer muted" }, "…"));
+      if (empty) parts.push(h("div", { class: "jv-noanswer" }, "I finished without writing an answer.", h("button", { class: "jv-retry", onClick: () => retry(m) }, "Try again")));
       if (m.status === "stopped") parts.push(h("div", { class: "jv-stopped muted small" }, "Stopped."));
       if (m.sources?.length) parts.push(h("div", { class: "jv-chips" }, ...m.sources.map((s) => h("a", { class: "jv-chip", href: `#/item/${encodeURIComponent(s.docId)}`, title: s.title }, s.title))));
     }
@@ -199,7 +202,7 @@ export function createChat(opts: { navigate: (hash: string) => void; onChange?: 
     if (conv.sessionId) fetch(`/api/chat/sessions/${conv.sessionId}`, { method: "DELETE" }).catch(() => {});
     conv = { conversationId: newId(), scope: GENERAL, messages: [] };
     pending = [];
-    openSteps.clear();
+    flippedSteps.clear();
   }
   function detach(): void {
     if (conv.sessionId) fetch(`/api/chat/sessions/${conv.sessionId}`, { method: "DELETE" }).catch(() => {});

@@ -252,6 +252,68 @@ describe("one conversation that survives", () => {
     expect(q(".jv-answer").textContent).toBe("Half");
     expect(q(".jv-stopped").textContent).toBe("Stopped.");
   });
+  describe("an answer that finishes with no text", () => {
+    const NOTICE = "I finished without writing an answer.";
+    const emptyWithSteps = () => ({ stream: async (push: (e: unknown) => void) => { push({ type: "status", text: "thinking" }); push({ type: "status", text: "List capture files" }); push({ type: "done" }); } });
+    test("steps start unfolded, the grey notice follows with Try again, and the toggle folds", async () => {
+      await setup({ answer: emptyWithSteps as never });
+      await ask("q");
+      expect(q(".jv-steps-toggle").textContent).toBe("▾ 2 steps");
+      expect(qa(".jv-step").length).toBe(2);
+      expect(q(".jv-noanswer").textContent).toContain(NOTICE);
+      expect(q(".jv-noanswer .jv-retry").textContent).toBe("Try again");
+      expect(document.querySelector(".jv-failed")).toBeNull();
+      q(".jv-steps-toggle").click();
+      expect(q(".jv-steps-toggle").textContent).toBe("▸ 2 steps");
+      expect(document.querySelector(".jv-step")).toBeNull();
+      expect(q(".jv-noanswer")).not.toBeNull();
+    });
+    test("no steps: the notice alone", async () => {
+      await setup({ answer: () => ({ stream: async (push) => { push({ type: "done" }); } }) });
+      await ask("q");
+      expect(document.querySelector(".jv-steps-toggle")).toBeNull();
+      expect(q(".jv-noanswer").textContent).toContain(NOTICE);
+    });
+    test("sources still appear, after the notice", async () => {
+      await setup({ answer: () => ({ stream: async (push) => { push({ type: "source", docId: "D1", title: "Doc one", source: "note" }); push({ type: "done" }); } }) });
+      await ask("q");
+      expect(q(".jv-noanswer").nextElementSibling?.className).toBe("jv-chips");
+    });
+    test("stopped before any text: Stopped. only", async () => {
+      await setup({ answer: () => ({ stream: async (_push, signal) => { await new Promise<void>((r) => signal.addEventListener("abort", () => r())); } }) });
+      type("q");
+      (q(".jv-send") as HTMLElement).click();
+      await env.tick(40);
+      (q(".jv-stop") as HTMLElement).click();
+      await env.tick(40);
+      expect(q(".jv-stopped").textContent).toBe("Stopped.");
+      expect(document.querySelector(".jv-noanswer")).toBeNull();
+    });
+    test("an answer with text has no notice", async () => {
+      await setup();
+      await ask("q");
+      expect(document.querySelector(".jv-noanswer")).toBeNull();
+    });
+    test("Try again removes the pair and asks the same question again", async () => {
+      let n = 0;
+      await setup({ answer: () => (++n === 1 ? { stream: async (push) => { push({ type: "done" }); } } : { stream: async (push) => { push({ type: "message", text: "Now" }); push({ type: "done" }); } }) });
+      await ask("same");
+      (q(".jv-noanswer .jv-retry") as HTMLElement).click();
+      await env.tick(60);
+      expect(q(".jv-answer").textContent).toBe("Now");
+      expect(qa(".jv-user").length).toBe(1);
+      expect(document.querySelector(".jv-noanswer")).toBeNull();
+    });
+    test("a reload shows the notice again with the steps unfolded", async () => {
+      await setup({ answer: emptyWithSteps as never });
+      await ask("q");
+      q(".jv-steps-toggle").click();
+      document.body.innerHTML = "";
+      await setup();
+      expect(q(".jv-steps-toggle").textContent).toBe("▾ 2 steps");
+      expect(q(".jv-noanswer")).not.toBeNull();
+    });
+  });
   test("hide and show keep the conversation and its scroll position", async () => {
     const chat = await setup();
     await ask("hello");
