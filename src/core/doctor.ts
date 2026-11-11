@@ -1,6 +1,7 @@
 import { existsSync, mkdtempSync, realpathSync, rmSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
-import { basename, dirname, join } from "node:path";
+import { join } from "node:path";
+import { posix } from "node:path";
 import { Database } from "bun:sqlite";
 import * as sqliteVec from "sqlite-vec";
 import { configIsMalformed, configPath, loadConfig, resolveDataDir } from "./config.ts";
@@ -55,6 +56,7 @@ export interface JarvisCommandProbe {
 }
 
 /** Checks that a plain `jarvis` command on PATH runs this copy of the code; always a warning, never a failure. */
+/** POSIX paths only: win32 returns before any comparison. */
 export function checkJarvisCommand(o: JarvisCommandProbe): Check {
   const name = "jarvis-command";
   const link = `cd ${o.codeRepo} && bun link`;
@@ -65,13 +67,13 @@ export function checkJarvisCommand(o: JarvisCommandProbe): Check {
     try {
       target = o.realpath(o.found);
     } catch {}
-    if (target === join(o.codeRepo, "src", "cli.ts")) return ok(name, false, "jarvis on PATH");
-    const other = target.endsWith(join("src", "cli.ts")) ? dirname(dirname(target)) : target || o.found;
+    if (target === posix.join(o.codeRepo, "src", "cli.ts")) return ok(name, false, "jarvis on PATH");
+    const other = target.endsWith(posix.join("src", "cli.ts")) ? posix.dirname(posix.dirname(target)) : target || o.found;
     return warn(name, `jarvis on PATH runs ${other}, not ${o.codeRepo}`, link);
   }
-  const bunBin = join(o.bunInstall ?? join(o.home, ".bun"), "bin");
-  if (o.exists(join(bunBin, "jarvis"))) {
-    const sh = basename(o.shell);
+  const bunBin = posix.join(o.bunInstall ?? posix.join(o.home, ".bun"), "bin");
+  if (o.exists(posix.join(bunBin, "jarvis"))) {
+    const sh = posix.basename(o.shell);
     const fix = sh === "fish" ? "echo 'fish_add_path ~/.bun/bin' >> ~/.config/fish/config.fish" : `echo 'export PATH="$HOME/.bun/bin:$PATH"' >> ${sh === "zsh" ? "~/.zshrc" : sh === "bash" ? "~/.bashrc" : "~/.profile"}`;
     return warn(name, "jarvis is installed in ~/.bun/bin, but that folder is not on PATH", `${fix}   then open a new terminal`);
   }

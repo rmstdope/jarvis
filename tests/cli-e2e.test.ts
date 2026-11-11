@@ -130,7 +130,7 @@ describe("cli end to end (subprocess)", () => {
     expect(pkg.bin.jarvis).toBe("src/cli.ts");
     expect(pkg.scripts.jarvis).toBe("bun run src/cli.ts");
     expect(readFileSync(join(import.meta.dir, "..", pkg.bin.jarvis), "utf8").startsWith("#!/usr/bin/env bun")).toBe(true);
-    const readme = readFileSync(join(import.meta.dir, "..", "README.md"), "utf8");
+    const readme = readFileSync(join(import.meta.dir, "..", "README.md"), "utf8").replace(/\r\n/g, "\n");
     expect(readme).toMatch(/bun install\nbun link +# installs the jarvis command, so it works from any folder\njarvis init/);
     expect(readme).not.toContain("multi-root");
     expect(readme).not.toMatch(/bun run jarvis/);
