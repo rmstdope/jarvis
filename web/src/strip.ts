@@ -24,7 +24,7 @@ export interface Strip {
   closeLists(): boolean;
 }
 
-/** How many document tabs fit: a test hook, else measured from the strip's width (all when it has none). */
+/** A first estimate of how many document tabs fit: a test hook, else from the strip's width (all when it has none); `draw` corrects it against the real layout. */
 function capacity(el: HTMLElement): number {
   const w = window as unknown as { __JV_TAB_CAPACITY__?: number };
   if (typeof w.__JV_TAB_CAPACITY__ === "number") return w.__JV_TAB_CAPACITY__;
@@ -77,8 +77,21 @@ export function createStrip(opts: StripOpts): Strip {
     el.replaceChildren();
     phoneList.replaceChildren();
     if (!any) { closePhone(false); moreOpen = false; return; }
-    el.append(tabBtn("chat", "Chat", "", active === "chat", false, false));
-    const cap = capacity(el);
+    // Start from the estimate, then hand one more tab to '⌄ n more' while the strip still overflows,
+    // so Chat (which never shrinks) keeps its full width and no tab runs past the edge.
+    let cap = Math.min(capacity(el), tabs.length);
+    fill(tabs, active, cap);
+    while (cap > 1 && el.scrollWidth > el.clientWidth) fill(tabs, active, --cap);
+    if (!el.querySelector(".jv-more")) moreOpen = false;
+    const entry = (key: string, title: string, closable: boolean) => h("div", { class: "jv-tablist-item" },
+      h("button", { class: "jv-tablist-t", onClick: () => { opts.show(key === "chat" ? null : key, false); closePhone(true); } }, title),
+      closable ? h("button", { class: "jv-tablist-x", title: "Close tab", "aria-label": "Close tab", onClick: () => opts.close(key) }, "✕") : null);
+    phoneList.append(entry("chat", "Chat", false), ...tabs.map((t) => entry(t.key, t.title, true)));
+  }
+
+  /** Draw Chat, the first `cap` document tabs (the active one always among them) and '⌄ n more' for the rest. */
+  function fill(tabs: Tab[], active: string | null, cap: number): void {
+    el.replaceChildren(tabBtn("chat", "Chat", "", active === "chat", false, false));
     let visible = tabs;
     let hidden: Tab[] = [];
     if (tabs.length > cap) {
@@ -94,11 +107,7 @@ export function createStrip(opts: StripOpts): Strip {
         h("button", { class: "jv-more-x", title: "Close tab", "aria-label": "Close tab", onClick: () => opts.close(t.key) }, "✕"))));
       list.hidden = !moreOpen;
       el.append(h("div", { class: "jv-more" }, h("button", { class: "jv-more-btn", "aria-expanded": String(moreOpen), onClick: (e: Event) => { e.stopPropagation(); moreOpen = !moreOpen; draw(last.tabs, last.active); } }, `⌄ ${hidden.length} more`), list));
-    } else moreOpen = false;
-    const entry = (key: string, title: string, closable: boolean) => h("div", { class: "jv-tablist-item" },
-      h("button", { class: "jv-tablist-t", onClick: () => { opts.show(key === "chat" ? null : key, false); closePhone(true); } }, title),
-      closable ? h("button", { class: "jv-tablist-x", title: "Close tab", "aria-label": "Close tab", onClick: () => opts.close(key) }, "✕") : null);
-    phoneList.append(entry("chat", "Chat", false), ...tabs.map((t) => entry(t.key, t.title, true)));
+    }
   }
   return { el, phoneBtn, phoneList, draw, refit: () => draw(last.tabs, last.active), closeLists: () => { if (!phoneList.hidden) { closePhone(); return true; } if (moreOpen) { moreOpen = false; draw(last.tabs, last.active); return true; } return false; } };
 }

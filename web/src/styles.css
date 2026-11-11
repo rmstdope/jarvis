@@ -182,12 +182,12 @@ html, body { height:100%; } #app { height:100%; }
 .jv-tabstrip { display:flex; align-items:flex-end; gap:2px; padding:8px 12px 0; border-bottom:1px solid var(--border); background:var(--side); min-height:44px; position:relative; }
 .jv-phone .jv-tabstrip { display:none; }
 .jv-tab { display:flex; align-items:center; gap:7px; padding:7px 10px 7px 12px; border:1px solid transparent; border-bottom:0; border-radius:9px 9px 0 0; font-size:13px; color:var(--muted); background:none; max-width:220px; min-width:96px; flex:0 1 auto; white-space:nowrap; overflow:hidden; }
-.jv-tab[data-key=chat] { min-width:0; font-weight:600; }
+.jv-tab[data-key=chat] { min-width:0; flex:none; font-weight:600; }
 .jv-tab[aria-selected=true] { background:var(--bg); border-color:var(--border); color:var(--text); font-weight:600; }
 .jv-tab-t { overflow:hidden; text-overflow:ellipsis; flex:1; text-align:left; }
 .jv-tab-k { color:var(--accent); } .jv-tab-x { color:var(--muted); margin-left:2px; padding:0 3px; border-radius:4px; } .jv-tab-x:hover { background:var(--accent-soft); color:var(--accent); }
 .jv-tab-dot { width:7px; height:7px; border-radius:50%; background:var(--accent); box-shadow:var(--glow); flex:none; }
-.jv-more { position:relative; margin-left:auto; }
+.jv-more { position:relative; margin-left:auto; flex:none; }
 .jv-more-btn { border:0; background:none; color:var(--muted); font-size:13px; padding:7px 10px; }
 .jv-more-list, .jv-tablist { position:absolute; right:0; top:100%; background:var(--panel); border:1px solid var(--border); border-radius:12px; box-shadow:0 10px 30px rgba(0,0,0,.18); padding:6px; width:270px; z-index:10; }
 .jv-more-item, .jv-tablist-item { display:flex; align-items:center; gap:4px; }
