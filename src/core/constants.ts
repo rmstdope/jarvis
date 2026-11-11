@@ -61,10 +61,14 @@ export const TASK_SUGGEST_QUERY_CHARS = 300;
 export const TASK_SUGGEST_MIN_TERM = 4;
 export const TASK_SUGGEST_LIMIT = 5;
 
+export const INITIATIVE_SECTION_LIMIT = 10;
+export const INITIATIVE_SUGGEST_LIMIT = 5;
+export const INITIATIVE_SUGGEST_MAX_TOKENS = 1500;
+
 export const INBOX_SETTLE_MS = 60_000;
 export const WHISPER_TIMEOUT_MS = 30 * 60_000;
 
-export const SOURCES = ["web", "youtube", "meeting", "note", "paste", "pdf", "task", "briefing", "presentation"] as const;
+export const SOURCES = ["web", "youtube", "meeting", "note", "paste", "pdf", "task", "briefing", "presentation", "initiative"] as const;
 export type Source = (typeof SOURCES)[number];
 export const ENTITY_KINDS = ["person", "team", "product", "service", "concept"] as const;
 export type EntityKind = (typeof ENTITY_KINDS)[number];

@@ -56,3 +56,16 @@ ${context}
 
 Question: ${question}`;
 }
+/** Prompt asking whether candidate captures belong to an initiative; one verdict per candidate id. */
+export function initiativeSuggestPrompt(title: string, goal: string, taskTitles: string[], cands: { id: string; title: string; blurb: string }[]): string {
+  const list = cands.map((c, i) => `[${i + 1}] ${c.id} "${c.title}": ${c.blurb}`).join("\n");
+  return `You judge which captures in a knowledge base belong to an initiative: a long-running body of work made of tasks. Keep a candidate only when it is clearly about this initiative's work. Respond with ONLY a JSON object, echoing each candidate's id EXACTLY and giving a one-line reason for kept ones:
+{"results":[{"id":"<candidate id>","keep":true,"reason":"one short line"}]}
+
+Initiative: ${title}
+Goal: ${goal}
+Tasks: ${taskTitles.join("; ") || "none yet"}
+
+Candidates:
+${list}`;
+}
