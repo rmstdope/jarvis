@@ -121,9 +121,21 @@ describe("cli end to end (subprocess)", () => {
     const out = jarvis("skill").out.replace(/\s+/g, " ");
     const repo = join(import.meta.dir, "..");
     expect(out).toContain("driven through the `jarvis` CLI and the local HTTP service on");
-    expect(out).toContain(`run \`bun --cwd ${repo} run jarvis …\` instead, and tell the user to run \`bun link\` in that folder`);
+    expect(out).toContain(`run \`bun --cwd=${repo} run jarvis …\` instead, and tell the user to run \`bun link\` in that folder`);
     expect(out).not.toContain("<code repo>");
     expect(out).not.toMatch(/bun run jarvis [a-z]/);
+  });
+  test("the skill's fallback command, run from the content repo, runs the search", () => {
+    const out = jarvis("skill").out.replace(/\s+/g, " ");
+    const [, flag, script] = out.match(/If `jarvis` is not found, run `bun (--cwd=.+?) run (jarvis) …` instead/)!;
+    const p = Bun.spawnSync([process.execPath, flag!, "run", script!, "search", "zqxjvnomatch", "--mode", "keyword", "--data", data], {
+      cwd: data, stdout: "pipe", stderr: "pipe",
+      env: { ...process.env, JARVIS_HOME: home, JARVIS_MODELS: join(home, "models.toml"), JARVIS_EMBED_FAKE: "1" },
+    });
+    const res = new TextDecoder().decode(p.stdout) + new TextDecoder().decode(p.stderr);
+    expect(res).not.toContain("Usage: bun run");
+    expect(res).toContain("no results");
+    expect(p.exitCode).toBe(0);
   });
   test("package.json bin and README setup use the plain jarvis command", () => {
     const pkg = JSON.parse(readFileSync(join(import.meta.dir, "..", "package.json"), "utf8"));

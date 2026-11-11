@@ -7,6 +7,7 @@ describe("ci planner", () => {
     expect(p.docsOnly).toBe(true);
     expect(p.tests).toEqual([]);
     expect(planFromChanges(["docs/AGENT-INSTRUCTIONS.md"]).tests).toContain("tests/extension.test.ts");
+    expect(planFromChanges(["docs/AGENT-INSTRUCTIONS.md"]).tests).toContain("tests/cli-e2e.test.ts"); // `jarvis skill` prints it
     expect(planFromChanges([]).docsOnly).toBe(true);
     expect(planFromChanges(["README.md"]).tests).toContain("tests/cli-e2e.test.ts");
   });
