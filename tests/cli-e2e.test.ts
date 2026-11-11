@@ -127,9 +127,8 @@ describe("cli end to end (subprocess)", () => {
   });
   test("the skill's fallback command, run from the content repo, runs the search", () => {
     const out = jarvis("skill").out.replace(/\s+/g, " ");
-    const fallback = out.match(/If `jarvis` is not found, run `(bun .+? run jarvis) …` instead/)![1];
-    const argv = fallback.split(" ").slice(1); // the repo path from import.meta.dir has no spaces
-    const p = Bun.spawnSync([process.execPath, ...argv, "search", "zqxjvnomatch", "--mode", "keyword", "--data", data], {
+    const [, flag, script] = out.match(/If `jarvis` is not found, run `bun (--cwd=.+?) run (jarvis) …` instead/)!;
+    const p = Bun.spawnSync([process.execPath, flag!, "run", script!, "search", "zqxjvnomatch", "--mode", "keyword", "--data", data], {
       cwd: data, stdout: "pipe", stderr: "pipe",
       env: { ...process.env, JARVIS_HOME: home, JARVIS_MODELS: join(home, "models.toml"), JARVIS_EMBED_FAKE: "1" },
     });
