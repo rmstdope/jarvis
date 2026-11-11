@@ -10,6 +10,7 @@ import { doctor, checkSqliteVec, checkJarvisCommand, formatDoctor } from "../src
 import { init } from "../src/core/init.ts";
 import { loadConfig, resetConfigCache } from "../src/core/config.ts";
 import { ingest } from "../src/core/ingest.ts";
+import { stepFailure } from "../src/core/sync.ts";
 import { clearEmbedder, tmpDataDir, useFakeEmbedder } from "./helpers.ts";
 
 let t: ReturnType<typeof tmpDataDir>;
@@ -193,6 +194,83 @@ describe("doctor: a Copilot model id the account refuses (jv-5el)", () => {
     expect(await readCopilotModelCatalog(out(0), () => null)).toBeNull();
     expect(await readCopilotModelCatalog(out(1), () => "/bin/copilot")).toBeNull();
     expect(await readCopilotModelCatalog(out(0), () => "/bin/copilot")).toEqual(["gpt-5-mini"]);
+  });
+});
+
+describe("doctor: an openai-compat model id the server refuses (jv-6sk)", () => {
+  // A server that lists models fine (GET /models is 200) but refuses the configured id at chat time.
+  let server: ReturnType<typeof Bun.serve>;
+  beforeEach(() => {
+    server = Bun.serve({
+      hostname: "127.0.0.1",
+      port: 0,
+      async fetch(req) {
+        const url = new URL(req.url);
+        if (url.pathname === "/v1/models") return Response.json({ data: [{ id: "gpt-5-mini" }] });
+        const { model } = (await req.json()) as { model: string };
+        if (model === "gpt-5-mini") return Response.json({ choices: [{ message: { content: "ok" }, finish_reason: "stop" }] });
+        if (model === "thinker") return Response.json({ choices: [{ message: { content: "" }, finish_reason: "length" }] });
+        if (model === "flaky") return Response.json({ error: { message: "upstream overloaded" } }, { status: 503 });
+        if (model === "slow") return new Promise<Response>((res) => setTimeout(() => res(Response.json({ choices: [{ message: { content: "ok" } }] })), 1000));
+        if (model === "gone") return Response.json({ error: { message: "The model `gone` does not exist or you do not have access to it." } }, { status: 404 });
+        return Response.json({ error: { message: `Model "${model}" is not available` } }, { status: 400 });
+      },
+    });
+  });
+  afterEach(() => {
+    setRouterForTests(null);
+    server.stop(true);
+  });
+  const compatRouter = (ids: string[]) =>
+    createRouter({ config: { preference: ["openai-compat"], models: ids.map((id) => ({ provider: "openai-compat" as const, id, quality: "high" as const, bestFor: [], baseUrl: `http://127.0.0.1:${server.port}/v1` })), source: "file" } });
+
+  test("a refused id fails with the model, the server's reason and an exact fix line", async () => {
+    setRouterForTests(await compatRouter(["gpt-9"]));
+    const r = await doctor({ coreOnly: true, which: (b) => `/bin/${b}` });
+    const c = r.checks.find((x) => x.name === "openai-model");
+    expect(c).toMatchObject({ status: "fail", detail: 'the server refuses model "gpt-9": Model "gpt-9" is not available' });
+    expect(c!.fix).toBe(`set id for gpt-9 in ${modelsPath()} to a model the server offers   or   jarvis config preset <name>`);
+    expect(r.summary.healthy).toBe(false);
+    expect(r.checks.find((x) => x.name === "models-available")).toBeUndefined();
+  });
+
+  test("beside an accepted id, only the refused one fails and the accepted one is listed", async () => {
+    setRouterForTests(await compatRouter(["gpt-9", "gpt-5-mini"]));
+    const r = await doctor({ coreOnly: true, which: (b) => `/bin/${b}` });
+    expect(r.checks.find((x) => x.name === "openai-model")!.detail).toBe('the server refuses model "gpt-9": Model "gpt-9" is not available');
+    expect(r.checks.find((x) => x.name === "models-available")).toMatchObject({ status: "ok", detail: "openai-compat:gpt-5-mini" });
+  });
+
+  test("a 404 'does not exist' is a refusal too, and sync points it at doctor", async () => {
+    setRouterForTests(await compatRouter(["gone"]));
+    const r = await doctor({ coreOnly: true, which: (b) => `/bin/${b}` });
+    expect(r.checks.find((x) => x.name === "openai-model")).toMatchObject({ status: "fail", detail: 'the server refuses model "gone": The model `gone` does not exist or you do not have access to it.' });
+    expect(stepFailure("enrich", 1, "openai-compat chat failed (404): The model `gone` does not exist or you do not have access to it.").doctor).toBe(true);
+  });
+
+  test("a server error or a timeout is a warning, not a refused id, and the model stays available", async () => {
+    setRouterForTests(await compatRouter(["flaky", "slow"]));
+    const r = await doctor({ coreOnly: true, which: (b) => `/bin/${b}`, chatProbeTimeoutMs: 100 });
+    const lines = r.checks.filter((x) => x.name === "openai-model");
+    expect(lines.map((c) => [c.status, c.detail])).toEqual([
+      ["warn", 'could not check model "flaky": upstream overloaded'],
+      ["warn", 'could not check model "slow": no answer within 0.1 s'],
+    ]);
+    expect(lines.every((c) => !c.fix!.includes("models.toml"))).toBe(true);
+    expect(lines.every((c) => !c.required)).toBe(true);
+    expect(r.checks.find((x) => x.name === "models-available")).toMatchObject({ status: "ok", detail: "openai-compat:flaky, openai-compat:slow" });
+  });
+
+  test("an answer cut off by the probe's short budget counts as accepted", async () => {
+    setRouterForTests(await compatRouter(["thinker"]));
+    const r = await doctor({ coreOnly: true, which: (b) => `/bin/${b}` });
+    expect(r.checks.find((x) => x.name === "openai-model")).toMatchObject({ status: "ok", detail: "thinker accepted by the server" });
+  });
+
+  test("an accepted id passes", async () => {
+    setRouterForTests(await compatRouter(["gpt-5-mini"]));
+    const r = await doctor({ coreOnly: true, which: (b) => `/bin/${b}` });
+    expect(r.checks.find((x) => x.name === "openai-model")).toMatchObject({ status: "ok", detail: "gpt-5-mini accepted by the server" });
   });
 });
 

@@ -5,14 +5,16 @@ import { posix } from "node:path";
 import { Database } from "bun:sqlite";
 import * as sqliteVec from "sqlite-vec";
 import { configIsMalformed, configPath, loadConfig, resolveDataDir } from "./config.ts";
-import { EMBEDDING_DIMS } from "./constants.ts";
+import { CHAT_PROBE_TIMEOUT_MS, EMBEDDING_DIMS } from "./constants.ts";
 import { ensureCustomSqlite } from "./db.ts";
 import { getEmbedder } from "./embed.ts";
 import { hasRemote, isWorkTree } from "./git.ts";
 import { modelsPath } from "../providers/models.ts";
 import { getRouter } from "../providers/index.ts";
 import { COPILOT_CLI_DEFAULT, readCopilotModelCatalog } from "../providers/copilot.ts";
-import { unresolvedKinds } from "../providers/router.ts";
+import { unresolvedKinds, type RouterEntry } from "../providers/router.ts";
+import { TruncationError } from "../providers/types.ts";
+import { ChatHttpError } from "../providers/openaiCompat.ts";
 import { detectWhisperBackend } from "../producers/whisper.ts";
 
 export type CheckStatus = "ok" | "warn" | "fail" | "skip";
@@ -41,6 +43,8 @@ export interface DoctorOpts {
   shell?: string;
   /** The Copilot CLI's model catalog, or null when it cannot be read (seam for tests). */
   copilotCatalog?: () => Promise<string[] | null>;
+  /** How long one openai-compat chat probe may take (seam for tests); defaults to `CHAT_PROBE_TIMEOUT_MS`. */
+  chatProbeTimeoutMs?: number;
 }
 
 /** Probes for {@link checkJarvisCommand}; all injectable so every state is unit-tested. */
@@ -162,8 +166,19 @@ export async function doctor(opts: DoctorOpts = {}): Promise<DoctorReport> {
     const catalog = named.length ? await (opts.copilotCatalog ?? (() => readCopilotModelCatalog(undefined, which)))() : null;
     const refused = catalog ? named.filter((e) => !catalog.includes(e.entry.id)) : [];
     if (catalog) checks.push(refused.length ? bad("copilot-model", true, `the Copilot CLI does not offer model ${refused.map((e) => `"${e.entry.id}"`).join(", ")}`, `set id = "${COPILOT_CLI_DEFAULT}" for ${refused.map((e) => e.entry.id).join(", ")} in ${mp}   or   jarvis config preset <name>`) : ok("copilot-model", false, `${named.map((e) => e.entry.id).join(", ")} offered by Copilot`));
+    // An openai-compat server can list its models and still refuse the configured id at chat time, so ask it once.
+    const compat = router.entries.filter((e) => e.available && e.entry.provider === "openai-compat");
+    const timeoutMs = opts.chatProbeTimeoutMs ?? CHAT_PROBE_TIMEOUT_MS;
+    const probed = await Promise.all(compat.map(async (e) => ({ e, probe: await probeOpenaiChat(e, timeoutMs) })));
+    for (const { e, probe } of probed) {
+      if (probe.kind === "refused") checks.push(bad("openai-model", true, `the server refuses model "${e.entry.id}": ${probe.reason}`, `set id for ${e.entry.id} in ${mp} to a model the server offers   or   jarvis config preset <name>`));
+      else if (probe.kind === "unknown") checks.push(warn("openai-model", `could not check model "${e.entry.id}": ${probe.reason}`, "run jarvis doctor again once the server answers chat requests"));
+    }
+    const accepted = probed.filter((x) => x.probe.kind === "accepted");
+    if (accepted.length) checks.push(ok("openai-model", false, `${accepted.map((x) => x.e.entry.id).join(", ")} accepted by the server`));
+    refused.push(...probed.filter((x) => x.probe.kind === "refused").map((x) => x.e));
     const avail = router.entries.filter((e) => e.available && !refused.includes(e));
-    // When only refused ids remain, the copilot-model failure above is the whole story: every task would route to them.
+    // When only refused ids remain, the copilot-model / openai-model failures above are the whole story: every task would route to them.
     if (avail.length || !refused.length) checks.push(router.entries.length === 0 ? warn("models-available", "no chat models configured (Tier 0: capture/search only)", "jarvis config preset <name>") : avail.length ? ok("models-available", false, avail.map((e) => `${e.entry.provider}:${e.entry.id}`).join(", ")) : warn("models-available", "no configured model is reachable", "start Ollama / install the Copilot CLI / set OPENAI_API_KEY (or the key env named in models.toml)"));
     const missing = unresolvedKinds(router);
     if (avail.length || !refused.length) checks.push(missing.length ? warn("models-tasks", `no model for: ${missing.join(", ")}`, "add a model with quality >= the task's minimum to models.toml") : ok("models-tasks", false, "every task kind resolves"));
@@ -193,6 +208,22 @@ export async function doctor(opts: DoctorOpts = {}): Promise<DoctorReport> {
     if (c.status === "fail") summary.healthy = false;
   }
   return { summary, checks };
+}
+
+/** What one chat probe of an openai-compat entry showed: answered, refused (the id), or neither (a key, quota, server or network fault). */
+type ChatProbe = { kind: "accepted" } | { kind: "refused"; reason: string } | { kind: "unknown"; reason: string };
+
+/** Ask an openai-compat entry for a few tokens; only a 400 or 404 judges the id itself. */
+async function probeOpenaiChat(e: RouterEntry, timeoutMs: number): Promise<ChatProbe> {
+  try {
+    await e.provider.complete(e.entry.id, "Reply with OK.", { maxTokens: 16, timeoutMs });
+    return { kind: "accepted" };
+  } catch (err) {
+    if (err instanceof TruncationError) return { kind: "accepted" }; // it answered; the probe's short budget cut it off
+    if (err instanceof ChatHttpError) return err.status === 400 || err.status === 404 ? { kind: "refused", reason: err.reason } : { kind: "unknown", reason: err.reason };
+    if ((err as Error).name === "TimeoutError") return { kind: "unknown", reason: `no answer within ${timeoutMs / 1000} s` };
+    return { kind: "unknown", reason: (err as Error).message };
+  }
 }
 
 export function formatDoctor(r: DoctorReport): string {
