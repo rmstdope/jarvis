@@ -21,7 +21,7 @@ local and disposable.
 - **Understand**: `jarvis process` runs reindex → enrich → edges → refine → dedup locally. Model steps are
   skipped, never failed, when no model is available (`jarvis models`).
 - **Use**: `jarvis search "<q>" [--mode hybrid|semantic|keyword]`, `jarvis ask "<question>"` (cites ids in
-  brackets), `jarvis task suggest <id>`, `jarvis link <src> <dst[,dst]> --relation …`.
+  brackets), `jarvis task suggest <id>`, `jarvis link <src> <dst[,dst]> --relation …`. Linking an initiative to one of its own tasks writes nothing and says so.
 
 ## Tasks, initiatives and links (do this proactively)
 

@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { ChangeLog, UndoConflict } from "../src/chat/changes.ts";
+import { ChangeLog, UndoConflict, type Change } from "../src/chat/changes.ts";
 import { runTool } from "../src/chat/actions.ts";
 import { readDocFile } from "../src/core/docs.ts";
 import { reindex } from "../src/core/reindex.ts";
@@ -12,7 +12,13 @@ let t: ReturnType<typeof tmpDataDir>;
 let log: ChangeLog;
 beforeEach(() => { t = tmpDataDir(); useFakeEmbedder(); log = new ChangeLog(t.dir, "c1"); });
 afterEach(() => { t.cleanup(); clearEmbedder(); });
-const run = (tool: string, args: Record<string, unknown>, attachments: Record<string, string> = {}) => runTool(log, "turn1", tool, args, { dataDir: t.dir, attachments });
+const runAny = (tool: string, args: Record<string, unknown>, attachments: Record<string, string> = {}) => runTool(log, "turn1", tool, args, { dataDir: t.dir, attachments });
+/** `runAny` for tools that always record a row. */
+const run = async (tool: string, args: Record<string, unknown>, attachments: Record<string, string> = {}): Promise<{ change: Change; text: string }> => {
+  const r = await runAny(tool, args, attachments);
+  if (!r.change) throw new Error("expected a change row");
+  return { change: r.change, text: r.text };
+};
 
 describe("change log (jv-oya.4)", () => {
   test("a created task is recorded and undone, and the files and index agree", async () => {
@@ -51,6 +57,16 @@ describe("change log (jv-oya.4)", () => {
     expect(again).toMatchObject({ ok: false, undoable: false, verb: "link", error: "they are already linked" });
     await log.undo(l.id);
     expect(existsSync(join(t.dir, "edges", `${a.items[0].id}.jsonl`))).toBe(false);
+  });
+  test("linking an initiative to its own task is a no-op with no change row", async () => {
+    const ini = (await run("jarvis_create_initiative", { title: "Move billing", goal: "g" })).change;
+    const task = (await run("jarvis_create_task", { title: "Export invoices", initiative: ini.items[0].id })).change;
+    const before = log.list().length;
+    const { change, text } = await runAny("jarvis_link", { src: ini.items[0].id, dst: task.items[0].id });
+    expect(change).toBeNull();
+    expect(text).toBe("Export invoices is already a task in Move billing; nothing was linked. Tell the user so.");
+    expect(log.list().length).toBe(before);
+    expect(existsSync(join(t.dir, "edges", `${ini.items[0].id}.jsonl`))).toBe(false);
   });
   test("a link to a missing item fails with the reason and has no undo", async () => {
     const a = (await run("jarvis_capture_note", { text: "alpha", title: "Alpha" })).change;
@@ -111,7 +127,7 @@ describe("change log (jv-oya.4)", () => {
     const one = await runTool(log, "turnA", "jarvis_create_task", { title: "A" }, { dataDir: t.dir, attachments: {} });
     const two = await runTool(log, "turnB", "jarvis_create_task", { title: "B" }, { dataDir: t.dir, attachments: {} });
     await log.undoAll("turnB");
-    expect(log.list().map((c) => [c.id === one.change.id, c.undone])).toEqual([[true, false], [false, true]]);
+    expect(log.list().map((c) => [c.id === one.change?.id, c.undone])).toEqual([[true, false], [false, true]]);
     expect(listTasks(t.dir).map((k) => k.title)).toEqual(["A"]);
   });
   test("an owner change names the user as you; a full reindex after Undo leaves no trace", async () => {

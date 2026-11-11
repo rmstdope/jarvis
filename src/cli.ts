@@ -481,7 +481,11 @@ register("initiative", 'initiative add "<title>" --goal "<what done looks like>"
 register("link", `link <src> <dst[,dst]> [--relation ${LINK_RELATIONS.join("|")} --author]`, async ({ dataDir, positional, flags }) => {
   const [src, dsts] = positional;
   if (!src || !dsts) throw new Error("usage: jarvis link <src> <dst[,dst]> [--relation]");
-  for (const r of linkItems(dataDir(), src, dsts.split(",").map((s) => s.trim()).filter(Boolean), { relation: flagStr(flags, "relation") as Relation | undefined, author: flagStr(flags, "author") })) console.log(`${r.status}: ${r.src} → ${r.dst} [${r.relation}]`);
+  for (const r of linkItems(dataDir(), src, dsts.split(",").map((s) => s.trim()).filter(Boolean), { relation: flagStr(flags, "relation") as Relation | undefined, author: flagStr(flags, "author") })) {
+    if (r.status === "member") {
+      console.log(`${r.task}  ${r.title}  ${style().dim(`is already a task in ${r.initiative}`)} — nothing linked`);
+    } else console.log(`${r.status}: ${r.src} → ${r.dst} [${r.relation}]`);
+  }
 });
 
 // ---- M8: presentations, inbox, meeting summaries ----

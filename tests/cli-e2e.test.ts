@@ -106,6 +106,11 @@ describe("cli end to end (subprocess)", () => {
     expect(jarvis("initiative", "suggest", id).out.trim()).toBe("no suggestions: no model is available (jarvis doctor shows why)");
     expect(jarvis("task", "move", lone, "--initiative", id).out).toContain("Standalone  → Move billing");
     expect(jarvis("task", "move", lone, "--initiative", id).out).toContain("is already in Move billing");
+    const own = `${lone}  Standalone  is already a task in Move billing — nothing linked`;
+    expect(jarvis("link", id, lone).out.trim()).toBe(own);
+    expect(jarvis("link", lone, id, "--relation", "follows_up").out.trim()).toBe(own);
+    const loose = jarvis("task", "add", "Loose").out.match(/task ([0-9A-Z]{26})/)![1];
+    expect(jarvis("link", id, `${lone},${loose}`).out.trim()).toBe(`${own}\nlinked: ${id} → ${loose} [references]`);
     expect(jarvis("task", "move", lone, "--none").out).toContain("Standalone  → no initiative (was Move billing)");
     expect(jarvis("task", "move", lone).out).toContain("usage: jarvis task move <task> --initiative <id> | --none");
     expect(jarvis("initiative", "show", lone).out).toContain(`${lone} is a task, not an initiative — jarvis task show ${lone}`);

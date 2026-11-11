@@ -1,3 +1,5 @@
+import { existsSync } from "node:fs";
+import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { addTask, listTasks, setTaskStatus, showTask } from "../src/core/tasks.ts";
 import { addInitiative, closeInitiative, editInitiative, initiativeSuggestions, listInitiatives, moveTask, reopenInitiative, showInitiative } from "../src/core/initiatives.ts";
@@ -186,5 +188,22 @@ describe("review fixes", () => {
     expect(formatInitiativeShow(await showInitiative(t.dir, a.id), [], PLAIN)).toContain("suggested — none found");
     await closeInitiative(t.dir, a.id, { anyway: true, author: "mira" });
     expect(formatInitiativeShow(await showInitiative(t.dir, a.id), null, PLAIN)).toMatch(/^Alpha\nclosed \d{4}-\d{2}-\d{2} by mira  owner: me  progress: ░{9} 0 of 2 done/);
+  });
+});
+
+describe("linking an initiative to its own task", () => {
+  test("writes nothing, either direction, any relation; other tasks still link", async () => {
+    const ini = await addInitiative(t.dir, { title: "Move billing", goal: "g" });
+    const other = await addInitiative(t.dir, { title: "Other", goal: "g" });
+    const own = await addTask(t.dir, { title: "Export invoices", initiative: ini.id });
+    const foreign = await addTask(t.dir, { title: "Elsewhere", initiative: other.id });
+    const loose = await addTask(t.dir, { title: "Loose" });
+    for (const relation of ["references", "follows_up"] as const) {
+      expect(link(t.dir, ini.id, [own.id], { relation })).toEqual([{ src: ini.id, dst: own.id, relation, status: "member", title: "Export invoices", initiative: "Move billing", task: own.id }]);
+      expect(link(t.dir, own.id, [ini.id], { relation })[0]).toMatchObject({ status: "member", title: "Export invoices", initiative: "Move billing" });
+    }
+    expect(existsSync(join(t.dir, "edges", `${ini.id}.jsonl`))).toBe(false);
+    expect(existsSync(join(t.dir, "edges", `${own.id}.jsonl`))).toBe(false);
+    expect(link(t.dir, ini.id, [own.id, foreign.id, loose.id]).map((r) => r.status)).toEqual(["member", "linked", "linked"]);
   });
 });
