@@ -18,9 +18,9 @@ const guard = async (fn: () => Promise<Response> | Response): Promise<Response> 
 route("GET", "/api/initiatives", (_r, url, _p, ctx) => {
   const status = url.searchParams.get("status");
   const want = status === "closed" || status === "all" ? status : "open";
-  const rows = withDb(ctx.dataDir, (db) => listInitiatives(ctx.dataDir, { status: want, db })).map((s) => {
-    const doc = readDocFile(ctx.dataDir, s.id)!;
-    return { ...s, goal: doc.body.trim(), updated_at: doc.frontmatter.updated_at ?? doc.frontmatter.created_at };
+  const rows = withDb(ctx.dataDir, (db) => listInitiatives(ctx.dataDir, { status: want, db })).flatMap((s) => {
+    const doc = readDocFile(ctx.dataDir, s.id);
+    return doc ? [{ ...s, goal: doc.body.trim(), updated_at: doc.frontmatter.updated_at ?? doc.frontmatter.created_at }] : []; // a row whose file is gone (mid-sync) is skipped
   });
   return json({ initiatives: rows.sort((a, b) => b.updated_at.localeCompare(a.updated_at) || a.id.localeCompare(b.id)) });
 });

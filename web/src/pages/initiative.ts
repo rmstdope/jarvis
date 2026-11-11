@@ -32,7 +32,7 @@ export async function initiativePage(id: string, ctx: DocCtx): Promise<DocPage> 
     const a = document.activeElement as HTMLElement | null;
     if (!a || !host.contains(a)) return undefined;
     if (a === heading) return "title";
-    return a.getAttribute("data-act") ?? (a.getAttribute("data-task") ? `task:${a.getAttribute("data-task")}` : undefined);
+    return a.getAttribute("data-act") ?? (a.getAttribute("data-sug") ? `sug:${a.getAttribute("data-sug")}` : a.getAttribute("data-task") ? `task:${a.getAttribute("data-task")}` : undefined);
   }
   function draw(focus: string | undefined = focusKey()): void {
     const { done, total } = counts();
@@ -53,7 +53,7 @@ export async function initiativePage(id: string, ctx: DocCtx): Promise<DocPage> 
     const folded = (key: BoxKey, rows: HTMLElement[]) => {
       const more = rows.length > SHOWN;
       const all = expanded.has(key);
-      return [...(more && !all ? rows.slice(0, SHOWN) : rows), more ? h("button", { class: "jv-showall", onClick: () => { if (all) expanded.delete(key); else expanded.add(key); draw(); } }, all ? "Show fewer" : `Show all ${rows.length}`) : null];
+      return [...(more && !all ? rows.slice(0, SHOWN) : rows), more ? h("button", { class: "jv-showall", "data-act": `showall:${key}`, onClick: () => { if (all) expanded.delete(key); else expanded.add(key); draw(); } }, all ? "Show fewer" : `Show all ${rows.length}`) : null];
     };
     const ibox = (title: string, hint: string | null, ...body: (Node | null | (Node | null)[])[]) =>
       h("section", { class: "jv-ibox box" }, h("h4", { tabindex: "-1" }, title, hint ? h("span", { class: "jv-hint2" }, ` ${hint}`) : null), ...body);
@@ -85,7 +85,9 @@ export async function initiativePage(id: string, ctx: DocCtx): Promise<DocPage> 
           ibox(suggest.state === "loading" ? "Suggested" : `Suggested · ${sugRows.length}`, "— not part of it until you accept", ...suggestBody))));
     if (focus === "title") heading.focus();
     else if (focus === "reopen" || focus === "close") (host.querySelector(`[data-act="${focus}"]`) as HTMLElement | null)?.focus();
-    else if (focus === "suggested") (host.querySelector(".jv-accept:not([disabled])") as HTMLElement ?? [...host.querySelectorAll("h4")].find((x) => x.textContent!.startsWith("Suggested")))?.focus();
+    else if (focus?.startsWith("showall:")) (host.querySelector(`[data-act="${focus}"]`) as HTMLElement | null)?.focus();
+    else if (focus?.startsWith("sug:")) (host.querySelector(`[data-sug="${focus.slice(4)}"]`) as HTMLElement | null)?.focus();
+    else if (focus === "suggested") ([...host.querySelectorAll("h4")].find((x) => x.textContent!.startsWith("Suggested")) as HTMLElement | undefined)?.focus();
     else if (focus?.startsWith("task:")) (host.querySelector(`[data-task="${focus.slice(5)}"]`) as HTMLElement | null)?.focus();
   }
 
@@ -121,10 +123,16 @@ export async function initiativePage(id: string, ctx: DocCtx): Promise<DocPage> 
     draw();
     try {
       await api.link(id, s.id);
-      if (suggest.state === "ready") suggest = { state: "ready", items: suggest.items.filter((x) => x.id !== s.id) };
+      let next: InitiativeSuggestion | undefined;
+      if (suggest.state === "ready") {
+        const at = suggest.items.findIndex((x) => x.id === s.id);
+        const rest = suggest.items.filter((x) => x.id !== s.id);
+        next = rest[at] ?? rest[at - 1]; // the one that followed, else the one before
+        suggest = { state: "ready", items: rest };
+      }
       d.direct = { total: d.direct.total + 1, items: [{ id: s.id, title: s.title, source: s.source, created_at: new Date().toISOString(), via: [] }, ...d.direct.items] };
       accepting.delete(s.id);
-      draw("suggested");
+      draw(next ? `sug:${next.id}` : "suggested");
       toast(`Linked to ${d.initiative.title}`);
     } catch {
       accepting.delete(s.id);

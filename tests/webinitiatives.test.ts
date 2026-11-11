@@ -161,4 +161,9 @@ describe("initiative cards in Browse carry the goal, not the enrichment summary"
     await boot("#/initiatives", { list: [INI({ done: 3, total: 3 })] });
     expect(q(".jv-card .jv-m .jv-status").textContent).toBe("✓ All tasks done — close it?");
   });
+  test("the two-line clamp is for initiative cards only, not other cards' summaries or search snippets", async () => {
+    const css = (await import("node:fs")).readFileSync("web/src/styles.css", "utf8");
+    expect(css).toContain(".jv-icard .jv-s:not(.jv-snip) { display:-webkit-box;");
+    expect(css).not.toMatch(/^\.jv-s \{ display:-webkit-box/m);
+  });
 });

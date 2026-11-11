@@ -190,6 +190,19 @@ describe("suggestions", () => {
     await env.tick(20);
     expect(document.activeElement).toBe(box("Suggested").querySelector("h4"));
   });
+  test("Accepting a middle suggestion moves focus to the one that followed it, not the first", async () => {
+    const three = { model: true, suggestions: [1, 2, 3].map((n) => ({ id: `S${n}`, title: `Sug ${n}`, source: "note", reason: "r" })) };
+    await boot("#/initiative/IA", { suggest: three });
+    click(box("Suggested").querySelectorAll("button")[1]);
+    await env.tick(20);
+    expect(document.activeElement).toBe(box("Suggested").querySelector('[data-sug="S3"]'));
+  });
+  test("Show all keeps keyboard focus on its button", async () => {
+    await boot("#/initiative/IA", { detail: base({ direct: { total: 13, items: Array.from({ length: 13 }, (_, i) => tied(i + 1)) } }) });
+    btn("Show all 13").focus();
+    click(btn("Show all 13"));
+    expect(document.activeElement!.textContent).toBe("Show fewer");
+  });
   test("a failed Accept keeps the suggestion and says so", async () => {
     await boot("#/initiative/IA", { suggest: sug });
     env.routes.set("POST /api/link", () => ({ status: 500, json: { error: "x" } }));

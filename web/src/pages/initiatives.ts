@@ -8,6 +8,7 @@ import { type Ctx, emptyBox, entryCard, heading, type Page, progress, skeleton, 
 export function initiativeCard(i: { id: string; title: string; goal?: string | null; owner: string; status: "open" | "closed"; done: number; total: number; updated_at?: string | null; closed_at?: string }): HTMLElement {
   const closed = i.status === "closed";
   const card = entryCard({ href: `#/initiative/${encodeURIComponent(i.id)}`, title: i.title, details: entryLine("initiative", i.owner, closed ? `closed ${fmtDate(i.closed_at)}` : i.updated_at ? `updated ${fmtDate(i.updated_at)}` : null), summary: i.goal, pill: !closed && i.total > 0 && i.done === i.total ? statusPill("✓ All tasks done — close it?", "g") : null });
+  card.classList.add("jv-icard");
   card.classList.toggle("jv-dim", closed);
   card.append(progress(i.done, i.total));
   return card;

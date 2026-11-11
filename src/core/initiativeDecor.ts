@@ -29,7 +29,7 @@ export function decorateItems<T extends { source: string }>(dataDir: string, ite
   });
 }
 
-/** The initiative of a task with its progress, for the task page's "Initiative" block. */
+/** The initiative of a task with its progress, for the line above a task's title on its tab. */
 export function initiativeOfTask(dataDir: string, taskId: string): { id: string; title: string; done: number; total: number } | undefined {
   return withDb(dataDir, (db) => {
     const ref = listTasks(dataDir, { status: "all", owner: "all", db }).find((t) => t.id === taskId)?.initiative;
