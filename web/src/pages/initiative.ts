@@ -23,12 +23,15 @@ export async function initiativePage(id: string, ctx: DocCtx): Promise<DocPage> 
   const accepting = new Set<string>();
   const host = h("div", { class: "jv-iread" });
   const counts = () => ({ done: d.tasks.filter((t) => t.status === "done").length, total: d.tasks.length });
+  /** Made once: the redraws (suggestions arrive late) must not lose the focus the tab opened with. */
+  const heading = h("h1", { class: "jv-dtitle", "data-doc-title": "", tabindex: "-1", title: d.initiative.title }, d.initiative.title);
   const announce = () => emitInitiativeProgress(id, counts());
 
   /** What to focus after a redraw that keeps the cursor where it was (suggestions arrive on their own). */
   function focusKey(): string | undefined {
     const a = document.activeElement as HTMLElement | null;
     if (!a || !host.contains(a)) return undefined;
+    if (a === heading) return "title";
     return a.getAttribute("data-act") ?? (a.getAttribute("data-task") ? `task:${a.getAttribute("data-task")}` : undefined);
   }
   function draw(focus: string | undefined = focusKey()): void {
@@ -65,7 +68,6 @@ export async function initiativePage(id: string, ctx: DocCtx): Promise<DocPage> 
     const ask = h("button", { onClick: () => ctx.askAbout({ type: "initiative", ids: [id] }, i.title) }, "Ask about this");
     const toggle = h("button", { "data-act": closed ? "reopen" : "close", onClick: () => void (closed ? reopen() : close()) }, closed ? "Reopen" : "Close initiative");
     const kind = h("span", { class: "jv-dkind" }, "Initiative");
-    const heading = h("h1", { class: "jv-dtitle", "data-doc-title": "", tabindex: "-1", title: i.title }, i.title);
     const meta = closed ? entryLine("Initiative", i.owner, `closed ${fmtDate(i.closed_at)} by ${i.closed_by ?? "unknown"}`) : entryLine("Initiative", i.owner, `started ${fmtDate(i.created_at)}`, i.updated_at ? `updated ${fmtDate(i.updated_at)}` : null);
     host.replaceChildren(
       h("div", { class: "jv-dhead" }, kind, heading, statusPill(closed ? "closed" : "open", "n"), h("span", { class: "jv-igrow" }), toggle, ask),
@@ -81,7 +83,8 @@ export async function initiativePage(id: string, ctx: DocCtx): Promise<DocPage> 
           ibox(`Through its tasks · ${d.through.total}`, null, ...(d.through.items.length ? folded("through", d.through.items.map((x) => tiedRow(x, true))) : [empty("Nothing is tied to it through its tasks yet.")])),
           ibox(`Linked directly · ${d.direct.total}`, null, ...(d.direct.items.length ? folded("direct", d.direct.items.map((x) => tiedRow(x, false))) : [empty("Nothing is linked to it directly yet.")])),
           ibox(suggest.state === "loading" ? "Suggested" : `Suggested · ${sugRows.length}`, "— not part of it until you accept", ...suggestBody))));
-    if (focus === "reopen" || focus === "close") (host.querySelector(`[data-act="${focus}"]`) as HTMLElement | null)?.focus();
+    if (focus === "title") heading.focus();
+    else if (focus === "reopen" || focus === "close") (host.querySelector(`[data-act="${focus}"]`) as HTMLElement | null)?.focus();
     else if (focus === "suggested") (host.querySelector(".jv-accept:not([disabled])") as HTMLElement ?? [...host.querySelectorAll("h4")].find((x) => x.textContent!.startsWith("Suggested")))?.focus();
     else if (focus?.startsWith("task:")) (host.querySelector(`[data-task="${focus.slice(5)}"]`) as HTMLElement | null)?.focus();
   }

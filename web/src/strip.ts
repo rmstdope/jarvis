@@ -52,7 +52,7 @@ export function createStrip(opts: StripOpts): Strip {
   const tabBtn = (key: string, title: string, kind: string, active: boolean, dot: boolean, closable: boolean): HTMLElement => {
     const b = h("button", { class: "jv-tab", role: "tab", "data-key": key, "aria-selected": String(active), tabindex: active || (key === "chat" && last.active === null) ? "0" : "-1", title: `${title}\n${HOVER}`, onClick: () => opts.show(key === "chat" ? null : key) },
       dot ? h("span", { class: "jv-tab-dot", title: "Opened by the agent" }) : null,
-      kind ? h("span", { class: "jv-tab-k" }, kind === "Briefing" ? "▤" : kind === "Presentation" ? "▣" : "▫") : null,
+      kind ? h("span", { class: "jv-tab-k" }, kind === "Briefing" ? "▤" : kind === "Presentation" ? "▣" : kind === "Initiative" ? "◎" : "▫") : null,
       h("span", { class: "jv-tab-t" }, title));
     const x = closable ? h("span", { class: "jv-tab-x", role: "button", title: "Close tab", "aria-label": "Close tab", onClick: (e: Event) => { e.stopPropagation(); opts.close(key); } }, "✕") : null;
     if (x) b.append(x);
