@@ -146,6 +146,13 @@ describe("chat service", () => {
     expect(chatModel()).toBe("x");
     delete process.env.JARVIS_CHAT_MODEL;
   });
+  test("with no chatModel configured the agent is spawned with no model (jv-e1c)", async () => {
+    const models: (string | undefined)[] = [];
+    const svc = new ChatService(t.dir, { spawn: (m, cwd) => { models.push(m); return spawnBunAcp(FAKE, cwd); } });
+    await svc.create({ type: "jarvis", ids: [] });
+    expect(models).toEqual([undefined]);
+    await svc.shutdown();
+  });
   test("jarvis scope retrieves per turn; item scope grounds the first turn only; busy and expiry", async () => {
     const doc = await ingest(t.dir, { source: "note", title: "Zoom drift", body: "camera firmware zoom drift fixed in 11.8", author: "me" });
     let now = 1_000_000;
