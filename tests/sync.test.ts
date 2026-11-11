@@ -141,9 +141,7 @@ describe("POST /api/sync through the running service", () => {
     const server = startServer({ dataDir: a, router: slow }, 0);
     try {
       const r = await fetch(`http://127.0.0.1:${server.port}/api/sync`, { method: "POST" });
-      const body = (await r.json()) as { pushed: boolean; failures: unknown[] };
-      expect(body.pushed).toBe(true);
-      expect(body.failures).toEqual([{ step: "enrich", failed: 1, reason: "refused", doctor: false }]);
+      expect({ status: r.status, body: await r.json() }).toMatchObject({ status: 200, body: { pushed: true, failures: [{ step: "enrich", failed: 1, reason: "refused", doctor: false }] } });
     } finally {
       while (isSyncRunning()) await Bun.sleep(100); // the server goes on when the socket drops; let it finish
       server.stop(true);
