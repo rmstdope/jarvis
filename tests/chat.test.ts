@@ -471,6 +471,16 @@ describe("the agent acts (jv-oya.4)", () => {
     }
     expect(changes.length).toBe(2);
   });
+  test("a kind word that is part of the shared title does not pick an item (jv-ldo)", async () => {
+    const m = await ingest(t.dir, { source: "meeting", title: "Standup meeting", body: "agenda", author: "me" });
+    const task = await addTask(t.dir, { title: "Standup meeting", author: "me" });
+    await ingest(t.dir, { source: "note", title: "Zoom drift", body: "clock drift seen", author: "me" });
+    const sid = await open("conv-ldo3");
+    const evs = await ndjson(await call("POST", `/api/chat/sessions/${sid}/messages`, { message: 'ACT jarvis_link {"src":"the Standup meeting","dst":"Zoom drift"}' }));
+    const c = evs.find((e) => e.type === "change").change;
+    expect(c.ok).toBe(false);
+    for (const id of [m.id, task.id]) expect(c.error).toContain(`[${id}]`);
+  });
   test("a title two tasks share is refused rather than guessed (jv-zyp)", async () => {
     const a = await addTask(t.dir, { title: "Review", author: "me" });
     const b = await addTask(t.dir, { title: "review", author: "me" });

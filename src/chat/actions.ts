@@ -54,7 +54,7 @@ const kindOfDoc = (dataDir: string, id: string): ChangeItem["kind"] => {
 const item = (dataDir: string, id: string): ChangeItem => ({ id, title: titleOf(dataDir, id), kind: kindOfDoc(dataDir, id) });
 /** Kind words a person may put after an item's name when saying it ("the Weekly sync meeting"). */
 const KIND_WORDS = "note|meeting|task|initiative|briefing|presentation|deck|doc|document|item|page|article|video|file|transcript";
-/** The kind words that name a `documents.source`; the others ("doc", "page") name no one source and narrow nothing. */
+/** The kind words that name one of the four sources a person asks for by kind; the rest ("doc", "page", "briefing", "deck"...) narrow nothing. */
 const SOURCE_OF_KIND_WORD: Record<string, string> = { note: "note", meeting: "meeting", task: "task", initiative: "initiative" };
 /** The source a reference's trailing kind word names, if it has one ("Weekly sync meeting" is a "meeting"). */
 const sourceOfTrailingKind = (ref: string): string | undefined => {
@@ -83,7 +83,8 @@ const resolveRef = (dataDir: string, ref: string, source?: string): string => {
     let found = withDb(dataDir, (db) =>
       db.query<{ id: string; title: string; created_at: string; source: string }, [string, string | null]>("SELECT id, title, created_at, source FROM documents WHERE title = ?1 COLLATE NOCASE AND (?2 IS NULL OR source = ?2) ORDER BY created_at DESC").all(title, source ?? null));
     // The kind word the user said picks among items sharing the title, when it leaves exactly one (jv-ldo).
-    const said = title !== ref.trim() ? sourceOfTrailingKind(ref) : undefined;
+    // Not when the matching title itself ends in the kind word ("Standup meeting"): there the word is part of the name.
+    const said = title !== ref.trim() && !sourceOfTrailingKind(title) ? sourceOfTrailingKind(ref) : undefined;
     if (found.length > 1 && said) {
       const narrowed = found.filter((f) => f.source === said);
       if (narrowed.length === 1) found = narrowed;
