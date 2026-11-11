@@ -98,7 +98,7 @@ describe("doctor", () => {
 });
 
 describe("doctor jarvis-command", () => {
-  const base = { codeRepo: "/code/jarvis", home: "/home/u", shell: "/bin/zsh", exists: () => false, realpath: (p: string) => p };
+  const base = { codeRepo: "/code/jarvis", home: "/home/u", shell: "/bin/zsh", platform: "linux", exists: () => false, realpath: (p: string) => p };
   test("installed and working", () => {
     const c = checkJarvisCommand({ ...base, found: "/home/u/.bun/bin/jarvis", realpath: (p) => (p.endsWith("/jarvis") ? "/code/jarvis/src/cli.ts" : p) });
     expect(c).toMatchObject({ name: "jarvis-command", status: "ok", detail: "jarvis on PATH" });
@@ -114,11 +114,18 @@ describe("doctor jarvis-command", () => {
     expect(z.detail).toBe("jarvis is installed in ~/.bun/bin, but that folder is not on PATH");
     expect(z.fix).toBe(`echo 'export PATH="$HOME/.bun/bin:$PATH"' >> ~/.zshrc   then open a new terminal`);
     expect(checkJarvisCommand({ ...o, shell: "/usr/bin/bash" }).fix).toContain("~/.bashrc");
-    expect(checkJarvisCommand({ ...o, shell: "/usr/bin/fish" }).fix).toBe("fish_add_path ~/.bun/bin   then open a new terminal");
+    expect(checkJarvisCommand({ ...o, shell: "/usr/bin/fish" }).fix).toBe("echo 'fish_add_path ~/.bun/bin' >> ~/.config/fish/config.fish   then open a new terminal");
   });
   test("PATH jarvis runs a different copy", () => {
     const c = checkJarvisCommand({ ...base, found: "/usr/local/bin/jarvis", realpath: (p) => (p.endsWith("/jarvis") ? "/old/jarvis/src/cli.ts" : p) });
     expect(c).toMatchObject({ status: "warn", detail: "jarvis on PATH runs /old/jarvis, not /code/jarvis", fix: "cd /code/jarvis && bun link" });
+  });
+  test("another program called jarvis is named by its resolved path; custom BUN_INSTALL; Windows shim", () => {
+    const c = checkJarvisCommand({ ...base, found: "/usr/local/bin/jarvis" });
+    expect(c.detail).toBe("jarvis on PATH runs /usr/local/bin/jarvis, not /code/jarvis");
+    const b = checkJarvisCommand({ ...base, found: null, bunInstall: "/opt/bun", exists: (p) => p === "/opt/bun/bin/jarvis" });
+    expect(b.detail).toContain("installed in ~/.bun/bin");
+    expect(checkJarvisCommand({ ...base, found: "C:\\u\\.bun\\bin\\jarvis.exe", platform: "win32" }).status).toBe("ok");
   });
   test("doctor lists it and a warning keeps setup healthy", async () => {
     const r = await doctor({ coreOnly: true, which: (b) => (b === "jarvis" ? null : `/bin/${b}`), codeRepo: "/code/jarvis", home: "/nonexistent-home" });
