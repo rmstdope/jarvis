@@ -136,7 +136,7 @@ export async function reindex(dataDir: string, opts: ReindexOpts = {}): Promise<
       } catch (e) {
         const msg = (e as Error).message ?? String(e);
         if (/UNIQUE constraint failed: documents\.source_url/.test(msg)) {
-          result.warnings.push(`docs/${f}: duplicate source_url ${doc.frontmatter.source_url} (run \`brain dedup\`)`);
+          result.warnings.push(`docs/${f}: duplicate source_url ${doc.frontmatter.source_url} (run \`jarvis dedup\`)`);
         } else throw e;
       }
     }

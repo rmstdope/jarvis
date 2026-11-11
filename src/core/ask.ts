@@ -9,7 +9,7 @@ export interface AskResult {
   model: string;
   citations: { docId: string; title: string; source: string }[];
 }
-export const NO_CONTEXT_ANSWER = "I couldn't find anything in the brain that answers that.";
+export const NO_CONTEXT_ANSWER = "I couldn't find anything in J.A.R.V.I.S. that answers that.";
 
 export async function ask(dataDir: string, router: Router | null, question: string, opts: { mode?: SearchMode; limit?: number; contextChars?: number } = {}): Promise<AskResult> {
   const limit = Math.min(ASK_MAX_LIMIT, Math.max(1, opts.limit ?? ASK_DEFAULT_LIMIT));
@@ -35,7 +35,7 @@ export async function ask(dataDir: string, router: Router | null, question: stri
   }
   if (parts.length === 0) return { answer: NO_CONTEXT_ANSWER, model: "none", citations: [] };
   const model = router?.resolve({ kind: "synthesis", minQuality: "high" });
-  if (!model) throw new Error("no synthesis model available (configure ~/.second-brain/models.toml or install a chat model)");
+  if (!model) throw new Error("no synthesis model available (configure ~/.jarvis/models.toml or install a chat model)");
   const answer = await model.complete(askPrompt(question, parts.join("\n\n---\n\n")), { maxTokens: ASK_MAX_TOKENS });
   return { answer: answer.trim(), model: model.id, citations };
 }

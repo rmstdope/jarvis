@@ -52,7 +52,7 @@ export async function youtubeToPayload(url: string, opts: { author?: string } = 
   const meta = exec(["yt-dlp", "--print", "%(title)s\n%(channel)s", "--no-download", url]);
   if (meta.code !== 0) return null;
   const [title, channel] = meta.stdout.split("\n");
-  const tmp = mkdtempSync(join(tmpdir(), "second-brain-yt-"));
+  const tmp = mkdtempSync(join(tmpdir(), "jarvis-yt-"));
   try {
     const subs = exec(["yt-dlp", "--write-subs", "--write-auto-subs", "--sub-lang", "en,en-US,en-GB,sv", "--sub-format", "json3", "--skip-download", "-o", join(tmp, `yt-${id}`), url]);
     if (subs.code !== 0) return null;

@@ -1,16 +1,16 @@
 # Instructions
 
-These are the instructions for the agents that **develop** Second Brain. They are not the
-instructions for an agent that **uses** a brain: those live in `docs/AGENT-INSTRUCTIONS.md`, are
-printed by `brain skill`, and are product content to be edited like any other shipped file.
+These are the instructions for the agents that **develop** J.A.R.V.I.S. They are not the
+instructions for an agent that **uses** J.A.R.V.I.S.: those live in `docs/AGENT-INSTRUCTIONS.md`, are
+printed by `jarvis skill`, and are product content to be edited like any other shipped file.
 
 ## The project
 
-Second Brain is a team knowledge base whose shared truth is plain files in a git content repo,
+J.A.R.V.I.S. is a team knowledge base whose shared truth is plain files in a git content repo,
 indexed on every machine into a disposable SQLite database (FTS5 + sqlite-vec). It is a Bun +
-TypeScript CLI (`src/cli.ts`, run as `bun run brain …`), a local HTTP service on
+TypeScript CLI (`src/cli.ts`, run as `bun run jarvis …`), a local HTTP service on
 `http://127.0.0.1:7281` (`src/server.ts`), a vanilla TypeScript web UI (`web/`), an MV3 browser
-extension (`extension/`) and a small Swift launcher for macOS (`second-brain-app/`). Its users are
+extension (`extension/`) and a small Swift launcher for macOS (`jarvis-app/`). Its users are
 the members of a team, who mostly drive it through a coding agent. "Working" means a user can
 capture, search, ask, link, task and sync against a content repo with no model available, that the
 model steps (enrich, edges, refine, ask, chat) improve that when one is, and that nothing a user
@@ -86,8 +86,8 @@ bun run extension:build
 ```
 
 Run each check as its own command and read its exit status; never chain them with `;` or pipe their
-output through `grep`, since that hides failures. A change to `second-brain-app/` must also pass
-`swiftc -typecheck second-brain-app/main.swift` on macOS.
+output through `grep`, since that hides failures. A change to `jarvis-app/` must also pass
+`swiftc -typecheck jarvis-app/main.swift` on macOS.
 
 CI is change-aware (`scripts/ci-plan.ts`): it runs only the tests whose import graph reaches a
 changed file. When you add a test that reads a non-TypeScript file, or a new global input, teach the
@@ -98,7 +98,7 @@ planner about it and cover that in `tests/ci-plan.test.ts`.
 ### Architecture
 
 - Files are the truth; the SQLite index under `.index/` is derived and never committed. Anything a
-  user wrote must be recoverable with `brain reindex --full`.
+  user wrote must be recoverable with `jarvis reindex --full`.
 - `src/cli.ts` is a thin command registry; logic lives in `src/core/`, `src/producers/`,
   `src/providers/`, `src/briefings/` and `src/chat/`. The CLI entrypoint stays the last statement in
   `src/cli.ts` (top-level await stops later `register()` calls).
@@ -110,19 +110,21 @@ planner about it and cover that in `tests/ci-plan.test.ts`.
 ### Models and providers
 
 - Every model step is optional: no model means *skip*, never *fail*.
-- Model ids are configuration (`~/.second-brain/models.toml`, `chatModel`), never literals in code.
+- Model ids are configuration (`~/.jarvis/models.toml`, `chatModel`), never literals in code.
 - Providers are local first, then the GitHub Copilot CLI or a generic OpenAI-compatible API
   (`OPENAI_API_KEY`). Do not add references to proprietary gateways.
 - Never send meeting transcripts to a cloud provider unless the team's `config/team.toml` allows it.
 
 ### Naming
 
-The product is **second-brain** everywhere: `~/.second-brain`, `SECOND_BRAIN_*` environment
-variables, `second-brain` in prose. Never reintroduce the old "team-brain" names.
+The product is **J.A.R.V.I.S.** in prose and **jarvis** in every identifier: the CLI
+(`bun run jarvis …`), the package, the repository, `~/.jarvis`, `JARVIS_*` environment variables,
+the `jv` bead prefix and the `jv-` CSS prefix. Never reintroduce the old "Second Brain" /
+`second-brain` / `brain` or "team-brain" names, and add no fallbacks that read them.
 
 ### User-facing errors
 
-Never write "check your environment" prose. When something can be missing, add a `brain doctor`
+Never write "check your environment" prose. When something can be missing, add a `jarvis doctor`
 check with an exact fix line, and inject its probes so the check is unit-tested.
 
 ### Code
@@ -137,7 +139,7 @@ check with an exact fix line, and inject its probes so the check is unit-tested.
 
 - Tests use `bun test` and live in `tests/`. They are hermetic: `tests/helpers.ts` pins the router to
   null, temporary data directories come from `tmpDataDir()`, and semantic tests use the fake
-  embedder. No test needs a network, a model server or the user's `~/.second-brain`.
+  embedder. No test needs a network, a model server or the user's `~/.jarvis`.
 - End-to-end CLI behaviour is covered in `tests/cli-e2e.test.ts`; the web UI in `tests/web.test.ts`
   and `tests/webdom.test.ts` (happy-dom); the extension in `tests/extension.test.ts`.
 

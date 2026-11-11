@@ -11,7 +11,7 @@ async function main() {
   const url = tab?.url ?? "";
   const status = await send<{ online: boolean; docs: number; autoCapture: boolean }>({ type: "getStatus" });
   $("dot").className = `dot ${status.online ? "on" : "off"}`;
-  $("status").textContent = status.online ? `${status.docs} items · auto-capture ${status.autoCapture ? "on" : "off"}` : "service offline (brain serve)";
+  $("status").textContent = status.online ? `${status.docs} items · auto-capture ${status.autoCapture ? "on" : "off"}` : "service offline (jarvis serve)";
   $("toggle").textContent = status.autoCapture ? "Disable auto-capture" : "Enable auto-capture";
   $("toggle").onclick = async () => { await send({ type: "toggleAutoCapture" }); location.reload(); };
 

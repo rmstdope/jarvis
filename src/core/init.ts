@@ -54,11 +54,11 @@ export async function init(opts: InitOpts = {}): Promise<InitResult> {
   const yn = async (q: string, def: boolean) => /^y/i.test(await ask(`${q} (y/n)`, def ? "y" : "n"));
   try {
     const cfg = loadConfig();
-    log(`Second Brain setup — config at ${configPath()}\n`);
+    log(`J.A.R.V.I.S. setup — config at ${configPath()}\n`);
 
     // 1. content repo
     log("Step 1/6 · content repo");
-    const dataRoot = resolve(opts.dataRoot ?? cfg.dataRoot ?? join(homedir(), "second-brain-content"));
+    const dataRoot = resolve(opts.dataRoot ?? cfg.dataRoot ?? join(homedir(), "jarvis-content"));
     let dataDir: string;
     if (opts.repo) {
       const name = basename(opts.repo.replace(/\.git$/, "").replace(/\/$/, ""));
@@ -147,7 +147,7 @@ export async function init(opts: InitOpts = {}): Promise<InitResult> {
     log("\nStep 6/6 · doctor");
     const rep = await doctor({ dataDir });
     log(formatDoctor(rep));
-    log(`\nDone. Next: brain note "hello" · brain search hello · brain serve · brain sync`);
+    log(`\nDone. Next: jarvis note "hello" · jarvis search hello · jarvis serve · jarvis sync`);
     const final: MachineConfig = loadConfig();
     return { dataDir, author: final.author ?? resolveAuthor(author), embedding, preset, indexed: r.docsIndexed, smokeHits, doctorHealthy: rep.summary.healthy };
   } finally {

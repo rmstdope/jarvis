@@ -6,14 +6,14 @@ import { openDb } from "../core/db.ts";
 import { readDocFile } from "../core/docs.ts";
 import { readBriefing } from "../briefings/store.ts";
 
-export const CHAT_DEFAULT_MODEL = "gpt-4.1"; // any Copilot model id; override with config chatModel or SECOND_BRAIN_CHAT_MODEL
+export const CHAT_DEFAULT_MODEL = "gpt-4.1"; // any Copilot model id; override with config chatModel or JARVIS_CHAT_MODEL
 export const CHAT_GROUNDED_BODY_CHARS = 60_000;
 export const CHAT_SNIPPET_CHARS = 8_000;
 export const CHAT_RESULTS = 6;
 export const CHAT_MAX_TERMS = 8;
 export const CHAT_IDLE_MS = 60 * 60_000;
 
-export type ChatScope = { type: "brain" | "item" | "briefing"; ids: string[] };
+export type ChatScope = { type: "jarvis" | "item" | "briefing"; ids: string[] };
 export type ChatEvent =
   | { type: "source"; docId: string; title: string; source: string }
   | { type: "message"; text: string }
@@ -34,7 +34,7 @@ export interface ChatSession {
 }
 
 export function chatModel(): string {
-  return process.env.SECOND_BRAIN_CHAT_MODEL ?? (loadConfig() as { chatModel?: string }).chatModel ?? CHAT_DEFAULT_MODEL;
+  return process.env.JARVIS_CHAT_MODEL ?? (loadConfig() as { chatModel?: string }).chatModel ?? CHAT_DEFAULT_MODEL;
 }
 
 const STOP = new Set("a an the and or of to in on for with is are was were be been it this that these those i you we they he she what which who whom how why when where do does did can could should would will shall may might about from by as at into over under not no yes me my our your their its than then there here up down out off just so if but".split(" "));
@@ -88,9 +88,9 @@ export class ChatService {
   }
   async create(scope: ChatScope): Promise<ChatSession> {
     this.expire();
-    if (!["brain", "item", "briefing"].includes(scope?.type)) throw new Error("scope.type must be brain|item|briefing");
+    if (!["jarvis", "item", "briefing"].includes(scope?.type)) throw new Error("scope.type must be jarvis|item|briefing");
     const ids = Array.isArray(scope.ids) ? scope.ids : [];
-    if (scope.type !== "brain" && ids.length !== 1) throw new Error(`scope ${scope.type} requires exactly one id`);
+    if (scope.type !== "jarvis" && ids.length !== 1) throw new Error(`scope ${scope.type} requires exactly one id`);
     const sources: ChatSession["sources"] = [];
     if (scope.type === "item") {
       const d = readDocFile(this.dataDir, ids[0]);
@@ -107,10 +107,10 @@ export class ChatService {
     this.sessions.set(s.id, s);
     return s;
   }
-  /** Build the prompt: grounded body on the first turn for item/briefing; retrieval snippets every turn for brain. */
+  /** Build the prompt: grounded body on the first turn for item/briefing; retrieval snippets every turn for jarvis. */
   buildPrompt(s: ChatSession, message: string): { prompt: string; sources: ChatSession["sources"] } {
     const sources: ChatSession["sources"] = [];
-    if (s.scope.type === "brain") {
+    if (s.scope.type === "jarvis") {
       const terms = retrievalTerms(message);
       let ctx = "";
       if (terms.length) {

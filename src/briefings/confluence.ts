@@ -121,7 +121,7 @@ export interface PublishResult {
 export type Fetch = typeof fetch;
 
 export async function publishBriefing(dataDir: string, b: Briefing, opts: { dryRun?: boolean; allowDraft?: boolean; fetchImpl?: Fetch; env?: NodeJS.ProcessEnv } = {}): Promise<PublishResult> {
-  if (b.status === "draft" && !opts.allowDraft) throw new Error(`briefing ${b.id} is a draft; approve it (\`brain briefing approve ${b.id}\`) or pass --allow-draft`);
+  if (b.status === "draft" && !opts.allowDraft) throw new Error(`briefing ${b.id} is a draft; approve it (\`jarvis briefing approve ${b.id}\`) or pass --allow-draft`);
   const storage = briefingToStorage(b);
   if (opts.dryRun) return { action: "dry-run", title: b.title, storage };
   const cfg = readConfluenceConfig(dataDir);

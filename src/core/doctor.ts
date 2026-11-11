@@ -38,7 +38,7 @@ const bad = (name: string, required: boolean, detail: string, fix: string): Chec
 const warn = (name: string, detail: string, fix?: string): Check => ({ name, required: false, status: "warn", detail, fix });
 
 export function checkSqliteVec(): Check {
-  const dir = mkdtempSync(join(tmpdir(), "sb-doctor-"));
+  const dir = mkdtempSync(join(tmpdir(), "jv-doctor-"));
   try {
     ensureCustomSqlite();
     const db = new Database(join(dir, "t.db"));
@@ -76,20 +76,20 @@ export async function doctor(opts: DoctorOpts = {}): Promise<DoctorReport> {
       checks.push(bad("embed-model", true, (e as Error).message, embedder.name === "ollama" ? `ollama pull ${embedder.model}` : `load ${embedder.model} in oMLX`));
     }
   } else {
-    checks.push(bad("embedding-server", true, `${embedder.name} unreachable`, embedder.name === "ollama" ? "install Ollama (https://ollama.com), run `ollama serve`, then `ollama pull qwen3-embedding:0.6b`" : "start oMLX on http://127.0.0.1:8000 or set SECOND_BRAIN_OMLX_URL"));
+    checks.push(bad("embedding-server", true, `${embedder.name} unreachable`, embedder.name === "ollama" ? "install Ollama (https://ollama.com), run `ollama serve`, then `ollama pull qwen3-embedding:0.6b`" : "start oMLX on http://127.0.0.1:8000 or set JARVIS_OMLX_URL"));
     checks.push({ name: "embed-model", required: true, status: "skip", detail: "skipped: embedding server unreachable" });
   }
 
   const cfgPath = configPath();
-  if (!existsSync(cfgPath)) checks.push(bad("user-config", true, `${cfgPath} missing`, "brain init"));
-  else if (configIsMalformed()) checks.push(bad("user-config", true, `${cfgPath} is not valid TOML`, `fix or delete ${cfgPath}, then brain init`));
+  if (!existsSync(cfgPath)) checks.push(bad("user-config", true, `${cfgPath} missing`, "jarvis init"));
+  else if (configIsMalformed()) checks.push(bad("user-config", true, `${cfgPath} is not valid TOML`, `fix or delete ${cfgPath}, then jarvis init`));
   else checks.push(ok("user-config", true, cfgPath));
 
   let dataDir: string | null = null;
   try {
     dataDir = resolveDataDir(opts.dataDir);
   } catch {}
-  if (!dataDir || !existsSync(dataDir)) checks.push(bad("data-dir", true, dataDir ? `${dataDir} does not exist` : "no content repo configured", "brain init   (or brain config set-data <path>)"));
+  if (!dataDir || !existsSync(dataDir)) checks.push(bad("data-dir", true, dataDir ? `${dataDir} does not exist` : "no content repo configured", "jarvis init   (or jarvis config set-data <path>)"));
   else {
     checks.push(ok("data-dir", true, dataDir));
     if (!isWorkTree(dataDir)) checks.push(bad("data-git", true, `${dataDir} is not a git work tree`, `cd ${dataDir} && git init -b main`));
@@ -100,11 +100,11 @@ export async function doctor(opts: DoctorOpts = {}): Promise<DoctorReport> {
   }
 
   const mp = modelsPath();
-  checks.push(existsSync(mp) ? ok("models-config", false, mp) : warn("models-config", `${mp} missing; models are detected live`, "brain config preset <name>   or   brain config redetect --write"));
+  checks.push(existsSync(mp) ? ok("models-config", false, mp) : warn("models-config", `${mp} missing; models are detected live`, "jarvis config preset <name>   or   jarvis config redetect --write"));
   const router = await getRouter();
   if (router) {
     const avail = router.entries.filter((e) => e.available);
-    checks.push(router.entries.length === 0 ? warn("models-available", "no chat models configured (Tier 0: capture/search only)", "brain config preset <name>") : avail.length ? ok("models-available", false, avail.map((e) => `${e.entry.provider}:${e.entry.id}`).join(", ")) : warn("models-available", "no configured model is reachable", "start Ollama / install the Copilot CLI / set OPENAI_API_KEY (or the key env named in models.toml)"));
+    checks.push(router.entries.length === 0 ? warn("models-available", "no chat models configured (Tier 0: capture/search only)", "jarvis config preset <name>") : avail.length ? ok("models-available", false, avail.map((e) => `${e.entry.provider}:${e.entry.id}`).join(", ")) : warn("models-available", "no configured model is reachable", "start Ollama / install the Copilot CLI / set OPENAI_API_KEY (or the key env named in models.toml)"));
     const missing = unresolvedKinds(router);
     checks.push(missing.length ? warn("models-tasks", `no model for: ${missing.join(", ")}`, "add a model with quality >= the task's minimum to models.toml") : ok("models-tasks", false, "every task kind resolves"));
   }
@@ -116,15 +116,15 @@ export async function doctor(opts: DoctorOpts = {}): Promise<DoctorReport> {
       s.stop(true);
       checks.push(ok("port", false, `127.0.0.1:${port} is free`));
     } catch {
-      checks.push(warn("port", `port ${port} is in use (another brain serve, or the macOS app?)`, `brain serve --port <other>   or   brain config set-port <n>`));
+      checks.push(warn("port", `port ${port} is in use (another jarvis serve, or the macOS app?)`, `jarvis serve --port <other>   or   jarvis config set-port <n>`));
     }
     checks.push(which("copilot") ? ok("copilot", false, "copilot CLI on PATH") : warn("copilot", "copilot CLI not on PATH (Tier-1 fallback and chat unavailable)", "npm install -g @github/copilot   then   copilot auth"));
     checks.push(which("yt-dlp") ? ok("yt-dlp", false, "on PATH") : warn("yt-dlp", "yt-dlp not on PATH (YouTube capture unavailable)", process.platform === "darwin" ? "brew install yt-dlp" : "pipx install yt-dlp"));
     const wb = detectWhisperBackend(undefined, which);
     checks.push(wb ? ok("whisper", false, wb) : warn("whisper", "no Whisper backend (audio transcription unavailable; Teams .vtt and pasted transcripts still work)", process.platform === "darwin" ? "pipx install mlx-whisper" : "pipx install faster-whisper"));
-    const inbox = process.env.SECOND_BRAIN_INBOX ?? loadConfig().inboxDir;
-    if (inbox && dataDir && inbox.startsWith(dataDir)) checks.push(warn("inbox", `inbox ${inbox} is inside the content repo`, "brain config set-inbox <path outside the repo>"));
-    else checks.push(ok("inbox", false, inbox ?? "~/.second-brain/inbox (default)"));
+    const inbox = process.env.JARVIS_INBOX ?? loadConfig().inboxDir;
+    if (inbox && dataDir && inbox.startsWith(dataDir)) checks.push(warn("inbox", `inbox ${inbox} is inside the content repo`, "jarvis config set-inbox <path outside the repo>"));
+    else checks.push(ok("inbox", false, inbox ?? "~/.jarvis/inbox (default)"));
   }
 
   const summary = { ok: 0, warn: 0, fail: 0, skip: 0, healthy: true };

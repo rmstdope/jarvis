@@ -44,7 +44,7 @@ export interface ScanOpts {
 }
 
 export function resolveInboxDir(explicit?: string): string {
-  return explicit ?? process.env.SECOND_BRAIN_INBOX ?? loadConfig().inboxDir ?? join(homedir(), ".second-brain", "inbox");
+  return explicit ?? process.env.JARVIS_INBOX ?? loadConfig().inboxDir ?? join(homedir(), ".jarvis", "inbox");
 }
 
 interface Classified {

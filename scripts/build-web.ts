@@ -1,4 +1,4 @@
-/** Bundle the web UI with Bun into web/dist (served by `brain serve`). */
+/** Bundle the web UI with Bun into web/dist (served by `jarvis serve`). */
 import { cpSync, mkdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
 

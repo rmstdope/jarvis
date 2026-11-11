@@ -108,9 +108,9 @@ describe("components", () => {
     resetMarkerCounter();
     const src = `<Section title="S"><Callout variant="good" title="T">x</Callout><Grid2><Callout>a</Callout><Callout variant="bad">b</Callout></Grid2><FlowDiagram caption="f">A -> B</FlowDiagram><TagPill variant="warn">Soon</TagPill><ProConList items={[{kind:'pro',text:'p'},{kind:'con',text:'c'}]} /><ComparisonTable headers={['a','b']} rows={[['1','2'],{cells:['3','4'],highlight:true}]} caption="cmp" /><ItemCard itemId="01X" label="Src" /><SvgDiagram><svg viewBox="0 0 1 1"><script>x</script><rect onclick="y"/></svg></SvgDiagram><Legend items={[{color:'teal',label:'now'}]} /><StepFlow steps={[{title:'A',eyebrow:'1',status:'done'},{title:'B',meta:'m'},{title:'C'},{title:'D'},{title:'E'}]} arrows="dashed" /><CycleDiagram steps={[{title:'Plan'},{title:'Do'},{title:'Check'},{title:'Act'}]} centerTitle="PDCA" /><CycleDiagram mode="hub" steps={[{title:'a'},{title:'b',satellite:true}]} centerTitle="Hub" /><PyramidDiagram layers={[{title:'top',sub:'s',meta:'m'},{title:'mid'},{title:'base'}]} /><StackDiagram layers={[{title:'UI',items:['web']},{title:'Core'}]} arrows /><Timeline events={[{date:'2026-10',title:'Kick'},{date:'2026-12',title:'GA',deadline:true,description:'ship'}]} /><SequenceDiagram actors={[{id:'a',label:'App'},{id:'b',label:'API'}]} messages={[{from:'a',to:'b',label:'GET'},{from:'b',to:'a',label:'200',dashed:true},{from:'b',to:'b',label:'self'}]} /><Quadrants xAxis={{label:'Effort',low:'lo',high:'hi'}} yAxis={{label:'Value'}} items={[{label:'A',x:0.2,y:0.8}]} quadrants={['q1','q2','q3','q4']} /><ActivityDiagram nodes={[{id:'s',type:'start'},{id:'a',type:'action',label:'Do it'},{id:'d',type:'decision',label:'ok?'},{id:'f',type:'fork'},{id:'e',type:'end'}]} edges={[{from:'s',to:'a'},{from:'a',to:'d',label:'go'},{from:'d',to:'e'}]} /><BlockDiagram nodes={[{id:'cli',row:0,column:0,title:'CLI',kicker:'entry'},{id:'core',row:0,column:1,title:'Core library',sub:'logic',items:['ingest','search'],emphasis:true},{id:'db',row:1,column:1,title:'SQLite',dashed:true}]} edges={[{from:'cli',to:'core',label:'calls'},{from:'core',to:'cli',label:'returns'},{from:'core',to:'db',curve:true,dashed:true}]} /><Unknown foo="1" /></Section>`;
     const html = renderBriefingHtml(parseBriefingBody(src));
-    expect(html).toContain('<section class="sb-section" id="s"');
-    expect(html).toContain("sb-callout-good");
-    expect(html).toContain("sb-grid2");
+    expect(html).toContain('<section class="jv-section" id="s"');
+    expect(html).toContain("jv-callout-good");
+    expect(html).toContain("jv-grid2");
     expect(html).toContain("A -&gt; B");
     expect(html).toContain("Soon");
     expect(html).toContain("background:#e3fcef");
@@ -121,7 +121,7 @@ describe("components", () => {
     expect(html).toContain("PDCA");
     expect(html).toContain("<figcaption");
     expect(html).toContain("Unknown component &lt;Unknown&gt;");
-    const markers = html.match(/id="sb-arrow-\d+"/g)!;
+    const markers = html.match(/id="jv-arrow-\d+"/g)!;
     expect(new Set(markers).size).toBe(markers.length);
     // 5 steps → vertical
     expect(html).toContain('viewBox="0 0 220');
@@ -191,7 +191,7 @@ describe("store, comments, index, routes", () => {
     expect((await (await call("GET", "/api/briefings")).json())[0].id).toBe(b.id);
     const d = await (await call("GET", `/api/briefing/${b.id}?html=1`)).json();
     expect(d.tree[0].name).toBe("Callout");
-    expect(d.html).toContain("sb-callout");
+    expect(d.html).toContain("jv-callout");
     expect((await call("GET", "/api/briefing/nope")).status).toBe(404);
     expect((await call("POST", `/api/briefing/${b.id}/comments`, { text: "hello" })).status).toBe(200);
     expect((await call("POST", `/api/briefing/${b.id}/comments`, {})).status).toBe(400);

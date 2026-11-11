@@ -10,7 +10,7 @@ import { setRouterForTests } from "../src/providers/index.ts";
 setRouterForTests(null);
 
 export function tmpDataDir(): { dir: string; cleanup: () => void } {
-  const dir = mkdtempSync(join(tmpdir(), "second-brain-test-"));
+  const dir = mkdtempSync(join(tmpdir(), "jarvis-test-"));
   return { dir, cleanup: () => rmSync(dir, { recursive: true, force: true }) };
 }
 

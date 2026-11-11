@@ -17,7 +17,7 @@ const FONT = "font-family:ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,
 
 let markerCounter = 0;
 export function nextMarkerId(): string {
-  return `sb-arrow-${++markerCounter}`;
+  return `jv-arrow-${++markerCounter}`;
 }
 export function resetMarkerCounter(): void {
   markerCounter = 0;
@@ -45,7 +45,7 @@ function textLines(x: number, y: number, lines: string[], size: number, color: s
 }
 export function figure(inner: string, caption?: unknown): string {
   const cap = typeof caption === "string" && caption ? `<figcaption style="margin-top:8px;font-size:13px;color:${MUTED};text-align:center;${FONT}">${escapeHtml(caption)}</figcaption>` : "";
-  return `<figure class="sb-diagram" style="margin:20px 0;overflow-x:auto">${inner}${cap}</figure>`;
+  return `<figure class="jv-diagram" style="margin:20px 0;overflow-x:auto">${inner}${cap}</figure>`;
 }
 function svg(w: number, h: number, inner: string): string {
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${w} ${h}" width="${w}" height="${h}" style="max-width:100%;height:auto;display:block;margin:0 auto">${inner}</svg>`;

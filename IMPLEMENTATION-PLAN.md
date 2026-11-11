@@ -1,7 +1,7 @@
-# Second Brain — implementation plan
+# J.A.R.V.I.S. — implementation plan
 
 Rebuild of the system specified in `../TEAM-BRAIN-SYSTEM-DESCRIPTION.md`, renamed
-**second-brain** everywhere (package name, `~/.second-brain`, `SECOND_BRAIN_*` env vars).
+**jarvis** everywhere (package name, `~/.jarvis`, `JARVIS_*` env vars).
 One milestone per loop iteration; each milestone ends with `bun test` green and a commit.
 
 ## Status
@@ -17,8 +17,8 @@ One milestone per loop iteration; each milestone ends with `bun test` green and 
 | M6 | Onboarding: six-step `init` wizard (all defaults answerable with `--yes`; clone/select/create repo, author, embeddings with hardware detection and optional `ollama pull`, preset recommendation with overwrite confirmation, first reindex + smoke search, doctor), `doctor` with exact fix texts and `--json/--core-only/--port` (exit 1 on required failures), six shipped presets under `docs/examples/models/` parsed by a test, `config preset [name --show]`, `config set-inbox` | ✅ done |
 | M7 | Tasks (`task add/list/show/done/reopen/suggest`, `tasks`; files authoritative for status; `⚠ no links` flag), manual links (`link`, append-only sidecar, derived edges replaced), `note/ingest --task`, ingest honours the task block on update, HTTP `GET /api/tasks`, `POST /api/task`, `GET /api/task/:id`, `/done`, `/reopen`, `/suggest`, `POST /api/link` | ✅ done |
 | M8 | Presentations (`presentation share` with staging + atomic rename, asset-escape/symlink guards, id/slug uniqueness; `presentation promote` keeping the ULID with provenance; index projection with reaping; deck-viewer discovery via `/api/health` + `/api/contents`; `/api/presentations`, `/api/presentation/:slugOrId`), meeting summaries (`summarize`, `draftMeetingSummary` → `kind: meeting-summary` briefing with the three mandatory sections), inbox scan (`scan-inbox`: classification, 60 s settle, mkdir lock reclaimed only for dead pids on the same host, atomic `.state.json`, staged resume, per-folder isolation, archive with collision suffix) | ✅ done |
-| M9 | Chat ("Discuss"): dependency-free ACP JSON-RPC client over NDJSON stdio to `copilot --acp` (no fs/terminal capabilities, every permission request answered cancelled), one shared process, one ACP session per chat session with ULID ids, 60-min idle expiry, one in-flight prompt per session, item/briefing scopes grounded on the first turn (≤ 60 000 chars), brain scope with per-turn stop-word keyword retrieval (≤ 8 terms, 6 results, ≤ 8 000 chars), `POST /api/chat/sessions`, NDJSON `…/messages`, `…/cancel`, `DELETE`; chat model id from config (`chatModel`, `SECOND_BRAIN_CHAT_MODEL`); tested against a fake ACP agent process | ✅ done |
-| M10 | Browser extension rewritten as a typed thin client (MV3, single blocklist module, bundled Readability, opt-in auto-capture, popup with tasks/link/new-task against the now-existing routes, no dormant image code), macOS launcher (`second-brain-app/main.swift` + `bundle.sh`, compiles with swiftc), CI on Linux/macOS/Windows with the sqlite-vec doctor check, `scripts/eval-model.ts` with weighted objective checks, agent instructions (`docs/AGENT-INSTRUCTIONS.md`, `brain skill`) | ✅ done |
+| M9 | Chat ("Discuss"): dependency-free ACP JSON-RPC client over NDJSON stdio to `copilot --acp` (no fs/terminal capabilities, every permission request answered cancelled), one shared process, one ACP session per chat session with ULID ids, 60-min idle expiry, one in-flight prompt per session, item/briefing scopes grounded on the first turn (≤ 60 000 chars), jarvis scope with per-turn stop-word keyword retrieval (≤ 8 terms, 6 results, ≤ 8 000 chars), `POST /api/chat/sessions`, NDJSON `…/messages`, `…/cancel`, `DELETE`; chat model id from config (`chatModel`, `JARVIS_CHAT_MODEL`); tested against a fake ACP agent process | ✅ done |
+| M10 | Browser extension rewritten as a typed thin client (MV3, single blocklist module, bundled Readability, opt-in auto-capture, popup with tasks/link/new-task against the now-existing routes, no dormant image code), macOS launcher (`jarvis-app/main.swift` + `bundle.sh`, compiles with swiftc), CI on Linux/macOS/Windows with the sqlite-vec doctor check, `scripts/eval-model.ts` with weighted objective checks, agent instructions (`docs/AGENT-INSTRUCTIONS.md`, `jarvis skill`) | ✅ done |
 
 ## Status summary
 
@@ -31,7 +31,7 @@ on real Windows/Linux machines.
 ## Decisions taken during the rewrite (per spec §24)
 
 - Reindex reaps deleted docs incrementally and `--full` resets edges/entities too (§24.2.3).
-- Ollama URL is configurable (`SECOND_BRAIN_OLLAMA_URL`), not hardcoded (§24.2.10).
+- Ollama URL is configurable (`JARVIS_OLLAMA_URL`), not hardcoded (§24.2.10).
 - `--limit` and other integer flags are validated in the arg parser (§23).
 - `processContent` has a pass registry (`registerProcessPass`) so M3 plugs enrich/edges/refine in without touching sync; the server has a route registry for the same reason.
 - Glossary uses the real TOML parser plus a line scan for the `# Misheard as:` comment convention (§24.2.1).
@@ -60,7 +60,7 @@ web/                  index.html, src/{main,api,ui,discuss}.ts, styles.css → d
 src/chat/             ACP client, chat session service, streaming routes
 src/http.ts           route registry + JSON helpers
 extension/            MV3 extension sources + static assets → dist/ via scripts/build-extension.ts
-second-brain-app/     Swift launcher + bundle.sh
+jarvis-app/     Swift launcher + bundle.sh
 scripts/              build-web, build-extension, eval-model
 src/providers/        LLM providers (local, openaiCompat, copilot), models.toml, router, process-wide getRouter()
 tests/                bun test

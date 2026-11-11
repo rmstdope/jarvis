@@ -1,4 +1,4 @@
-// Second Brain macOS launcher: a WKWebView over the local service. Built by bundle.sh with swiftc (no Xcode project).
+// J.A.R.V.I.S. macOS launcher: a WKWebView over the local service. Built by bundle.sh with swiftc (no Xcode project).
 import Cocoa
 import WebKit
 import Network
@@ -11,7 +11,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
     var web: WKWebView!
     var backend: Process?
     var urlLabel: NSTextField!
-    let logURL = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Application Support/Second Brain/second-brain.log")
+    let logURL = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Application Support/jarvis/jarvis.log")
 
     func applicationDidFinishLaunching(_ n: Notification) {
         NSApp.setActivationPolicy(.regular)
@@ -35,9 +35,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
         let main = NSMenu()
         let app = NSMenuItem(); main.addItem(app)
         let appMenu = NSMenu(); app.submenu = appMenu
-        appMenu.addItem(withTitle: "About Second Brain", action: #selector(NSApplication.orderFrontStandardAboutPanel(_:)), keyEquivalent: "")
+        appMenu.addItem(withTitle: "About J.A.R.V.I.S.", action: #selector(NSApplication.orderFrontStandardAboutPanel(_:)), keyEquivalent: "")
         appMenu.addItem(.separator())
-        appMenu.addItem(withTitle: "Quit Second Brain", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
+        appMenu.addItem(withTitle: "Quit J.A.R.V.I.S.", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         let edit = NSMenuItem(); main.addItem(edit)
         let editMenu = NSMenu(title: "Edit"); edit.submenu = editMenu
         editMenu.addItem(withTitle: "Undo", action: Selector(("undo:")), keyEquivalent: "z")
@@ -54,11 +54,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
     }
     func buildWindow() {
         window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1280, height: 820), styleMask: [.titled, .closable, .miniaturizable, .resizable], backing: .buffered, defer: false)
-        window.title = "Second Brain"
+        window.title = "J.A.R.V.I.S."
         window.appearance = NSAppearance(named: .darkAqua)
         window.center()
         let cfg = WKWebViewConfiguration()
-        let marker = WKUserScript(source: "window.__SECOND_BRAIN_APP__ = true;", injectionTime: .atDocumentStart, forMainFrameOnly: true)
+        let marker = WKUserScript(source: "window.__JARVIS_APP__ = true;", injectionTime: .atDocumentStart, forMainFrameOnly: true)
         cfg.userContentController.addUserScript(marker)
         web = WKWebView(frame: .zero, configuration: cfg)
         web.navigationDelegate = self
@@ -89,7 +89,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
         probeBackend { ok in
             if ok { self.web.load(URLRequest(url: URL(string: BASE)!)) }
             else if attempt < 120 { DispatchQueue.main.asyncAfter(deadline: .now() + 1) { self.waitAndLoad(attempt: attempt + 1) } }
-            else { self.fatal("The Second Brain service did not become ready on port \(PORT) within 120 s. See \(self.logURL.path)") }
+            else { self.fatal("The J.A.R.V.I.S. service did not become ready on port \(PORT) within 120 s. See \(self.logURL.path)") }
         }
     }
     func repoPath() -> String? {
@@ -108,7 +108,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
     func startManagedBackend() {
         guard let repo = repoPath() else { return fatal("repo-path resource missing; rebuild with bundle.sh") }
         for f in ["src/server.ts", "src/cli.ts", "package.json", "bun.lock", "web/index.html"] where !FileManager.default.fileExists(atPath: "\(repo)/\(f)") {
-            return fatal("\(repo) does not look like the second-brain code repo (missing \(f))")
+            return fatal("\(repo) does not look like the jarvis code repo (missing \(f))")
         }
         guard let bun = findBun() else { return fatal("bun not found (install from https://bun.sh)") }
         try? FileManager.default.createDirectory(at: logURL.deletingLastPathComponent(), withIntermediateDirectories: true)
@@ -132,7 +132,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
         }
     }
     func fatal(_ msg: String) {
-        let a = NSAlert(); a.messageText = "Second Brain could not start"; a.informativeText = msg; a.alertStyle = .critical; a.runModal(); NSApp.terminate(nil)
+        let a = NSAlert(); a.messageText = "J.A.R.V.I.S. could not start"; a.informativeText = msg; a.alertStyle = .critical; a.runModal(); NSApp.terminate(nil)
     }
 
     // MARK: web view

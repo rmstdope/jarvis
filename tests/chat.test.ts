@@ -46,23 +46,23 @@ describe("chat service", () => {
     expect(retrievalTerms("What did we decide about the camera firmware and the zoom drift?")).toEqual(["decide", "camera", "firmware", "zoom", "drift"]);
     expect(retrievalTerms("a b c d e f g h i j k l m n o p q r s t").length).toBe(0);
     expect(chatModel()).toBe("gpt-4.1");
-    process.env.SECOND_BRAIN_CHAT_MODEL = "x";
+    process.env.JARVIS_CHAT_MODEL = "x";
     expect(chatModel()).toBe("x");
-    delete process.env.SECOND_BRAIN_CHAT_MODEL;
+    delete process.env.JARVIS_CHAT_MODEL;
   });
-  test("brain scope retrieves per turn; item scope grounds the first turn only; busy and expiry", async () => {
+  test("jarvis scope retrieves per turn; item scope grounds the first turn only; busy and expiry", async () => {
     const doc = await ingest(t.dir, { source: "note", title: "Zoom drift", body: "camera firmware zoom drift fixed in 11.8", author: "me" });
     let now = 1_000_000;
     const svc = new ChatService(t.dir, { spawn, now: () => now });
     await expect(svc.create({ type: "item", ids: [] })).rejects.toThrow(/exactly one id/);
     await expect(svc.create({ type: "item", ids: ["nope"] })).rejects.toThrow(/not found/);
-    const brain = await svc.create({ type: "brain", ids: [] });
-    const ev = await collect(svc.send(brain.id, "what about zoom drift?"));
+    const jarvis = await svc.create({ type: "jarvis", ids: [] });
+    const ev = await collect(svc.send(jarvis.id, "what about zoom drift?"));
     expect(ev[0]).toMatchObject({ type: "source", docId: doc.id, title: "Zoom drift" });
     expect(ev.filter((e) => e.type === "message").map((e) => e.text).join("")).toBe("Echo with context: what about zoom drift?");
     expect(ev.find((e) => e.type === "usage")).toMatchObject({ used: 1200, size: 128000 });
     expect(ev[ev.length - 1]).toMatchObject({ type: "done", stopReason: "end_turn" });
-    const ev2 = await collect(svc.send(brain.id, "pasta"));
+    const ev2 = await collect(svc.send(jarvis.id, "pasta"));
     expect(ev2.some((e) => e.type === "source")).toBe(false);
     expect(ev2.filter((e) => e.type === "message").map((e) => e.text).join("")).toBe("Echo: pasta");
     const item = await svc.create({ type: "item", ids: [doc.id] });
@@ -90,7 +90,7 @@ describe("chat service", () => {
     const call = (method: string, path: string, body?: unknown) => handle(new Request(`http://127.0.0.1:7281${path}`, { method, body: body === undefined ? undefined : JSON.stringify(body), headers: { "content-type": "application/json" } }), ctx);
     expect((await call("POST", "/api/chat/sessions", {})).status).toBe(400);
     expect((await call("POST", "/api/chat/sessions", { scope: { type: "item", ids: ["nope"] } })).status).toBe(404);
-    const s = await (await call("POST", "/api/chat/sessions", { scope: { type: "brain", ids: [] } })).json();
+    const s = await (await call("POST", "/api/chat/sessions", { scope: { type: "jarvis", ids: [] } })).json();
     expect(s.sessionId).toMatch(/^[0-9A-Z]{26}$/);
     const r = await call("POST", `/api/chat/sessions/${s.sessionId}/messages`, { message: "hello there" });
     expect(r.headers.get("content-type")).toBe("application/x-ndjson");

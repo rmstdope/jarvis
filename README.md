@@ -1,36 +1,36 @@
-# second-brain
+# J.A.R.V.I.S.
 
-A team-collaborative second brain. Shared truth is plain files in a git **content repo**; every
+J.A.R.V.I.S. is a team-collaborative knowledge base. Shared truth is plain files in a git **content repo**; every
 machine keeps a disposable SQLite index (FTS5 + sqlite-vec); models run locally first, with the
 GitHub Copilot CLI or any OpenAI-compatible API as fallbacks; a coding agent drives it all
 through the CLI and the local HTTP service.
 
 ## Quick start
 
-Second Brain is meant to be used **through a coding agent** (GitHub Copilot in VS Code or the Copilot
+J.A.R.V.I.S. is meant to be used **through a coding agent** (GitHub Copilot in VS Code or the Copilot
 CLI, Claude Code, or any equivalent). You describe what you want; the agent captures, searches, links
-and syncs by running the `brain` commands for you. The only commands a human normally runs are the
+and syncs by running the `jarvis` commands for you. The only commands a human normally runs are the
 one-time setup below.
 
 ### 1. Install and set up (once per machine)
 
 ```
-git clone <this repo> second-brain && cd second-brain
+git clone <this repo> jarvis && cd jarvis
 bun install
-bun run brain init            # six-step wizard: content repo, author, embeddings, model preset, first index, doctor
-bun run brain doctor          # anything that fails prints an exact fix
+bun run jarvis init            # six-step wizard: content repo, author, embeddings, model preset, first index, doctor
+bun run jarvis doctor          # anything that fails prints an exact fix
 ```
 
 `init` clones or creates the team's **content repo**, which is where the knowledge lives; you choose
-its path in the wizard (the default is `~/second-brain-content/<repo-name>`). Keep it separate from
+its path in the wizard (the default is `~/jarvis-content/<repo-name>`). Keep it separate from
 this code repo. Below, `<content-repo>` stands for whatever path you chose.
 
-### 2. Point your agent at the brain
+### 2. Point your agent at J.A.R.V.I.S.
 
 Give the agent the operating instructions and access to both repositories:
 
 ```
-bun run brain skill > <content-repo>/AGENTS.md   # or CLAUDE.md, or .github/copilot-instructions.md
+bun run jarvis skill > <content-repo>/AGENTS.md   # or CLAUDE.md, or .github/copilot-instructions.md
 ```
 
 Then open a session **in the content repo** (a VS Code multi-root workspace with this code repo and
@@ -44,29 +44,29 @@ copilot            # or: claude, or your agent of choice
 Optionally start the local service so the web UI and the browser extension work too:
 
 ```
-bun run brain serve           # http://127.0.0.1:7281 (run `bun run web:build` once first)
+bun run jarvis serve           # http://127.0.0.1:7281 (run `bun run web:build` once first)
 ```
 
-### 3. Talk to the brain
+### 3. Talk to J.A.R.V.I.S.
 
 Typical requests, and what the agent does underneath:
 
 | You say | The agent runs |
 |---|---|
-| "Save this article: https://…" / "Note that we decided X" | `brain ingest --url …`, `brain note "…"` |
-| "Pull in the transcript from today's meeting" | `brain meeting <file>` or `brain scan-inbox` |
-| "What do we know about zoom drift?" | `brain search "…"`, `brain ask "…"` (answers cite item ids) |
-| "I'll take the firmware follow-up" | `brain task add "…" --link <ids>` |
-| "Write a briefing on the Acorn roadmap" | `brain briefing components`, `brain briefing create`, edits the `.brief.mdx` |
-| "Share with the team" / "Get the latest" | `brain sync` (commit → pull → enrich → push) |
+| "Save this article: https://…" / "Note that we decided X" | `jarvis ingest --url …`, `jarvis note "…"` |
+| "Pull in the transcript from today's meeting" | `jarvis meeting <file>` or `jarvis scan-inbox` |
+| "What do we know about zoom drift?" | `jarvis search "…"`, `jarvis ask "…"` (answers cite item ids) |
+| "I'll take the firmware follow-up" | `jarvis task add "…" --link <ids>` |
+| "Write a briefing on the Acorn roadmap" | `jarvis briefing components`, `jarvis briefing create`, edits the `.brief.mdx` |
+| "Share with the team" / "Get the latest" | `jarvis sync` (commit → pull → enrich → push) |
 
 Summaries, tags, entity links and judged relations are added automatically during `sync` when a chat
-model is available (`brain models` shows what resolves); without one the brain still captures,
+model is available (`jarvis models` shows what resolves); without one J.A.R.V.I.S. still captures,
 indexes and searches.
 
 ## Commands (what the agent runs)
 
-`bun run brain help` lists everything. Humans rarely need these directly, but this is what the agent
+`bun run jarvis help` lists everything. Humans rarely need these directly, but this is what the agent
 is working with:
 
 | Command | What it does |
@@ -86,14 +86,14 @@ is working with:
 
 | Part | Where | Build / run |
 |---|---|---|
-| Core library + CLI | `src/core`, `src/cli.ts` | `bun run brain <command>` |
-| LLM providers + router | `src/providers` | `~/.second-brain/models.toml`, `brain config preset` |
-| Briefings + Confluence | `src/briefings` | `brain briefing …` |
-| HTTP service | `src/server.ts`, `src/http.ts`, `src/chat` | `brain serve` |
+| Core library + CLI | `src/core`, `src/cli.ts` | `bun run jarvis <command>` |
+| LLM providers + router | `src/providers` | `~/.jarvis/models.toml`, `jarvis config preset` |
+| Briefings + Confluence | `src/briefings` | `jarvis briefing …` |
+| HTTP service | `src/server.ts`, `src/http.ts`, `src/chat` | `jarvis serve` |
 | Web UI | `web/` | `bun run web:build` |
 | Browser extension (MV3) | `extension/` | `bun run extension:build`, load `extension/dist` unpacked |
-| macOS app | `second-brain-app/` | `./second-brain-app/bundle.sh` → `~/Applications/Second Brain.app` |
-| Model presets | `docs/examples/models/` | `brain config preset <name>` |
+| macOS app | `jarvis-app/` | `./jarvis-app/bundle.sh` → `~/Applications/J.A.R.V.I.S.app` |
+| Model presets | `docs/examples/models/` | `jarvis config preset <name>` |
 | Eval | `scripts/eval-model.ts` | `bun run scripts/eval-model.ts --model copilot:gpt-4.1` |
 
 `bun test` runs 124 tests (two-clone git sync, every pipeline pass, parsers, routes, the LLM providers and

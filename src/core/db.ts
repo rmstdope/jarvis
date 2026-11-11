@@ -23,7 +23,7 @@ function candidateSqliteLibs(): string[] {
 export function ensureCustomSqlite(): void {
   if (customSqliteSet) return;
   customSqliteSet = true;
-  if (process.env.SECOND_BRAIN_NO_CUSTOM_SQLITE) return;
+  if (process.env.JARVIS_NO_CUSTOM_SQLITE) return;
   for (const lib of candidateSqliteLibs()) {
     if (existsSync(lib)) {
       try {
@@ -75,7 +75,7 @@ export function indexDir(dataDir: string): string {
   return join(dataDir, ".index");
 }
 export function dbPath(dataDir: string): string {
-  return join(indexDir(dataDir), "brain.db");
+  return join(indexDir(dataDir), "jarvis.db");
 }
 
 /** Open the local projection. Callers own the lifecycle: open → work → close. */

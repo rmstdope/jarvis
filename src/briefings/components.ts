@@ -1,6 +1,6 @@
 /**
  * The component registry: metadata eagerly, renderer as a thunk. Shared by the web renderer,
- * the CLI (`brain briefing components`) and the Confluence publisher.
+ * the CLI (`jarvis briefing components`) and the Confluence publisher.
  */
 import { activityDiagram, blockDiagram, cycleDiagram, figure, pyramidDiagram, quadrants, sequenceDiagram, stackDiagram, stepFlow, timeline, accentColor, ACCENTS } from "./diagrams.ts";
 import { escapeHtml } from "./markdown.ts";
@@ -68,7 +68,7 @@ registerComponent(
   { id: "Section", name: "Section", category: "layout", description: "A titled section (h2) that feeds the table of contents.", props: [{ name: "title", type: "string", required: true, description: "Heading text" }, { name: "id", type: "string", description: "Anchor id override" }], snippet: '<Section title="Overview">\n\n…\n\n</Section>', keywords: ["section", "heading", "toc"], useCases: ["structure a briefing into navigable parts"] },
   () => (p, children, ctx) => {
     const id = s(p.id) || ctx.headingId?.(s(p.title)) || s(p.title).toLowerCase().replace(/[^a-z0-9]+/g, "-");
-    return `<section class="sb-section" id="${escapeHtml(id)}" style="margin:28px 0"><h2 style="margin:0 0 12px;font-size:22px;color:${TEXT};${FONT}">${escapeHtml(s(p.title))}</h2><div class="sb-section-body">${children}</div></section>`;
+    return `<section class="jv-section" id="${escapeHtml(id)}" style="margin:28px 0"><h2 style="margin:0 0 12px;font-size:22px;color:${TEXT};${FONT}">${escapeHtml(s(p.title))}</h2><div class="jv-section-body">${children}</div></section>`;
   },
 );
 registerComponent(
@@ -76,12 +76,12 @@ registerComponent(
   () => (p, children) => {
     const v = VARIANTS[s(p.variant, "accent")] ?? VARIANTS.accent;
     const title = s(p.title) || v.label;
-    return `<aside class="sb-callout sb-callout-${escapeHtml(s(p.variant, "accent"))}" style="margin:16px 0;padding:12px 16px;border-left:4px solid ${v.border};border-radius:8px;background:${v.bg};color:${TEXT};${FONT}">${title ? `<div style="font-weight:600;margin-bottom:4px">${escapeHtml(title)}</div>` : ""}${children}</aside>`;
+    return `<aside class="jv-callout jv-callout-${escapeHtml(s(p.variant, "accent"))}" style="margin:16px 0;padding:12px 16px;border-left:4px solid ${v.border};border-radius:8px;background:${v.bg};color:${TEXT};${FONT}">${title ? `<div style="font-weight:600;margin-bottom:4px">${escapeHtml(title)}</div>` : ""}${children}</aside>`;
   },
 );
 registerComponent(
   { id: "Grid2", name: "Grid2", category: "layout", description: "Two-column grid that collapses under 720 px.", props: [{ name: "gap", type: "number", description: "Gap in px" }], snippet: "<Grid2>\n\n<Callout>…</Callout>\n\n<Callout>…</Callout>\n\n</Grid2>", keywords: ["grid", "columns", "layout"], useCases: ["side-by-side comparison of two panels"] },
-  () => (p, children) => `<div class="sb-grid2" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,340px),1fr));gap:${typeof p.gap === "number" ? p.gap : 16}px;margin:16px 0">${children}</div>`,
+  () => (p, children) => `<div class="jv-grid2" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,340px),1fr));gap:${typeof p.gap === "number" ? p.gap : 16}px;margin:16px 0">${children}</div>`,
 );
 registerComponent(
   { id: "FlowDiagram", name: "FlowDiagram", category: "diagram", description: "A framed monospace ASCII block for hand-drawn flows.", props: [{ name: "caption", type: "string", description: "Caption" }], snippet: "<FlowDiagram caption=\"…\">\nA --> B --> C\n</FlowDiagram>", keywords: ["ascii", "flow", "monospace"], useCases: ["quick text flow without SVG"] },
@@ -89,14 +89,14 @@ registerComponent(
 );
 registerComponent(
   { id: "TagPill", name: "TagPill", category: "content", description: "Inline status pill.", props: [{ name: "variant", type: "neutral|good|warn|bad", description: "Colour" }], snippet: '<TagPill variant="good">Done</TagPill>', keywords: ["pill", "tag", "badge", "status"], useCases: ["inline status marker"] },
-  () => (p, children) => `<span class="sb-pill" style="display:inline-block;padding:1px 8px;border-radius:999px;font-size:12px;font-weight:600;color:#fff;background:${PILL[s(p.variant, "neutral")] ?? PILL.neutral};${FONT}">${children.replace(/<\/?p>/g, "").trim()}</span>`,
+  () => (p, children) => `<span class="jv-pill" style="display:inline-block;padding:1px 8px;border-radius:999px;font-size:12px;font-weight:600;color:#fff;background:${PILL[s(p.variant, "neutral")] ?? PILL.neutral};${FONT}">${children.replace(/<\/?p>/g, "").trim()}</span>`,
 );
 registerComponent(
   { id: "ProConList", name: "ProConList", category: "content", description: "Rows of pros, cons and nuances with coloured tags.", props: [{ name: "items", type: "[{kind:'pro'|'con'|'nuance', text}]", required: true, description: "Rows" }], snippet: "<ProConList items={[{kind:'pro', text:'…'},{kind:'con', text:'…'}]} />", keywords: ["pros", "cons", "tradeoffs"], useCases: ["weigh an option"] },
   () => (p) => {
     const items = Array.isArray(p.items) ? (p.items as Record<string, unknown>[]) : [];
     const color: Record<string, string> = { pro: "#14a05c", con: ACCENTS.red, nuance: ACCENTS.gold };
-    return `<ul class="sb-procon" style="list-style:none;padding:0;margin:12px 0;${FONT}">${items.map((it) => `<li style="display:flex;gap:10px;align-items:flex-start;padding:6px 0;border-bottom:1px solid ${BORDER}"><span style="flex:none;min-width:64px;text-align:center;padding:1px 8px;border-radius:999px;font-size:12px;font-weight:600;color:#fff;background:${color[s(it.kind)] ?? ACCENTS.slate}">${escapeHtml(s(it.kind, "note"))}</span><span style="color:${TEXT}">${escapeHtml(s(it.text))}</span></li>`).join("")}</ul>`;
+    return `<ul class="jv-procon" style="list-style:none;padding:0;margin:12px 0;${FONT}">${items.map((it) => `<li style="display:flex;gap:10px;align-items:flex-start;padding:6px 0;border-bottom:1px solid ${BORDER}"><span style="flex:none;min-width:64px;text-align:center;padding:1px 8px;border-radius:999px;font-size:12px;font-weight:600;color:#fff;background:${color[s(it.kind)] ?? ACCENTS.slate}">${escapeHtml(s(it.kind, "note"))}</span><span style="color:${TEXT}">${escapeHtml(s(it.text))}</span></li>`).join("")}</ul>`;
   },
 );
 registerComponent(
@@ -117,7 +117,7 @@ registerComponent(
   () => (p, _c, ctx) => {
     const item = (p.item ?? {}) as Record<string, unknown>;
     const title = s(item.title) || `item ${s(p.itemId).slice(0, 10)}… (not loaded)`;
-    return `<a class="sb-itemcard" href="${escapeHtml(ctx.itemHref(s(p.itemId)))}" style="display:block;margin:10px 0;padding:10px 14px;border:1px solid ${BORDER};border-radius:8px;text-decoration:none;color:${TEXT};${FONT}">${p.label ? `<div style="font-size:11px;text-transform:uppercase;color:${MUTED}">${escapeHtml(s(p.label))}</div>` : ""}<div style="font-weight:600">${escapeHtml(title)}</div>${item.source ? `<div style="font-size:12px;color:${MUTED}">${escapeHtml(s(item.source))}</div>` : ""}</a>`;
+    return `<a class="jv-itemcard" href="${escapeHtml(ctx.itemHref(s(p.itemId)))}" style="display:block;margin:10px 0;padding:10px 14px;border:1px solid ${BORDER};border-radius:8px;text-decoration:none;color:${TEXT};${FONT}">${p.label ? `<div style="font-size:11px;text-transform:uppercase;color:${MUTED}">${escapeHtml(s(p.label))}</div>` : ""}<div style="font-weight:600">${escapeHtml(title)}</div>${item.source ? `<div style="font-size:12px;color:${MUTED}">${escapeHtml(s(item.source))}</div>` : ""}</a>`;
   },
 );
 registerComponent(
@@ -128,7 +128,7 @@ registerComponent(
   { id: "Legend", name: "Legend", category: "content", description: "Swatch row explaining colours.", props: [{ name: "items", type: "[{color,label}]", description: "Swatches" }, { name: "title", type: "string", description: "Title" }], snippet: "<Legend items={[{color:'teal', label:'Now'},{color:'gold', label:'Later'}]} />", keywords: ["legend", "colors", "key"], useCases: ["explain diagram colours"] },
   () => (p) => {
     const items = Array.isArray(p.items) ? (p.items as Record<string, unknown>[]) : [];
-    return `<div class="sb-legend" style="display:flex;flex-wrap:wrap;gap:14px;align-items:center;margin:10px 0;font-size:13px;color:${TEXT};${FONT}">${p.title ? `<strong>${escapeHtml(s(p.title))}</strong>` : ""}${items.map((it) => `<span style="display:inline-flex;align-items:center;gap:6px"><span style="width:14px;height:14px;border-radius:3px;background:${accentColor(it.color, "slate")}"></span>${escapeHtml(s(it.label))}</span>`).join("")}</div>`;
+    return `<div class="jv-legend" style="display:flex;flex-wrap:wrap;gap:14px;align-items:center;margin:10px 0;font-size:13px;color:${TEXT};${FONT}">${p.title ? `<strong>${escapeHtml(s(p.title))}</strong>` : ""}${items.map((it) => `<span style="display:inline-flex;align-items:center;gap:6px"><span style="width:14px;height:14px;border-radius:3px;background:${accentColor(it.color, "slate")}"></span>${escapeHtml(s(it.label))}</span>`).join("")}</div>`;
   },
 );
 const diagramMeta = (id: string, description: string, props: PropMeta[], snippet: string, keywords: string[], useCases: string[]): ComponentMeta => ({ id, name: id, category: "diagram", description, props: [...props, { name: "caption", type: "string", description: "Caption" }], snippet, keywords, useCases });

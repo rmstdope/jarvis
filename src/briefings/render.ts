@@ -18,11 +18,11 @@ export function renderBriefingHtml(nodes: Node[], opts: RenderOptions = {}): str
         if (n.type === "raw") return n.content;
         const c = getComponent(n.name);
         const children = n.children.length === 1 && n.children[0].type === "raw" ? n.children[0].content : walk(n.children);
-        if (!c) return `<div class="sb-unknown" style="margin:12px 0;padding:8px 12px;border:1px dashed #b91c1c;border-radius:8px;color:#b91c1c;font-size:13px">Unknown component &lt;${escapeHtml(n.name)}&gt; (line ${n.line})</div>${children}`;
+        if (!c) return `<div class="jv-unknown" style="margin:12px 0;padding:8px 12px;border:1px dashed #b91c1c;border-radius:8px;color:#b91c1c;font-size:13px">Unknown component &lt;${escapeHtml(n.name)}&gt; (line ${n.line})</div>${children}`;
         try {
           return c.render()(n.props, children, ctx);
         } catch (e) {
-          return `<div class="sb-unknown" style="margin:12px 0;padding:8px 12px;border:1px dashed #b91c1c;border-radius:8px;color:#b91c1c;font-size:13px">&lt;${escapeHtml(n.name)}&gt; failed to render: ${escapeHtml((e as Error).message)}</div>`;
+          return `<div class="jv-unknown" style="margin:12px 0;padding:8px 12px;border:1px dashed #b91c1c;border-radius:8px;color:#b91c1c;font-size:13px">&lt;${escapeHtml(n.name)}&gt; failed to render: ${escapeHtml((e as Error).message)}</div>`;
         }
       })
       .join("\n");
