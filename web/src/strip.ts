@@ -18,6 +18,8 @@ export interface Strip {
   phoneList: HTMLElement;
   /** Redraw for these tabs; `active` is a tab key, "chat", or null when a sidebar page shows. */
   draw(tabs: Tab[], active: string | null): void;
+  /** Redraw the last tabs against the strip's current width, e.g. once the phone layout no longer hides it. */
+  refit(): void;
   /** Close the phone list; returns true when it was open. */
   closeLists(): boolean;
 }
@@ -98,5 +100,5 @@ export function createStrip(opts: StripOpts): Strip {
       closable ? h("button", { class: "jv-tablist-x", title: "Close tab", "aria-label": "Close tab", onClick: () => opts.close(key) }, "✕") : null);
     phoneList.append(entry("chat", "Chat", false), ...tabs.map((t) => entry(t.key, t.title, true)));
   }
-  return { el, phoneBtn, phoneList, draw, closeLists: () => { if (!phoneList.hidden) { closePhone(); return true; } if (moreOpen) { moreOpen = false; draw(last.tabs, last.active); return true; } return false; } };
+  return { el, phoneBtn, phoneList, draw, refit: () => draw(last.tabs, last.active), closeLists: () => { if (!phoneList.hidden) { closePhone(); return true; } if (moreOpen) { moreOpen = false; draw(last.tabs, last.active); return true; } return false; } };
 }

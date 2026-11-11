@@ -91,7 +91,9 @@ export function createShell(opts: { onNewChat: () => void; onSync: () => void; n
     syncBtn.setAttribute("title", syncLine.textContent);
   };
   const mqTablet = matchMedia(`(max-width: ${TABLET_MAX}px)`), mqPhone = matchMedia(`(max-width: ${PHONE_MAX}px)`);
-  const readMq = () => { tablet = mqTablet.matches; phone = mqPhone.matches; if (!phone) menu = false; paintFold(); };
+  // A browser fires resize before it reports media query changes, so the strip measured on resize may still have
+  // been hidden by the phone layout: refit it once the layout has changed.
+  const readMq = () => { tablet = mqTablet.matches; phone = mqPhone.matches; if (!phone) menu = false; paintFold(); opts.strip?.refit(); };
   mqTablet.addEventListener("change", readMq);
   mqPhone.addEventListener("change", readMq);
   const timer = setInterval(paintSync, 30000);
