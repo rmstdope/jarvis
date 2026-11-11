@@ -34,7 +34,7 @@ beforeAll(() => {
 });
 afterAll(() => t.cleanup());
 
-const EXPECTED_COMMANDS = ["note", "ingest", "reindex", "search", "serve", "sync", "process", "pipeline", "dedup", "youtube", "meeting", "enrich", "edges", "refine", "cleanup", "entities", "ask", "models", "config", "briefing", "init", "doctor", "task", "tasks", "link", "presentation", "scan-inbox", "summarize", "skill"];
+const EXPECTED_COMMANDS = ["note", "ingest", "reindex", "search", "serve", "sync", "process", "pipeline", "dedup", "youtube", "meeting", "enrich", "edges", "refine", "cleanup", "entities", "ask", "models", "config", "briefing", "init", "doctor", "task", "tasks", "initiative", "link", "presentation", "scan-inbox", "summarize", "skill"];
 const EXPECTED_ROUTES = ["/api/health", "/api/capture", "/api/search", "/api/sync", "/api/browse", "/api/recent", "/api/item-by-source", "/api/item/", "/api/filters", "/api/ask", "/api/briefings", "/api/briefing/", "/api/tasks", "/api/task", "/api/link", "/api/presentations", "/api/presentation/", "/api/chat/sessions"];
 
 describe("cli registry", () => {
@@ -84,6 +84,44 @@ describe("cli end to end (subprocess)", () => {
     const l = jarvis("link", id, taskId, "--relation", "follows_up");
     expect(l.out).toContain("linked:");
     expect(jarvis("link", id, id).code).toBe(1);
+  });
+  test("initiatives: add, file tasks from the task side, list, show, last-task notice, close, reopen (no model)", () => {
+    expect(jarvis("initiative", "list").out.trim()).toBe('no open initiatives — start one: jarvis initiative add "<title>" --goal "<what done looks like>"');
+    const noGoal = jarvis("initiative", "add", "Billing");
+    expect(noGoal.code).toBe(1);
+    expect(noGoal.out).toContain('An initiative needs a goal. Say what done looks like:\n  jarvis initiative add "<title>" --goal "<what done looks like>"');
+    const a = jarvis("initiative", "add", "Move billing", "--goal", "all on the new ledger");
+    expect(a.out).toMatch(/^initiative [0-9A-Z]{26}  Move billing  \(owner cli-tester\)/);
+    const id = a.out.match(/initiative ([0-9A-Z]{26})/)![1];
+    expect(jarvis("initiative", "list").out).toMatch(new RegExp(`${id}  ░{9}  0/0 {3}Move billing  \\(cli-tester\\)  no tasks yet`));
+    expect(jarvis("initiative", "show", id).out).toContain(`tasks — none yet: jarvis task add "<title>" --initiative ${id}`);
+    const t1 = jarvis("task", "add", "Freeze API", "--initiative", id).out.match(/task ([0-9A-Z]{26})/)![1];
+    const lone = jarvis("task", "add", "Standalone").out.match(/task ([0-9A-Z]{26})/)![1];
+    expect(jarvis("task", "list").out).toContain("Freeze API  (cli-tester)  ⚠ no links  · Move billing");
+    expect(jarvis("task", "list", "--initiative", id).out).not.toContain("Standalone");
+    expect(jarvis("task", "show", t1).out).toContain(`initiative: ${id}  Move billing`);
+    const sh = jarvis("initiative", "show", id).out;
+    expect(sh).toContain(`open  owner: cli-tester  progress: ░░░░░░░░░ 0 of 1 done\n\nall on the new ledger\n\ntasks (1)\n`);
+    expect(sh).toContain("through its tasks — none\n\nlinked directly — none\n\nsuggested — none: no model is available, so nothing is suggested (jarvis doctor shows why)");
+    expect(jarvis("initiative", "suggest", id).out.trim()).toBe("no suggestions: no model is available (jarvis doctor shows why)");
+    expect(jarvis("task", "move", lone, "--initiative", id).out).toContain("Standalone  → Move billing");
+    expect(jarvis("task", "move", lone, "--initiative", id).out).toContain("is already in Move billing");
+    expect(jarvis("task", "move", lone, "--none").out).toContain("Standalone  → no initiative (was Move billing)");
+    expect(jarvis("task", "move", lone).out).toContain("usage: jarvis task move <task> --initiative <id> | --none");
+    expect(jarvis("initiative", "show", lone).out).toContain(`${lone} is a task, not an initiative — jarvis task show ${lone}`);
+    expect(jarvis("initiative", "show", "01ZZZZZZ").out).toContain("no initiative 01ZZZZZZ — see them all: jarvis initiative list");
+    expect(jarvis("initiative", "close", id).out).toContain(`Move billing still has 1 open tasks.\nFinish or move them first, or close it anyway:\n  jarvis initiative close ${id} --anyway`);
+    const done = jarvis("task", "done", t1).out;
+    expect(done).toContain(`✓ done: Freeze API\n  That was the last open task in Move billing (1 of 1 done).\n  It stays open until someone closes it:\n    jarvis initiative close ${id}`);
+    expect(jarvis("initiative", "list").out).toContain("✓ all tasks done — close it?");
+    expect(jarvis("initiative", "show", id).out).toContain(`✓ all tasks done — close it with: jarvis initiative close ${id}`);
+    expect(jarvis("initiative", "edit", id, "--owner", "jonas", "--goal", "new").out.trim()).toBe("updated: Move billing  owner cli-tester → jonas, goal changed");
+    expect(jarvis("initiative", "close", id).out.trim()).toBe("closed: Move billing  1 of 1 done");
+    expect(jarvis("task", "add", "Late", "--initiative", id).out).toContain(`Move billing is closed. Reopen it first:\n  jarvis initiative reopen ${id}`);
+    expect(jarvis("initiative", "list", "--status", "closed").out).toMatch(/closed \d{4}-\d{2}-\d{2}$/m);
+    expect(jarvis("initiative", "reopen", id).out.trim()).toBe("○ reopened: Move billing");
+    expect(jarvis("reindex", "--full").code).toBe(0);
+    expect(jarvis("initiative", "show", id).out).toContain("tasks (1)");
   });
   test("passes without models skip cleanly; process and sync run local-only", () => {
     expect(jarvis("enrich").out).toMatch(/skipped \d+/);

@@ -12,6 +12,15 @@ export interface TaskBlock {
   due?: string;
   completed_at?: string;
   completed_by?: string;
+  /** Id of the initiative this task belongs to (at most one). */
+  initiative?: string;
+}
+/** The `initiative:` block of a source "initiative" doc; the goal is the body, progress is never stored. */
+export interface InitiativeBlock {
+  status: "open" | "closed";
+  owner: string;
+  closed_at?: string;
+  closed_by?: string;
 }
 export interface DocFrontmatter {
   id: string;
@@ -25,6 +34,7 @@ export interface DocFrontmatter {
   starred?: boolean;
   metadata?: Record<string, unknown>;
   task?: TaskBlock;
+  initiative?: InitiativeBlock;
   summary?: string;
   tags?: string[];
   mentions?: Mention[];
@@ -39,7 +49,7 @@ export interface Doc {
 /** Fixed key order for serialization. */
 const KEY_ORDER: (keyof DocFrontmatter)[] = [
   "id", "source", "source_url", "title", "author", "created_at", "updated_at", "updated_by",
-  "starred", "metadata", "task", "summary", "tags", "mentions", "proc_version",
+  "starred", "metadata", "task", "initiative", "summary", "tags", "mentions", "proc_version",
 ];
 const REQUIRED: (keyof DocFrontmatter)[] = ["id", "source", "title", "author", "created_at"];
 
@@ -77,6 +87,10 @@ export function parseDoc(text: string): Doc {
   if (obj.task && typeof obj.task === "object") {
     const t = obj.task as Record<string, unknown>;
     for (const k of ["due", "completed_at"]) if (t[k] instanceof Date) t[k] = k === "due" ? (t[k] as Date).toISOString().slice(0, 10) : (t[k] as Date).toISOString();
+  }
+  if (obj.initiative && typeof obj.initiative === "object") {
+    const i = obj.initiative as Record<string, unknown>;
+    if (i.closed_at instanceof Date) i.closed_at = (i.closed_at as Date).toISOString();
   }
   obj.id = String(obj.id);
   obj.title = String(obj.title);
