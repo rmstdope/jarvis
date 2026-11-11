@@ -13,6 +13,8 @@ export interface RefineResult {
   kept: number;
   dropped: number;
   malformedBatches: number;
+  /** Why the first malformed batch failed (the model's refusal, or its unparseable answer). */
+  firstError?: string;
   hallucinated: number;
   model: string | null;
   skipped?: string;
@@ -54,8 +56,9 @@ export async function refine(dataDir: string, router: Router | null, opts: { lim
         const j = parseJsonObject(out) as { results?: unknown };
         if (!Array.isArray(j.results)) throw new Error("no results array");
         results = (j.results as Record<string, unknown>[]).filter((r) => r && typeof r.src === "string" && typeof r.dst === "string").map((r) => ({ src: r.src as string, dst: r.dst as string, keep: !!r.keep, relation: typeof r.relation === "string" ? r.relation : undefined }));
-      } catch {
+      } catch (e) {
         res.malformedBatches++;
+        res.firstError ??= (e as Error).message;
         continue;
       }
       const byKey = new Map(batch.map((b) => [`${b.src}\t${b.dst}`, b]));

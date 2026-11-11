@@ -17,7 +17,12 @@ export interface WebEnv {
 
 const KEYS = ["window", "document", "localStorage", "location", "HTMLElement", "Node", "navigator", "KeyboardEvent", "Event", "MouseEvent", "fetch", "matchMedia"] as const;
 
+/** The env whose globals are installed now: a second install restores it first, so a test that boots twice
+ *  does not save the first fake `fetch` as the real one and leak it into every later test file (jv-m9l). */
+let active: WebEnv | null = null;
+
 export function installWebEnv(width = 1280): WebEnv {
+  active?.restore();
   const win = new Window({ url: "http://127.0.0.1:7281/", width, height: 800 });
   const g = globalThis as Record<string, unknown>;
   const saved: Record<string, unknown> = {};
@@ -71,10 +76,19 @@ export function installWebEnv(width = 1280): WebEnv {
   g.fetch = fakeFetch;
   g.matchMedia = matchMedia;
   (win as unknown as { fetch: unknown }).fetch = fakeFetch;
-  return {
+  let restored = false;
+  const env: WebEnv = {
     win, routes, calls,
     setWidth(px: number) { w = px; for (const l of [...listeners]) l(); },
     tick: (ms = 15) => new Promise((r) => setTimeout(r, ms)),
-    restore() { for (const k of KEYS) { if (saved[k] === undefined) delete g[k]; else g[k] = saved[k]; } win.close(); },
+    restore() {
+      if (restored) return; // idempotent: an afterEach after an explicit or nested restore must not clobber a newer env
+      restored = true;
+      if (active === env) active = null;
+      for (const k of KEYS) { if (saved[k] === undefined) delete g[k]; else g[k] = saved[k]; }
+      win.close();
+    },
   };
+  active = env;
+  return env;
 }

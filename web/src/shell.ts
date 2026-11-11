@@ -26,7 +26,8 @@ export function navFor(route: string): string {
   return route;
 }
 
-export type SyncState = { kind: "never" } | { kind: "syncing" } | { kind: "failed" } | { kind: "ok"; at: number };
+/** What the sidebar's sync line shows; `ok` with `failedSteps` shared the work but a model step failed (jv-m9l). */
+export type SyncState = { kind: "never" } | { kind: "syncing" } | { kind: "failed" } | { kind: "ok"; at: number; failedSteps?: string };
 
 export interface Shell {
   el: HTMLElement;
@@ -89,8 +90,8 @@ export function createShell(opts: { onNewChat: () => void; onSync: () => void; n
   };
   const paintSync = () => {
     syncBtn.toggleAttribute("disabled", sync.kind === "syncing");
-    syncLine.classList.toggle("jv-err", sync.kind === "failed");
-    syncLine.textContent = sync.kind === "syncing" ? "Syncing…" : sync.kind === "failed" ? "Sync failed" : sync.kind === "never" ? "Not synced yet" : `Synced ${ago(now() - sync.at)}`;
+    syncLine.classList.toggle("jv-err", sync.kind === "failed" || (sync.kind === "ok" && !!sync.failedSteps));
+    syncLine.textContent = sync.kind === "syncing" ? "Syncing…" : sync.kind === "failed" ? "Sync failed" : sync.kind === "never" ? "Not synced yet" : `Synced ${ago(now() - sync.at)}${sync.failedSteps ? ` · ${sync.failedSteps} failed` : ""}`;
     syncBtn.setAttribute("title", syncLine.textContent);
   };
   const mqTablet = matchMedia(`(max-width: ${TABLET_MAX}px)`), mqPhone = matchMedia(`(max-width: ${PHONE_MAX}px)`);

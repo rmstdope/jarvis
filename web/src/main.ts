@@ -1,4 +1,4 @@
-import { api, ApiError } from "./api.ts";
+import { api, ApiError, type SyncStepFailure } from "./api.ts";
 import { clear, h, modal, parseRoute, toast } from "./ui.ts";
 import { createChat, type Chat } from "./chat.ts";
 import { applyTheme, getPref, getTheme, KEY_LAST_SYNC, KEY_SYNC_SKIP, setPref } from "./prefs.ts";
@@ -36,23 +36,36 @@ async function confirmSync() {
     { label: "Sync", primary: true, onClick: () => { if (cb.checked) setPref(KEY_SYNC_SKIP, "1"); void runSync(); } },
   ], "Sync");
 }
-function lastSyncState() {
+function lastSyncState(failedSteps?: string) {
   const at = Number(getPref(KEY_LAST_SYNC));
-  return at > 0 ? { kind: "ok" as const, at } : { kind: "never" as const };
+  return at > 0 ? { kind: "ok" as const, at, failedSteps } : { kind: "never" as const };
+}
+const STEP_LABEL: Record<string, [label: string, unit: string]> = { enrich: ["enrichment", "item(s)"], refine: ["link refinement", "batch(es)"] };
+const stepLabel = (f: SyncStepFailure) => STEP_LABEL[f.step]?.[0] ?? f.step;
+/** The toast for a sync whose model steps failed: whether the work was shared, each step with its count and why, and doctor where it has the fix. */
+function failedStepsToast(r: { pushed: boolean }, failures: SyncStepFailure[]): string {
+  const steps = failures.map((f) => `${stepLabel(f)} failed for ${f.failed} ${STEP_LABEL[f.step]?.[1] ?? "time(s)"}${f.reason ? `: ${f.reason.replace(/\.$/, "")}` : ""}`).join("; ");
+  return `${r.pushed ? "Shared with the team" : "Not shared with the team"}, but ${steps}.${failures.some((f) => f.doctor) ? " Run \`jarvis doctor\` for the fix." : ""}`;
 }
 async function runSync() {
   shell.setSync({ kind: "syncing" });
   let failed = false;
+  let failedSteps: string | undefined;
   try {
     const r = await api.sync();
     if (r.conflicted.length) { failed = true; toast(`Sync stopped: resolve ${r.conflicted.length} merge conflict(s).`, "error", 8000); }
+    else if (r.failures?.length) {
+      setPref(KEY_LAST_SYNC, String(Date.now()));
+      failedSteps = r.failures.map(stepLabel).join(" and ");
+      toast(failedStepsToast(r, r.failures), "error", 12000);
+    }
     else { setPref(KEY_LAST_SYNC, String(Date.now())); toast(`Synced: ${r.committed} captured, ${r.committedEnriched} enriched, ${r.pulled ? "pulled" : "no pull"}, ${r.pushed ? "pushed" : "not pushed"}${r.collisions.length ? `, ${r.collisions.length} collision(s)` : ""}`); }
     if (parseRoute(location.hash).name === "browse") void render();
   } catch (e) {
     if (e instanceof ApiError && e.status === 409) toast("A sync is already running.", "error", 6000);
     else { failed = true; toast(`Sync failed: ${(e as Error).message}`, "error", 6000); }
   } finally {
-    shell.setSync(failed ? { kind: "failed" } : lastSyncState());
+    shell.setSync(failed ? { kind: "failed" } : lastSyncState(failedSteps));
   }
 }
 
