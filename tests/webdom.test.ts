@@ -48,6 +48,18 @@ describe("web ui helpers under happy-dom", () => {
     expect(ok).toBe(1);
     expect(document.querySelector(".modal-bg")).toBeNull();
   });
+  test("a click outside the modal over nothing focusable returns focus to where it was", () => {
+    const trigger = h("button", {}, "Open");
+    document.body.append(trigger);
+    trigger.focus();
+    const bg = modal("Title", h("p", {}, "body"), [{ label: "OK", onClick: () => {} }]);
+    expect(document.activeElement?.textContent).toBe("OK");
+    document.elementFromPoint = (() => document.body) as typeof document.elementFromPoint;
+    bg.dispatchEvent(new win.MouseEvent("click", { bubbles: true, clientX: 5, clientY: 5 }) as unknown as Event);
+    expect(document.querySelector(".modal-bg")).toBeNull();
+    expect(document.activeElement).toBe(trigger as unknown as Element);
+    trigger.remove();
+  });
   test("entryLine joins kind, who and when and leaves out what is missing", () => {
     expect(entryLine("note", "mia", "2026-02-03")).toBe("note · mia · 2026-02-03");
     expect(entryLine("note", undefined, "2026-02-03")).toBe("note · 2026-02-03");

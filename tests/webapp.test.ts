@@ -88,6 +88,21 @@ describe("keyboard", () => {
     expect(document.querySelector(".modal")).toBeNull();
     expect(q(".jv-user")).not.toBeNull();
   });
+  test("clicking the chat box behind the New chat dialog closes it and leaves the typing in the box (jv-m5e)", async () => {
+    const stored = JSON.stringify({ conversationId: "C1", scope: { type: "general", ids: [] }, messages: [{ role: "user", text: "hi" }, { role: "assistant", text: "Hello", status: "done" }] });
+    await boot("", { "jv.chat": stored });
+    q(".jv-new").focus();
+    q(".jv-new").click();
+    await env.tick(5);
+    expect(q(".modal h3").textContent).toBe("Start a new chat?");
+    // happy-dom has no layout: in a browser the chat box is what lies under the backdrop at the click.
+    document.elementFromPoint = (() => q(".jv-input")) as typeof document.elementFromPoint;
+    q(".modal-bg").dispatchEvent(new env.win.MouseEvent("click", { bubbles: true, clientX: 840, clientY: 728 }) as unknown as Event);
+    expect(document.querySelector(".modal")).toBeNull();
+    // Focus back on New chat would let the next typed space start a new chat and drop the words before it.
+    expect(document.activeElement?.className).toBe("jv-input");
+    expect(q(".jv-user").textContent).toBe("hi");
+  });
   test("/ jumps to the typing box unless a field has focus", async () => {
     await boot();
     (document.activeElement as HTMLElement | null)?.blur();
