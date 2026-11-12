@@ -5,7 +5,7 @@ import { posix } from "node:path";
 import { Database } from "bun:sqlite";
 import * as sqliteVec from "sqlite-vec";
 import { configIsMalformed, configPath, loadConfig, resolveDataDir } from "./config.ts";
-import { CHAT_PROBE_TIMEOUT_MS, EMBEDDING_DIMS } from "./constants.ts";
+import { CHAT_PROBE_TIMEOUT_MS, EMBEDDING_DIMS, PROBE_TIMEOUT_MS } from "./constants.ts";
 import { ensureCustomSqlite } from "./db.ts";
 import { getEmbedder } from "./embed.ts";
 import { hasRemote, isWorkTree } from "./git.ts";
@@ -179,11 +179,16 @@ export async function doctor(opts: DoctorOpts = {}): Promise<DoctorReport> {
     refused.push(...probed.filter((x) => x.probe.kind === "refused").map((x) => x.e));
     const avail = router.entries.filter((e) => e.available && !refused.includes(e));
     // When only refused ids remain, the copilot-model / openai-model failures above are the whole story: every task would route to them.
-    // An openai-compat server whose key is set (or needs none) and still did not answer is down or at the wrong baseUrl: name it.
-    const silent = [...new Set(router.entries.filter((e) => !e.available && e.entry.provider === "openai-compat" && e.entry.baseUrl && !(e.entry.apiKeyEnv && !process.env[e.entry.apiKeyEnv])).map((e) => e.entry.baseUrl!))];
+    // An openai-compat server whose key is set (or needs none) and whose connection fails is down or at the wrong baseUrl: name it.
+    // A server that answers with an error status (wrong key, wrong path) is not silent and keeps the generic line.
+    const generic = "start Ollama / install the Copilot CLI / set OPENAI_API_KEY (or the key env named in models.toml)";
+    const down = router.entries.filter((e) => !e.available);
+    const candidates = [...new Set(down.filter((e) => e.entry.provider === "openai-compat" && e.entry.baseUrl && !(e.entry.apiKeyEnv && !process.env[e.entry.apiKeyEnv])).map((e) => e.entry.baseUrl!))];
+    const silent = avail.length ? [] : (await Promise.all(candidates.map(async (u) => ((await connects(u)) ? null : u)))).filter((u): u is string => u !== null);
+    const others = down.some((e) => !(e.entry.baseUrl && silent.includes(e.entry.baseUrl)));
     const unreachable = silent.length
-      ? warn("models-available", `no configured model is reachable: nothing answers at ${silent.join(", ")}`, `start the server at ${silent.join(" / ")}   or   change baseUrl in ${mp}`)
-      : warn("models-available", "no configured model is reachable", "start Ollama / install the Copilot CLI / set OPENAI_API_KEY (or the key env named in models.toml)");
+      ? warn("models-available", `no configured model is reachable: nothing answers at ${silent.join(", ")}`, `start the server at ${silent.join(" / ")}   or   change baseUrl in ${mp}${others ? `;   for the other models: ${generic}` : ""}`)
+      : warn("models-available", "no configured model is reachable", generic);
     if (avail.length || !refused.length) checks.push(router.entries.length === 0 ? warn("models-available", "no chat models configured (Tier 0: capture/search only)", "jarvis config preset <name>") : avail.length ? ok("models-available", false, avail.map((e) => `${e.entry.provider}:${e.entry.id}`).join(", ")) : unreachable);
     const missing = unresolvedKinds(router);
     if (avail.length || !refused.length) checks.push(missing.length ? warn("models-tasks", `no model for: ${missing.join(", ")}`, "add a model with quality >= the task's minimum to models.toml") : ok("models-tasks", false, "every task kind resolves"));
@@ -213,6 +218,16 @@ export async function doctor(opts: DoctorOpts = {}): Promise<DoctorReport> {
     if (c.status === "fail") summary.healthy = false;
   }
   return { summary, checks };
+}
+
+/** Whether anything answers HTTP at `baseUrl`/models, whatever its status: false only when the connection fails or times out. */
+async function connects(baseUrl: string): Promise<boolean> {
+  try {
+    await fetch(`${baseUrl.replace(/\/$/, "")}/models`, { signal: AbortSignal.timeout(PROBE_TIMEOUT_MS) });
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 /** What one chat probe of an openai-compat entry showed: answered, refused (the id), or neither (a key, quota, server or network fault). */
