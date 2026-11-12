@@ -181,7 +181,10 @@ export async function doctor(opts: DoctorOpts = {}): Promise<DoctorReport> {
             ? warn("models-config", `${mp}: ignored ${ignored.join(", ")}`, `spell each table [[model]] and give it a provider and id, with provider local, copilot or openai-compat, in ${mp}   or   jarvis config preset <name>`)
             : ok("models-config", false, mp),
   );
-  if (router) {
+  if (routerError !== null) {
+    // The router could not load models.toml; say what that leaves unchecked rather than dropping the lines.
+    for (const name of ["models-available", "models-tasks"]) checks.push(warn(name, "skipped: models.toml could not be loaded", "fix models.toml as the models-config line says"));
+  } else if (router) {
     // A named Copilot id outside the CLI's catalog is refused at run time (`--model … is not available`).
     const named = router.entries.filter((e) => e.available && e.entry.provider === "copilot" && e.entry.id !== COPILOT_CLI_DEFAULT && e.entry.id !== "auto");
     const catalog = named.length ? await (opts.copilotCatalog ?? (() => readCopilotModelCatalog(undefined, which)))() : null;
