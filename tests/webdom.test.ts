@@ -48,17 +48,26 @@ describe("web ui helpers under happy-dom", () => {
     expect(ok).toBe(1);
     expect(document.querySelector(".modal-bg")).toBeNull();
   });
-  test("a click outside the modal over nothing focusable returns focus to where it was", () => {
+  test("a click outside the modal over nothing it can type into returns focus to where it was", () => {
     const trigger = h("button", {}, "Open");
-    document.body.append(trigger);
-    trigger.focus();
-    const bg = modal("Title", h("p", {}, "body"), [{ label: "OK", onClick: () => {} }]);
-    expect(document.activeElement?.textContent).toBe("OK");
-    document.elementFromPoint = (() => document.body) as typeof document.elementFromPoint;
-    bg.dispatchEvent(new win.MouseEvent("click", { bubbles: true, clientX: 5, clientY: 5 }) as unknown as Event);
-    expect(document.querySelector(".modal-bg")).toBeNull();
-    expect(document.activeElement).toBe(trigger as unknown as Element);
-    trigger.remove();
+    const off = h("textarea", { disabled: "" });
+    const heading = h("h1", { tabindex: "-1" }, "Title");
+    document.body.append(trigger, off, heading);
+    const hitTest = document.elementFromPoint;
+    try {
+      for (const under of [document.body, off, heading]) {
+        trigger.focus();
+        const bg = modal("Title", h("p", {}, "body"), [{ label: "OK", onClick: () => {} }]);
+        expect(document.activeElement?.textContent).toBe("OK");
+        document.elementFromPoint = (() => document.querySelector(".modal-bg") ?? under) as typeof document.elementFromPoint;
+        bg.dispatchEvent(new win.MouseEvent("click", { bubbles: true, clientX: 5, clientY: 5 }) as unknown as Event);
+        expect(document.querySelector(".modal-bg")).toBeNull();
+        expect(document.activeElement).toBe(trigger as unknown as Element);
+      }
+    } finally {
+      document.elementFromPoint = hitTest;
+      trigger.remove(); off.remove(); heading.remove();
+    }
   });
   test("entryLine joins kind, who and when and leaves out what is missing", () => {
     expect(entryLine("note", "mia", "2026-02-03")).toBe("note · mia · 2026-02-03");

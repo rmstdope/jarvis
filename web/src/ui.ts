@@ -42,13 +42,14 @@ export function modal(title: string, body: Child, actions: { label: string; prim
   const bg = h("div", { class: "modal-bg" });
   const close = (to: HTMLElement | null = before) => { document.removeEventListener("keydown", onKey, true); bg.remove(); to?.focus?.(); };
   const under = (e: MouseEvent): HTMLElement | null => {
-    const el = document.elementFromPoint?.(e.clientX, e.clientY)?.closest<HTMLElement>("input, textarea, select, button, a[href], [tabindex]");
+    const el = document.elementFromPoint?.(e.clientX, e.clientY)?.closest<HTMLElement>('input, textarea, select, button, a[href], [tabindex]:not([tabindex="-1"])');
     return el && !(el as HTMLInputElement).disabled ? el : null;
   };
   const onKey = (e: Event) => { if ((e as KeyboardEvent).key === "Escape") { e.preventDefault(); e.stopPropagation(); close(); } };
   const buttons = actions.map((a) => h("button", { class: a.primary ? "primary" : "", onClick: () => { close(); a.onClick(); } }, a.label));
   const box = h("div", { class: "modal", role: "dialog", "aria-modal": "true", "aria-label": title }, h("h3", { style: "margin-top:0" }, title), body, h("div", { class: "row", style: "justify-content:flex-end;margin-top:14px" }, ...buttons));
   bg.appendChild(box);
+  // The backdrop goes first, or the hit-test finds the backdrop instead of what lies under it.
   bg.addEventListener("click", (e) => { if (e.target === bg) { bg.remove(); close(under(e as MouseEvent) ?? before); } });
   document.addEventListener("keydown", onKey, true);
   document.body.appendChild(bg);
