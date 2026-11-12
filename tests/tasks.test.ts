@@ -1,8 +1,9 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { addTask, listTasks, showTask, setTaskStatus, suggestLinks } from "../src/core/tasks.ts";
-import { link } from "../src/core/links.ts";
+import { addInitiative } from "../src/core/initiatives.ts";
+import { addTask, listTasks, showTask, setTaskStatus, suggestLinks, updateTask } from "../src/core/tasks.ts";
+import { link, unlink } from "../src/core/links.ts";
 import { ingest } from "../src/core/ingest.ts";
 import { computeEdges } from "../src/core/edges.ts";
 import { readDocFile } from "../src/core/docs.ts";
@@ -70,6 +71,13 @@ describe("tasks", () => {
     expect(ids.indexOf(d3.id)).toBeLessThan(ids.indexOf(d2.id) < 0 ? 99 : ids.indexOf(d2.id));
     expect(s.every((x) => /edge|search match|keyword match/.test(x.reason))).toBe(true);
   });
+
+  test("suggest: never offers the initiative the task already belongs to", async () => {
+    const ini = await addInitiative(t.dir, { title: "Camera firmware", goal: "camera firmware zoom fix shipped", author: "me" });
+    const task = await addTask(t.dir, { title: "Ship camera firmware zoom fix", author: "me", initiative: ini.id });
+    await reindex(t.dir);
+    expect((await suggestLinks(t.dir, task.id, { limit: 5 })).map((x) => x.id)).not.toContain(ini.id);
+  });
 });
 
 describe("links", () => {
@@ -121,5 +129,27 @@ describe("links", () => {
     expect((await call("POST", "/api/link", { src: doc.id, dst: "01NOPE" })).status).toBe(404);
     const sug = await (await call("GET", `/api/task/${made.id}/suggest`)).json();
     expect(Array.isArray(sug.suggestions)).toBe(true);
+  });
+});
+
+describe("updateTask and unlink (jv-oya.4)", () => {
+  test("updateTask changes only due and owner, and a null due clears it", async () => {
+    const a = await addTask(t.dir, { title: "Runbook", due: "2026-11-20", author: "me" });
+    const r = await updateTask(t.dir, a.id, { due: "2026-11-13", owner: "sam", author: "me" });
+    expect(r).toMatchObject({ title: "Runbook", due: { from: "2026-11-20", to: "2026-11-13" }, owner: { from: "me", to: "sam" } });
+    expect(readDocFile(t.dir, a.id)!.frontmatter.task).toEqual({ status: "open", owner: "sam", due: "2026-11-13" });
+    await updateTask(t.dir, a.id, { due: null });
+    expect(readDocFile(t.dir, a.id)!.frontmatter.task!.due).toBeUndefined();
+    await expect(updateTask(t.dir, a.id, { due: "soon" })).rejects.toThrow(/YYYY-MM-DD/);
+    await expect(updateTask(t.dir, "nope", { due: "2026-11-13" })).rejects.toThrow(/not found/);
+  });
+  test("unlink removes the manual edge from the sidecar and the index", async () => {
+    const a = await ingest(t.dir, { source: "note", title: "A", body: "alpha", author: "me" });
+    const b = await ingest(t.dir, { source: "note", title: "B", body: "beta", author: "me" });
+    link(t.dir, a.id, [b.id], { relation: "follows_up", author: "me" });
+    expect(unlink(t.dir, a.id, b.id, "follows_up")).toBe(true);
+    expect(unlink(t.dir, a.id, b.id, "follows_up")).toBe(false);
+    expect(existsSync(join(t.dir, "edges", `${a.id}.jsonl`))).toBe(false);
+    expect(withDb(t.dir, (db) => db.query("SELECT count(*) c FROM edges WHERE src = ?").get(a.id) as { c: number }).c).toBe(0);
   });
 });

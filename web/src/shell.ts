@@ -1,5 +1,6 @@
 /** The app shell: sidebar (foldable to a rail, a slide-in menu on phones), look switch and sync line. */
 import { ago, append, h } from "./ui.ts";
+import type { Strip } from "./strip.ts";
 import { getPref, getTheme, KEY_FOLDED, setPref, setTheme, type Theme } from "./prefs.ts";
 
 export const TABLET_MAX = 999;
@@ -8,9 +9,10 @@ const isMac = () => /Mac|iPhone|iPad/.test(navigator.platform || navigator.userA
 /** "⌘⇧S" on a Mac, "Ctrl+Shift+S" elsewhere. */
 export function shortcut(key: string): string { return isMac() ? `⌘⇧${key}` : `Ctrl+Shift+${key}`; }
 
-/** [route, sidebar label, rail name, icon] for the four pages under "Your knowledge". */
+/** [route, sidebar label, rail name, icon] for the pages under "Your knowledge". */
 export const PAGES: [string, string, string, string][] = [
   ["browse", "Browse & search", "Browse", "⌕"],
+  ["initiatives", "Initiatives", "Initiatives", "◎"],
   ["capture", "Capture", "Capture", "✎"],
   ["briefings", "Briefings", "Briefings", "▤"],
   ["presentations", "Presentations", "Slides", "▣"],
@@ -18,12 +20,14 @@ export const PAGES: [string, string, string, string][] = [
 /** Which sidebar entry a route lights up. */
 export function navFor(route: string): string {
   if (route === "item" || route === "search" || route === "tasks") return "browse";
+  if (route === "initiative") return "initiatives";
   if (route === "briefing") return "briefings";
   if (route === "presentation") return "presentations";
   return route;
 }
 
-export type SyncState = { kind: "never" } | { kind: "syncing" } | { kind: "failed" } | { kind: "ok"; at: number };
+/** What the sidebar's sync line shows; `ok` with `failedSteps` shared the work but a model step failed (jv-m9l). */
+export type SyncState = { kind: "never" } | { kind: "syncing" } | { kind: "failed" } | { kind: "ok"; at: number; failedSteps?: string };
 
 export interface Shell {
   el: HTMLElement;
@@ -40,7 +44,7 @@ export interface Shell {
 }
 
 /** Build the shell. `onNewChat` and `onSync` are the two actions the sidebar owns. */
-export function createShell(opts: { onNewChat: () => void; onSync: () => void; now?: () => number }): Shell {
+export function createShell(opts: { onNewChat: () => void; onSync: () => void; now?: () => number; strip?: Strip; onNav?: () => void }): Shell {
   const now = opts.now ?? (() => Date.now());
   let userFolded = getPref(KEY_FOLDED) === "1";
   let tablet = false, phone = false, menu = false;
@@ -52,7 +56,7 @@ export function createShell(opts: { onNewChat: () => void; onSync: () => void; n
   const dot = h("span", { class: "jv-dot", title: "Conversation in progress", hidden: "" });
   dot.hidden = true;
   const entry = (route: string, label: string, rail: string, icon: string, extra?: Node) =>
-    h("a", { class: "jv-nav", href: `#/${route}`, "data-route": route, title: label, onClick: () => closeMenu() }, h("span", { class: "ic" }, icon), h("span", { class: "lbl" }, label), h("span", { class: "rl" }, rail), extra);
+    h("a", { class: "jv-nav", href: `#/${route}`, "data-route": route, title: label, onClick: () => { closeMenu(); opts.onNav?.(); } }, h("span", { class: "ic" }, icon), h("span", { class: "lbl" }, label), h("span", { class: "rl" }, rail), extra);
   const chatEntry = entry("chat", "Chat", "Chat", "◈", dot);
   const nav = h("nav", { class: "jv-navlist", "aria-label": "Main" }, chatEntry, h("div", { class: "jv-sec" }, "Your knowledge"), ...PAGES.map(([r, l, rl, ic]) => entry(r, l, rl, ic)));
   const syncLine = h("span", { class: "jv-syncline lbl" });
@@ -64,10 +68,10 @@ export function createShell(opts: { onNewChat: () => void; onSync: () => void; n
     newBtn, nav, h("div", { class: "jv-grow" }),
     h("div", { class: "jv-foot" }, syncLine, syncBtn, themeSwitch));
   const menuBtn = h("button", { class: "jv-menu", "aria-label": "Menu", "aria-expanded": "false", onClick: () => (menu ? closeMenu() : openMenu()) }, "☰");
-  const phoneBar = h("header", { class: "jv-phonebar" }, menuBtn, h("span", { class: "jv-name" }, "J.A.R.V.I.S."), h("button", { class: "jv-pnew", title: `New chat (${shortcut("O")})`, "aria-label": "New chat", onClick: () => opts.onNewChat() }, "＋"));
+  const phoneBar = h("header", { class: "jv-phonebar" }, menuBtn, h("span", { class: "jv-name" }, "J.A.R.V.I.S."), opts.strip?.phoneBtn ?? null, h("button", { class: "jv-pnew", title: `New chat (${shortcut("O")})`, "aria-label": "New chat", onClick: () => opts.onNewChat() }, "＋"));
   const backdrop = h("div", { class: "jv-backdrop", onClick: () => closeMenu() });
   const main = h("main", { class: "jv-main", id: "jv-main" });
-  append(root, [side, backdrop, h("div", { class: "jv-content" }, phoneBar, main)]);
+  append(root, [side, backdrop, h("div", { class: "jv-content" }, phoneBar, opts.strip?.phoneList ?? null, opts.strip?.el ?? null, main)]);
 
   const paintTheme = () => { const t = getTheme(); for (const b of themeBtns) b.setAttribute("aria-pressed", String(b.getAttribute("data-theme-choice") === t)); };
   const paintFold = () => {
@@ -80,11 +84,14 @@ export function createShell(opts: { onNewChat: () => void; onSync: () => void; n
     foldBtn.title = `${label} (${shortcut("S")})`;
     foldBtn.setAttribute("aria-label", label);
     menuBtn.setAttribute("aria-expanded", String(phone && menu));
+    // The layout classes change the strip's width without a resize (folding), or after the resize event (a browser
+    // reports media query changes after it, so the strip may have been measured while the phone layout hid it).
+    opts.strip?.refit();
   };
   const paintSync = () => {
     syncBtn.toggleAttribute("disabled", sync.kind === "syncing");
-    syncLine.classList.toggle("jv-err", sync.kind === "failed");
-    syncLine.textContent = sync.kind === "syncing" ? "Syncing…" : sync.kind === "failed" ? "Sync failed" : sync.kind === "never" ? "Not synced yet" : `Synced ${ago(now() - sync.at)}`;
+    syncLine.classList.toggle("jv-err", sync.kind === "failed" || (sync.kind === "ok" && !!sync.failedSteps));
+    syncLine.textContent = sync.kind === "syncing" ? "Syncing…" : sync.kind === "failed" ? "Sync failed" : sync.kind === "never" ? "Not synced yet" : `Synced ${ago(now() - sync.at)}${sync.failedSteps ? ` · ${sync.failedSteps} failed` : ""}`;
     syncBtn.setAttribute("title", syncLine.textContent);
   };
   const mqTablet = matchMedia(`(max-width: ${TABLET_MAX}px)`), mqPhone = matchMedia(`(max-width: ${PHONE_MAX}px)`);

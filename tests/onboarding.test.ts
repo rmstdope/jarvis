@@ -2,12 +2,16 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { listPresets, readPreset, recommendPreset, applyPreset } from "../src/core/presets.ts";
-import { parseModelsToml } from "../src/providers/models.ts";
+import { modelsPath, parseModelsToml } from "../src/providers/models.ts";
+import { createRouter, defaultProviderFactory } from "../src/providers/router.ts";
+import { setRouterForTests } from "../src/providers/index.ts";
+import { parseCopilotModelCatalog, readCopilotModelCatalog } from "../src/providers/copilot.ts";
 import { doctor, checkSqliteVec, checkJarvisCommand, formatDoctor } from "../src/core/doctor.ts";
 import { init } from "../src/core/init.ts";
 import { loadConfig, resetConfigCache } from "../src/core/config.ts";
 import { ingest } from "../src/core/ingest.ts";
 import type { SlidecraftStatus } from "../src/core/presentations.ts";
+import { stepFailure } from "../src/core/sync.ts";
 import { clearEmbedder, tmpDataDir, useFakeEmbedder } from "./helpers.ts";
 
 let t: ReturnType<typeof tmpDataDir>;
@@ -38,8 +42,8 @@ describe("presets", () => {
     expect(names).toEqual(["copilot-only", "cpu-only-minimal", "mac-apple-silicon-16gb", "mac-apple-silicon-32gb", "windows-gpu-12gb", "windows-low-vram"]);
     for (const n of names) expect(() => parseModelsToml(readPreset(n))).not.toThrow();
     expect(parseModelsToml(readPreset("cpu-only-minimal")).models).toEqual([]);
-    expect(parseModelsToml(readPreset("copilot-only")).models[0]).toMatchObject({ provider: "copilot", id: "gpt-4.1", reasoningEffortByTask: { "edge-judge": "xhigh" } });
-    expect(parseModelsToml(readPreset("mac-apple-silicon-32gb")).models.map((m) => m.id)).toEqual(["gemma4:26b", "qwen3:35b", "gpt-4.1"]);
+    expect(parseModelsToml(readPreset("copilot-only")).models[0]).toMatchObject({ provider: "copilot", id: "default" });
+    expect(parseModelsToml(readPreset("mac-apple-silicon-32gb")).models.map((m) => m.id)).toEqual(["gemma4:26b", "qwen3:35b", "default"]);
     expect(parseModelsToml(readPreset("windows-low-vram")).preference).toEqual(["copilot", "openai-compat"]);
     expect(parseModelsToml(readPreset("windows-low-vram")).models[1]).toMatchObject({ provider: "openai-compat", apiKeyEnv: "OPENAI_API_KEY" });
     expect(() => readPreset("nope")).toThrow(/unknown preset/);
@@ -196,6 +200,180 @@ describe("doctor jarvis-command", () => {
     const r = await doctor({ coreOnly: true, which: (b) => (b === "jarvis" ? null : `/bin/${b}`), codeRepo: "/code/jarvis", home: "/nonexistent-home" });
     expect(r.checks.find((c) => c.name === "jarvis-command")!.status).toBe("warn");
     expect(r.checks.filter((c) => c.status === "fail").every((c) => c.name !== "jarvis-command")).toBe(true);
+  });
+});
+
+describe("doctor: a Copilot model id the account refuses (jv-5el)", () => {
+  const copilotRouter = (ids: string[]) =>
+    createRouter({
+      config: { preference: ["copilot"], models: ids.map((id) => ({ provider: "copilot" as const, id, quality: "high" as const, bestFor: [] })), source: "file" },
+      factory: () => ({ name: "copilot", available: async () => true, complete: async () => "" }),
+    });
+  afterEach(() => setRouterForTests(null));
+
+  test("a configured id missing from the Copilot catalog fails with an exact fix line", async () => {
+    setRouterForTests(await copilotRouter(["gpt-4.1"]));
+    const r = await doctor({ coreOnly: true, which: (b) => `/bin/${b}`, copilotCatalog: async () => ["gpt-5-mini", "gpt-5.4"] });
+    const c = r.checks.find((x) => x.name === "copilot-model");
+    expect(c).toMatchObject({ status: "fail", detail: 'the Copilot CLI does not offer model "gpt-4.1"' });
+    expect(c!.fix).toBe(`set id = "default" for gpt-4.1 in ${modelsPath()}   or   jarvis config preset <name>`);
+    expect(r.summary.healthy).toBe(false);
+    // Only refused ids: no line that says a model is reachable or that every task resolves.
+    expect(r.checks.find((x) => x.name === "models-available")).toBeUndefined();
+    expect(r.checks.find((x) => x.name === "models-tasks")).toBeUndefined();
+  });
+
+  test("beside an offered id, only the refused one is failed and the offered one is listed", async () => {
+    setRouterForTests(await copilotRouter(["gpt-4.1", "gpt-5-mini"]));
+    const r = await doctor({ coreOnly: true, which: (b) => `/bin/${b}`, copilotCatalog: async () => ["gpt-5-mini"] });
+    expect(r.checks.find((x) => x.name === "copilot-model")!.detail).toBe('the Copilot CLI does not offer model "gpt-4.1"');
+    expect(r.checks.find((x) => x.name === "models-available")).toMatchObject({ status: "ok", detail: "copilot:gpt-5-mini" });
+  });
+
+  test("default, auto and catalog ids pass; an unreadable catalog checks nothing", async () => {
+    setRouterForTests(await copilotRouter(["default", "auto", "gpt-5-mini"]));
+    const r = await doctor({ coreOnly: true, which: (b) => `/bin/${b}`, copilotCatalog: async () => ["gpt-5-mini"] });
+    expect(r.checks.find((x) => x.name === "copilot-model")).toMatchObject({ status: "ok" });
+    setRouterForTests(await copilotRouter(["gpt-4.1"]));
+    const r2 = await doctor({ coreOnly: true, which: (b) => `/bin/${b}`, copilotCatalog: async () => null });
+    expect(r2.checks.find((x) => x.name === "copilot-model")).toBeUndefined();
+  });
+
+  test("the catalog is read from `copilot help config`", () => {
+    const help = ["  `logLevel`: log level", "", "  `model`: AI model to use for Copilot CLI; can be changed", '    - "claude-sonnet-5.5"', '    - "gpt-5-mini"', "", "  `contextTier`: context window tier", '    - "default"'].join("\n");
+    expect(parseCopilotModelCatalog(help)).toEqual(["claude-sonnet-5.5", "gpt-5-mini"]);
+    expect(parseCopilotModelCatalog("no such section")).toBeNull();
+  });
+  test("reading the catalog: missing CLI, failing CLI and a listed catalog", async () => {
+    const out = (code: number) => async () => ({ code, stdout: '  `model`: AI model\n    - "gpt-5-mini"\n', stderr: "" });
+    expect(await readCopilotModelCatalog(out(0), () => null)).toBeNull();
+    expect(await readCopilotModelCatalog(out(1), () => "/bin/copilot")).toBeNull();
+    expect(await readCopilotModelCatalog(out(0), () => "/bin/copilot")).toEqual(["gpt-5-mini"]);
+  });
+});
+
+describe("doctor: an openai-compat model id the server refuses (jv-6sk)", () => {
+  // A server that lists models fine (GET /models is 200) but refuses the configured id at chat time.
+  let server: ReturnType<typeof Bun.serve>;
+  beforeEach(() => {
+    server = Bun.serve({
+      hostname: "127.0.0.1",
+      port: 0,
+      async fetch(req) {
+        const url = new URL(req.url);
+        if (url.pathname === "/v1/models") return Response.json({ data: [{ id: "gpt-5-mini" }] });
+        const { model } = (await req.json()) as { model: string };
+        if (model === "gpt-5-mini") return Response.json({ choices: [{ message: { content: "ok" }, finish_reason: "stop" }] });
+        if (model === "thinker") return Response.json({ choices: [{ message: { content: "" }, finish_reason: "length" }] });
+        if (model === "flaky") return Response.json({ error: { message: "upstream overloaded" } }, { status: 503 });
+        if (model === "slow") return new Promise<Response>((res) => setTimeout(() => res(Response.json({ choices: [{ message: { content: "ok" } }] })), 1000));
+        if (model === "gone") return Response.json({ error: { message: "The model `gone` does not exist or you do not have access to it." } }, { status: 404 });
+        return Response.json({ error: { message: `Model "${model}" is not available` } }, { status: 400 });
+      },
+    });
+  });
+  afterEach(() => {
+    setRouterForTests(null);
+    server.stop(true);
+  });
+  const compatRouter = (ids: string[]) =>
+    createRouter({ config: { preference: ["openai-compat"], models: ids.map((id) => ({ provider: "openai-compat" as const, id, quality: "high" as const, bestFor: [], baseUrl: `http://127.0.0.1:${server.port}/v1` })), source: "file" } });
+
+  test("a refused id fails with the model, the server's reason and an exact fix line", async () => {
+    setRouterForTests(await compatRouter(["gpt-9"]));
+    const r = await doctor({ coreOnly: true, which: (b) => `/bin/${b}` });
+    const c = r.checks.find((x) => x.name === "openai-model");
+    expect(c).toMatchObject({ status: "fail", detail: 'the server refuses model "gpt-9": Model "gpt-9" is not available' });
+    expect(c!.fix).toBe(`set id for gpt-9 in ${modelsPath()} to a model the server offers   or   jarvis config preset <name>`);
+    expect(r.summary.healthy).toBe(false);
+    expect(r.checks.find((x) => x.name === "models-available")).toBeUndefined();
+  });
+
+  test("beside an accepted id, only the refused one fails and the accepted one is listed", async () => {
+    setRouterForTests(await compatRouter(["gpt-9", "gpt-5-mini"]));
+    const r = await doctor({ coreOnly: true, which: (b) => `/bin/${b}` });
+    expect(r.checks.find((x) => x.name === "openai-model")!.detail).toBe('the server refuses model "gpt-9": Model "gpt-9" is not available');
+    expect(r.checks.find((x) => x.name === "models-available")).toMatchObject({ status: "ok", detail: "openai-compat:gpt-5-mini" });
+  });
+
+  test("a 404 'does not exist' is a refusal too, and sync points it at doctor", async () => {
+    setRouterForTests(await compatRouter(["gone"]));
+    const r = await doctor({ coreOnly: true, which: (b) => `/bin/${b}` });
+    expect(r.checks.find((x) => x.name === "openai-model")).toMatchObject({ status: "fail", detail: 'the server refuses model "gone": The model `gone` does not exist or you do not have access to it.' });
+    expect(stepFailure("enrich", 1, "openai-compat chat failed (404): The model `gone` does not exist or you do not have access to it.").doctor).toBe(true);
+  });
+
+  test("a server error or a timeout is a warning, not a refused id, and the model stays available", async () => {
+    setRouterForTests(await compatRouter(["flaky", "slow"]));
+    const r = await doctor({ coreOnly: true, which: (b) => `/bin/${b}`, chatProbeTimeoutMs: 100 });
+    const lines = r.checks.filter((x) => x.name === "openai-model");
+    expect(lines.map((c) => [c.status, c.detail])).toEqual([
+      ["warn", 'could not check model "flaky": upstream overloaded'],
+      ["warn", 'could not check model "slow": no answer within 0.1 s'],
+    ]);
+    expect(lines.every((c) => !c.fix!.includes("models.toml"))).toBe(true);
+    expect(lines.every((c) => !c.required)).toBe(true);
+    expect(r.checks.find((x) => x.name === "models-available")).toMatchObject({ status: "ok", detail: "openai-compat:flaky, openai-compat:slow" });
+  });
+
+  test("an answer cut off by the probe's short budget counts as accepted", async () => {
+    setRouterForTests(await compatRouter(["thinker"]));
+    const r = await doctor({ coreOnly: true, which: (b) => `/bin/${b}` });
+    expect(r.checks.find((x) => x.name === "openai-model")).toMatchObject({ status: "ok", detail: "thinker accepted by the server" });
+  });
+
+  test("an accepted id passes", async () => {
+    setRouterForTests(await compatRouter(["gpt-5-mini"]));
+    const r = await doctor({ coreOnly: true, which: (b) => `/bin/${b}` });
+    expect(r.checks.find((x) => x.name === "openai-model")).toMatchObject({ status: "ok", detail: "gpt-5-mini accepted by the server" });
+  });
+});
+
+describe("doctor: an openai-compat server that refuses connections (jv-asw)", () => {
+  afterEach(() => setRouterForTests(null));
+  // A port that was just served and stopped: connecting to it is refused.
+  const closedBaseUrl = () => {
+    const s = Bun.serve({ hostname: "127.0.0.1", port: 0, fetch: () => new Response("") });
+    const url = `http://127.0.0.1:${s.port}/v1`;
+    s.stop(true);
+    return url;
+  };
+
+  test("models-available names the baseUrl, and its fix says to start the server there or change baseUrl", async () => {
+    const baseUrl = closedBaseUrl();
+    setRouterForTests(await createRouter({ config: { preference: ["openai-compat"], models: [{ provider: "openai-compat", id: "qwen3", quality: "high", bestFor: [], baseUrl }], source: "file" } }));
+    const r = await doctor({ coreOnly: true, which: (b) => `/bin/${b}` });
+    const c = r.checks.find((x) => x.name === "models-available");
+    expect(c).toMatchObject({ status: "warn", detail: `no configured model is reachable: nothing answers at ${baseUrl}` });
+    expect(c!.fix).toBe(`start the server at ${baseUrl}   or   change baseUrl in ${modelsPath()}`);
+  });
+
+  test("a server that answers /models with an error is not called silent", async () => {
+    const s = Bun.serve({ hostname: "127.0.0.1", port: 0, fetch: () => Response.json({ error: { message: "bad key" } }, { status: 401 }) });
+    try {
+      setRouterForTests(await createRouter({ config: { preference: ["openai-compat"], models: [{ provider: "openai-compat", id: "qwen3", quality: "high", bestFor: [], baseUrl: `http://127.0.0.1:${s.port}/v1` }], source: "file" } }));
+      const r = await doctor({ coreOnly: true, which: (b) => `/bin/${b}` });
+      expect(r.checks.find((x) => x.name === "models-available")).toMatchObject({ status: "warn", detail: "no configured model is reachable", fix: "start Ollama / install the Copilot CLI / set OPENAI_API_KEY (or the key env named in models.toml)" });
+    } finally {
+      s.stop(true);
+    }
+  });
+
+  test("beside another unreachable provider, the fix keeps the generic advice after the server's", async () => {
+    const baseUrl = closedBaseUrl();
+    const models = [
+      { provider: "openai-compat" as const, id: "qwen3", quality: "high" as const, bestFor: [], baseUrl },
+      { provider: "copilot" as const, id: "default", quality: "high" as const, bestFor: [] },
+    ];
+    setRouterForTests(await createRouter({ config: { preference: ["openai-compat", "copilot"], models, source: "file" }, factory: (e) => (e.provider === "copilot" ? { name: "copilot", available: async () => false, complete: async () => "" } : defaultProviderFactory(e)) }));
+    const r = await doctor({ coreOnly: true, which: (b) => `/bin/${b}` });
+    expect(r.checks.find((x) => x.name === "models-available")!.fix).toBe(`start the server at ${baseUrl}   or   change baseUrl in ${modelsPath()};   for the other models: start Ollama / install the Copilot CLI / set OPENAI_API_KEY (or the key env named in models.toml)`);
+  });
+
+  test("an entry whose key env is unset is a missing key, not a silent server", async () => {
+    setRouterForTests(await createRouter({ config: { preference: ["openai-compat"], models: [{ provider: "openai-compat", id: "qwen3", quality: "high", bestFor: [], baseUrl: closedBaseUrl(), apiKeyEnv: "JARVIS_TEST_UNSET_KEY" }], source: "file" } }));
+    const r = await doctor({ coreOnly: true, which: (b) => `/bin/${b}` });
+    expect(r.checks.find((x) => x.name === "models-available")).toMatchObject({ status: "warn", detail: "no configured model is reachable", fix: "start Ollama / install the Copilot CLI / set OPENAI_API_KEY (or the key env named in models.toml)" });
   });
 });
 

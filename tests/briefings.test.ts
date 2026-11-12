@@ -113,7 +113,7 @@ describe("components", () => {
     expect(html).toContain("jv-grid2");
     expect(html).toContain("A -&gt; B");
     expect(html).toContain("Soon");
-    expect(html).toContain("background:#e3fcef");
+    expect(html).toContain("background:var(--jv-row-hl, #e3fcef)");
     expect(html).toContain('href="#/item/01X"');
     expect(html).toContain("not loaded");
     expect(html).not.toContain("<script>");
@@ -197,6 +197,21 @@ describe("store, comments, index, routes", () => {
     expect((await call("POST", `/api/briefing/${b.id}/comments`, {})).status).toBe(400);
     expect((await (await call("GET", `/api/briefing/${b.id}/comments`)).json()).length).toBe(1);
   });
+  test("a comment posted as the web client posts it carries the service's author, as the CLI would record (jv-ii7)", async () => {
+    const saved = process.env.JARVIS_AUTHOR;
+    process.env.JARVIS_AUTHOR = "psylocke";
+    try {
+      const b = createBriefing(t.dir, { title: "R", author: "me", body: "hi\n" });
+      const req = new Request(`http://127.0.0.1:7281/api/briefing/${b.id}/comments`, { method: "POST", body: JSON.stringify({ comment: "from the web" }), headers: { "content-type": "application/json" } });
+      expect((await (await handle(req, { dataDir: t.dir })).json()).author).toBe("psylocke");
+      expect(readComments(t.dir, b.id)[0].author).toBe("psylocke");
+      const explicit = new Request(`http://127.0.0.1:7281/api/briefing/${b.id}/comments`, { method: "POST", body: JSON.stringify({ comment: "x", author: "kim" }), headers: { "content-type": "application/json" } });
+      expect((await (await handle(explicit, { dataDir: t.dir })).json()).author).toBe("kim");
+    } finally {
+      if (saved === undefined) delete process.env.JARVIS_AUTHOR;
+      else process.env.JARVIS_AUTHOR = saved;
+    }
+  });
 });
 
 describe("confluence", () => {
@@ -240,5 +255,17 @@ describe("confluence", () => {
     expect(calls[3].url).toBe("https://wiki.test/rest/api/content/123");
     expect(JSON.parse(calls[3].init.body as string).version).toEqual({ number: 5 });
     expect(confluenceAuthHeader({ CONFLUENCE_EMAIL: "a@b", CONFLUENCE_API_TOKEN: "t" })).toBe(`Basic ${Buffer.from("a@b:t").toString("base64")}`);
+  });
+
+  test("tinted panels take their background from tokens, so dark looks stay readable", () => {
+    const variants = ["accent", "warn", "good", "bad", "neutral", "investigate"];
+    const src = variants.map((v) => `<Callout variant="${v}" title="T">\n\nx\n\n</Callout>`).join("\n\n")
+      + `\n\n<FlowDiagram>\nA --> B\n</FlowDiagram>\n\n<ComparisonTable headers={["h"]} rows={[{cells:["a"],highlight:true}]} />`;
+    const html = renderBriefingHtml(parseBriefingBody(src));
+    const light: Record<string, string> = { accent: "#eef4ff", warn: "#fff7e6", good: "#e8f8ef", bad: "#fdecec", neutral: "#f3f4f6", investigate: "#f3eefe" };
+    for (const v of variants) expect(html).toContain(`jv-callout-${v}" style="margin:16px 0;padding:12px 16px;border-left:4px solid`), expect(html).toContain(`background:var(--jv-tint-${v}, ${light[v]})`);
+    expect(html).toContain("background:var(--jv-code-bg, #f8fafc)");
+    expect(html).toContain("background:var(--jv-head-bg, #f3f4f6)");
+    expect(html).toContain('style="background:var(--jv-row-hl, #e3fcef)"');
   });
 });

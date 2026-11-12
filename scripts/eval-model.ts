@@ -2,7 +2,7 @@
  * Runs the production ENRICH, CLEANUP, EDGE-REFINE and a synthesis fixture against a chosen model
  * with an instrumented provider that records latency, then scores weighted objective checks.
  *
- *   bun run scripts/eval-model.ts [--model copilot:gpt-4.1] [--effort high|xhigh] [--data <tmp>]
+ *   bun run scripts/eval-model.ts [--model copilot:default] [--effort high|xhigh] [--data <tmp>]
  */
 import { mkdtempSync, rmSync, writeFileSync, mkdirSync } from "node:fs";
 import { tmpdir } from "node:os";

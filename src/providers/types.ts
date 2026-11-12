@@ -10,6 +10,8 @@ export interface CompleteOpts {
   json?: boolean;
   maxTokens?: number;
   reasoningEffort?: ReasoningEffort;
+  /** Abort the call after this many milliseconds (honoured by openai-compat only; others always use `LLM_TIMEOUT_MS`). */
+  timeoutMs?: number;
 }
 export interface ResolvedModel {
   id: string; // "provider:model"

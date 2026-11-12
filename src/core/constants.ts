@@ -51,6 +51,8 @@ export const ASK_MAX_TOKENS = 2000;
 
 export const LLM_TIMEOUT_MS = Number(process.env.JARVIS_LLM_TIMEOUT_MS ?? 120_000) || 120_000;
 export const PROBE_TIMEOUT_MS = 2000;
+/** How long `jarvis doctor` waits for one openai-compat chat probe before it warns instead of judging the id. */
+export const CHAT_PROBE_TIMEOUT_MS = 15_000;
 export const OLLAMA_TAGS_CACHE_MS = 10_000;
 
 export const DEFAULT_PORT = 7281;
@@ -61,10 +63,14 @@ export const TASK_SUGGEST_QUERY_CHARS = 300;
 export const TASK_SUGGEST_MIN_TERM = 4;
 export const TASK_SUGGEST_LIMIT = 5;
 
+export const INITIATIVE_SECTION_LIMIT = 10;
+export const INITIATIVE_SUGGEST_LIMIT = 5;
+export const INITIATIVE_SUGGEST_MAX_TOKENS = 1500;
+
 export const INBOX_SETTLE_MS = 60_000;
 export const WHISPER_TIMEOUT_MS = 30 * 60_000;
 
-export const SOURCES = ["web", "youtube", "meeting", "note", "paste", "pdf", "task", "briefing", "presentation"] as const;
+export const SOURCES = ["web", "youtube", "meeting", "note", "paste", "pdf", "task", "briefing", "presentation", "initiative"] as const;
 export type Source = (typeof SOURCES)[number];
 export const ENTITY_KINDS = ["person", "team", "product", "service", "concept"] as const;
 export type EntityKind = (typeof ENTITY_KINDS)[number];

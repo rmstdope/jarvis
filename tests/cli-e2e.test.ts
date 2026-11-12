@@ -1,9 +1,10 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { cpSync, mkdirSync, readFileSync, readdirSync, symlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { commands } from "../src/cli.ts";
 import { listRoutes } from "../src/http.ts";
 import "../src/server.ts";
+import { ingest } from "../src/core/ingest.ts";
 import { tmpDataDir } from "./helpers.ts";
 
 /**
@@ -34,7 +35,7 @@ beforeAll(() => {
 });
 afterAll(() => t.cleanup());
 
-const EXPECTED_COMMANDS = ["note", "ingest", "reindex", "search", "serve", "sync", "process", "pipeline", "dedup", "youtube", "meeting", "enrich", "edges", "refine", "cleanup", "entities", "ask", "models", "config", "briefing", "init", "doctor", "task", "tasks", "link", "presentation", "scan-inbox", "summarize", "skill"];
+const EXPECTED_COMMANDS = ["note", "ingest", "reindex", "search", "serve", "sync", "process", "pipeline", "dedup", "youtube", "meeting", "enrich", "edges", "refine", "cleanup", "entities", "ask", "models", "config", "briefing", "init", "doctor", "task", "tasks", "initiative", "link", "presentation", "scan-inbox", "summarize", "skill"];
 const EXPECTED_ROUTES = ["/api/health", "/api/capture", "/api/search", "/api/sync", "/api/browse", "/api/recent", "/api/item-by-source", "/api/item/", "/api/filters", "/api/ask", "/api/briefings", "/api/briefing/", "/api/tasks", "/api/task", "/api/link", "/api/presentations", "/api/presentation/", "/api/chat/sessions"];
 
 describe("cli registry", () => {
@@ -85,6 +86,53 @@ describe("cli end to end (subprocess)", () => {
     expect(l.out).toContain("linked:");
     expect(jarvis("link", id, id).code).toBe(1);
   });
+  test("initiatives: add, file tasks from the task side, list, show, last-task notice, close, reopen (no model)", () => {
+    expect(jarvis("initiative", "list").out.trim()).toBe('no open initiatives — start one: jarvis initiative add "<title>" --goal "<what done looks like>"');
+    const noGoal = jarvis("initiative", "add", "Billing");
+    expect(noGoal.code).toBe(1);
+    expect(noGoal.out).toContain('An initiative needs a goal. Say what done looks like:\n  jarvis initiative add "<title>" --goal "<what done looks like>"');
+    const a = jarvis("initiative", "add", "Move billing", "--goal", "all on the new ledger");
+    expect(a.out).toMatch(/^initiative [0-9A-Z]{26}  Move billing  \(owner cli-tester\)/);
+    const id = a.out.match(/initiative ([0-9A-Z]{26})/)![1];
+    expect(jarvis("initiative", "list").out).toMatch(new RegExp(`${id}  ░{9}  0/0 {3}Move billing  \\(cli-tester\\)  no tasks yet`));
+    expect(jarvis("initiative", "show", id).out).toContain(`tasks — none yet: jarvis task add "<title>" --initiative ${id}`);
+    const t1 = jarvis("task", "add", "Freeze API", "--initiative", id).out.match(/task ([0-9A-Z]{26})/)![1];
+    const lone = jarvis("task", "add", "Standalone").out.match(/task ([0-9A-Z]{26})/)![1];
+    expect(jarvis("task", "list").out).toContain("Freeze API  (cli-tester)  ⚠ no links  · Move billing");
+    expect(jarvis("task", "list", "--initiative", id).out).not.toContain("Standalone");
+    expect(jarvis("task", "show", t1).out).toContain(`initiative: ${id}  Move billing`);
+    const sh = jarvis("initiative", "show", id).out;
+    expect(sh).toContain(`open  owner: cli-tester  progress: ░░░░░░░░░ 0 of 1 done\n\nall on the new ledger\n\ntasks (1)\n`);
+    expect(sh).toContain("through its tasks — none\n\nlinked directly — none\n\nsuggested — none: no model is available, so nothing is suggested (jarvis doctor shows why)");
+    expect(jarvis("initiative", "suggest", id).out.trim()).toBe("no suggestions: no model is available (jarvis doctor shows why)");
+    expect(jarvis("task", "move", lone, "--initiative", id).out).toContain("Standalone  → Move billing");
+    expect(jarvis("task", "move", lone, "--initiative", id).out).toContain("is already in Move billing");
+    const own = `${lone}  Standalone  is already a task in Move billing — nothing linked`;
+    expect(jarvis("link", id, lone).out.trim()).toBe(own);
+    expect(jarvis("link", id, lone).code).toBe(0);
+    expect(jarvis("link", lone, id, "--relation", "follows_up").out.trim()).toBe(own);
+    const loose = jarvis("task", "add", "Loose").out.match(/task ([0-9A-Z]{26})/)![1];
+    expect(jarvis("link", id, `${lone},${loose}`).out.trim()).toBe(`${own}\nlinked: ${id} → ${loose} [references]`);
+    expect(jarvis("task", "move", lone, "--none").out).toContain("Standalone  → no initiative (was Move billing)");
+    expect(jarvis("task", "move", lone).out).toContain("usage: jarvis task move <task> --initiative <id> | --none");
+    expect(jarvis("initiative", "show", lone).out).toContain(`${lone} is a task, not an initiative — jarvis task show ${lone}`);
+    expect(jarvis("initiative", "show", "01ZZZZZZ").out).toContain("no initiative 01ZZZZZZ — see them all: jarvis initiative list");
+    expect(jarvis("initiative", "close", id).out).toContain(`Move billing still has 1 open task.\nFinish or move them first, or close it anyway:\n  jarvis initiative close ${id} --anyway`);
+    const done = jarvis("task", "done", t1).out;
+    expect(done).toContain(`✓ done: Freeze API\n  That was the last open task in Move billing (1 of 1 done).\n  It stays open until someone closes it:\n    jarvis initiative close ${id}`);
+    expect(jarvis("initiative", "list").out).toContain("✓ all tasks done — close it?");
+    expect(jarvis("initiative", "show", id).out).toContain(`✓ all tasks done — close it with: jarvis initiative close ${id}`);
+    expect(jarvis("initiative", "edit", id, "--owner", "jonas", "--goal", "new").out.trim()).toBe("updated: Move billing  owner cli-tester → jonas, goal changed");
+    expect(jarvis("initiative", "close", id).out.trim()).toBe("closed: Move billing  1 of 1 done");
+    expect(jarvis("task", "add", "Late", "--initiative", id).out).toContain(`Move billing is closed. Reopen it first:\n  jarvis initiative reopen ${id}`);
+    expect(jarvis("initiative", "list", "--status", "closed").out).toMatch(/closed \d{4}-\d{2}-\d{2}$/m);
+    expect(jarvis("initiative", "reopen", id).out.trim()).toBe("○ reopened: Move billing");
+    expect(jarvis("reindex", "--full").code).toBe(0);
+    expect(jarvis("initiative", "show", id).out).toContain("tasks (1)");
+    const filed = jarvis("task", "add", "Move billing checklist", "--initiative", id).out;
+    expect(filed).not.toContain(`jarvis link ${filed.match(/task ([0-9A-Z]{26})/)![1]} ${id}`); // already in its initiative
+    expect(filed).toContain("link suggestions:"); // the other candidates are still offered
+  });
   test("passes without models skip cleanly; process and sync run local-only", () => {
     expect(jarvis("enrich").out).toMatch(/skipped \d+/);
     expect(jarvis("edges").code).toBe(0);
@@ -117,24 +165,88 @@ describe("cli end to end (subprocess)", () => {
     expect(rep.checks.find((c: { name: string }) => c.name === "data-dir").status).toBe("ok");
     expect(jarvis("skill").out).toContain("jarvis tasks");
   });
+  test("doctor exits 1 when a required check fails (jv-ccr)", () => {
+    const p = Bun.spawnSync(["bun", "run", CLI, "doctor", "--core-only", "--data", join(t.dir, "no-such-content-repo")], {
+      stdout: "pipe", stderr: "pipe",
+      env: { ...process.env, JARVIS_HOME: home, JARVIS_MODELS: join(home, "models.toml"), JARVIS_EMBED_FAKE: "1", JARVIS_INBOX: join(home, "inbox") },
+    });
+    expect(p.stdout.toString()).toContain("fix the failures above");
+    expect(p.exitCode).toBe(1);
+  });
+  test("dedup exits 1 when two captures share a source_url (jv-ccr)", async () => {
+    const dup = join(t.dir, "dup-content");
+    mkdirSync(dup);
+    const a = await ingest(dup, { source: "web", title: "Page", body: "x", source_url: "https://same.test/p", author: "a" });
+    const docs = join(dup, "docs");
+    const file = readdirSync(docs).find((f) => f.endsWith(".md"))!;
+    writeFileSync(join(docs, `copy-${file}`), readFileSync(join(docs, file), "utf8").replace(a.id, "01JVCCRDUP0000000000000000"));
+    const p = Bun.spawnSync(["bun", "run", CLI, "dedup", "--data", dup], { stdout: "pipe", stderr: "pipe", env: { ...process.env, JARVIS_HOME: home, JARVIS_EMBED_FAKE: "1" } });
+    expect(p.stdout.toString()).toContain("https://same.test/p");
+    expect(p.exitCode).toBe(1);
+  });
   test("skill uses the plain command and names this code repo for the fallback", () => {
     const out = jarvis("skill").out.replace(/\s+/g, " ");
     const repo = join(import.meta.dir, "..");
     expect(out).toContain("driven through the `jarvis` CLI and the local HTTP service on");
-    expect(out).toContain(`run \`bun --cwd=${repo} run jarvis …\` instead, and tell the user to run \`bun link\` in that folder`);
+    expect(out).toContain(`run \`bun "${repo}/src/cli.ts" …\` instead, and tell the user to run \`bun link\` in \`${repo}\` so the plain command works`);
     expect(out).not.toContain("<code repo>");
     expect(out).not.toMatch(/bun run jarvis [a-z]/);
   });
+  test("skill teaches initiatives: when to create, filing tasks, linking captures, reporting", () => {
+    const out = jarvis("skill").out.replace(/\s+/g, " ");
+    for (const s of [
+      "jarvis initiative list",
+      'jarvis initiative add "<title>" --goal "<what done looks like>"',
+      "weeks or months",
+      'jarvis task add "<title>" --initiative <id>',
+      "jarvis task move <task> --initiative <id>",
+      "jarvis initiative show <id>",
+      "jarvis initiative suggest <id>",
+      "jarvis link <task> <doc>",
+      "never close an initiative yourself",
+      "Report every initiative, task and link you create **by id and title**",
+    ]) expect(out).toContain(s);
+  });
+  test("every jarvis command (and task/initiative subcommand) the skill quotes is registered", () => {
+    const skill = jarvis("skill").out;
+    const usage = jarvis().out;
+    for (const m of skill.matchAll(/`jarvis ([a-z-]+)(?: ([a-z]+))?/g)) {
+      const [, cmd, sub] = m;
+      expect(EXPECTED_COMMANDS).toContain(cmd!);
+      if ((cmd === "task" || cmd === "initiative") && sub && /^[a-z]+$/.test(sub)) {
+        const line = usage.split("\n").find((l) => l.trim().startsWith(`${cmd} `))!;
+        expect(line, `${cmd} ${sub}`).toMatch(new RegExp(`(^|\\| |${cmd} )${sub}( |$)`));
+      }
+    }
+  });
   test("the skill's fallback command, run from the content repo, runs the search", () => {
     const out = jarvis("skill").out.replace(/\s+/g, " ");
-    const [, flag, script] = out.match(/If `jarvis` is not found, run `bun (--cwd=.+?) run (jarvis) …` instead/)!;
-    const p = Bun.spawnSync([process.execPath, flag!, "run", script!, "search", "zqxjvnomatch", "--mode", "keyword", "--data", data], {
+    const [, script] = out.match(/If `jarvis` is not found, run `bun "(.+?)" …` instead/)!;
+    const p = Bun.spawnSync([process.execPath, script!, "search", "zqxjvnomatch", "--mode", "keyword", "--data", data], {
       cwd: data, stdout: "pipe", stderr: "pipe",
       env: { ...process.env, JARVIS_HOME: home, JARVIS_MODELS: join(home, "models.toml"), JARVIS_EMBED_FAKE: "1" },
     });
     const res = new TextDecoder().decode(p.stdout) + new TextDecoder().decode(p.stderr);
     expect(res).not.toContain("Usage: bun run");
     expect(res).toContain("no results");
+    expect(p.exitCode).toBe(0);
+  });
+  test("the skill's fallback, run from the content repo, captures a relative file even when the code repo path has a space", () => {
+    // A copy of the code repo at a path with a space (Bun resolves symlinks, so a link would not do).
+    const code = join(t.dir, "code repo");
+    const root = join(import.meta.dir, "..");
+    mkdirSync(join(code, "docs"), { recursive: true });
+    cpSync(join(root, "src"), join(code, "src"), { recursive: true });
+    cpSync(join(root, "package.json"), join(code, "package.json"));
+    cpSync(join(root, "docs", "AGENT-INSTRUCTIONS.md"), join(code, "docs", "AGENT-INSTRUCTIONS.md"));
+    symlinkSync(join(root, "node_modules"), join(code, "node_modules"));
+    const env = { ...process.env, JARVIS_HOME: home, JARVIS_MODELS: join(home, "models.toml"), JARVIS_EMBED_FAKE: "1", JARVIS_AUTHOR: "cli-tester" };
+    const skill = new TextDecoder().decode(Bun.spawnSync([process.execPath, join(code, "src", "cli.ts"), "skill"], { env, stdout: "pipe" }).stdout).replace(/\s+/g, " ");
+    const fallback = skill.match(/If `jarvis` is not found, run `(bun [^`]+?) …` instead/)![1]!;
+    writeFileSync(join(data, "rel-note.md"), "# Relative\n\nquokka relative capture");
+    const p = Bun.spawnSync(["sh", "-c", `${fallback} ingest --file ./rel-note.md --data "${data}"`], { cwd: data, env, stdout: "pipe", stderr: "pipe" });
+    const res = new TextDecoder().decode(p.stdout) + new TextDecoder().decode(p.stderr);
+    expect(res).toMatch(/^captured \S+  rel-note\.md  /);
     expect(p.exitCode).toBe(0);
   });
   test("package.json bin and README setup use the plain jarvis command", () => {

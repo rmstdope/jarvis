@@ -65,6 +65,7 @@ function printIngest(r: { id: string; status: string; title: string; chunks: num
   if (r.embedError) console.log(`⚠ ${r.embedError} — run \`jarvis reindex\` later to embed`);
 }
 
+/** Runs one command and returns its exit status: 1 on a throw, else the `process.exitCode` the command set (0 if none). */
 export async function main(argv: string[]): Promise<number> {
   const { positional, flags } = parseArgs(argv);
   const [cmd, ...rest] = positional;
@@ -80,7 +81,7 @@ export async function main(argv: string[]): Promise<number> {
   }
   try {
     await c.run({ dataDir: () => resolveDataDir(flagStr(flags, "data")), positional: rest, flags });
-    return 0;
+    return Number(process.exitCode ?? 0); // the entrypoint's process.exit() would otherwise discard it
   } catch (e) {
     console.error(`error: ${(e as Error).message}`);
     return 1;
@@ -92,7 +93,7 @@ export async function main(argv: string[]): Promise<number> {
 import { join as _join } from "node:path";
 import { existsSync as _exists } from "node:fs";
 import { resolvePort } from "./core/config.ts";
-import { dedupScan, processContent, sync } from "./core/sync.ts";
+import { dedupScan, processContent, sync, type StepFailure } from "./core/sync.ts";
 import { startServer } from "./server.ts";
 
 register("serve", "serve [--port]", async ({ dataDir, flags }) => {
@@ -117,7 +118,13 @@ register("sync", "sync [--no-push]", async ({ dataDir, flags }) => {
   for (const [k, v] of Object.entries(r.counts)) console.log(`${k}: ${JSON.stringify(v)}`);
   for (const c of r.collisions) console.log(`⚠ collision ${c.source_url}: ${c.ids.join(", ")}`);
   for (const n of r.notes) console.log(`note: ${n}`);
+  printFailures(r.failures);
 });
+
+/** One ⚠ line per failed model step, pointing at doctor only when it has the fix. */
+function printFailures(failures: StepFailure[]): void {
+  for (const f of failures) console.log(`⚠ ${f.step} failed for ${f.failed}: ${f.reason}${f.doctor ? "   (jarvis doctor shows the fix)" : ""}`);
+}
 
 const processCmd: Parameters<typeof register>[2] = async ({ dataDir }) => {
   const r = await processContent(dataDir());
@@ -125,6 +132,7 @@ const processCmd: Parameters<typeof register>[2] = async ({ dataDir }) => {
   for (const [k, v] of Object.entries(r.counts)) console.log(`${k}: ${JSON.stringify(v)}`);
   for (const c of r.collisions) console.log(`⚠ collision ${c.source_url}: ${c.ids.join(", ")}`);
   for (const n of r.notes) console.log(`note: ${n}`);
+  printFailures(r.failures);
 };
 register("process", "process | pipeline  (local passes without git)", processCmd);
 register("pipeline", "", processCmd);
@@ -349,6 +357,8 @@ register("doctor", "doctor [--json --core-only --port]", async ({ flags }) => {
 
 // ---- M7: tasks + manual links ----
 import { addTask, listTasks, showTask, setTaskStatus, suggestLinks, type TaskItem } from "./core/tasks.ts";
+import { addInitiative, closeInitiative, editInitiative, initiativeSuggestions, listInitiatives, moveTask, reopenInitiative, showInitiative } from "./core/initiatives.ts";
+import { ANSI, PLAIN, formatInitiativeList, formatInitiativeShow, lastTaskNotice, memberLinkLine, suggestionLines, taskListLine, type Style } from "./core/initiativeView.ts";
 import { link as linkItems, LINK_RELATIONS } from "./core/links.ts";
 import type { Relation } from "./core/constants.ts";
 
@@ -358,11 +368,12 @@ async function linkToTask(dir: string, docId: string, taskId: string | undefined
   const r = linkItems(dir, taskId, [docId], { relation: "references", author });
   console.log(`linked task ${taskId} → ${docId} (${r[0].status})`);
 }
+const style = (): Style => (process.stdout.isTTY ? ANSI : PLAIN);
 function printTasks(tasks: TaskItem[]): void {
   if (tasks.length === 0) return console.log("no tasks");
-  for (const t of tasks) console.log(`${t.id}  ${t.status === "done" ? "✓" : "○"} ${t.due ? `due ${t.due} ` : ""}${t.title}  (${t.owner})${t.links === 0 ? "  ⚠ no links" : ""}`);
+  for (const t of tasks) console.log(taskListLine(t, style()));
 }
-register("task", 'task add "<title>" [--body --due YYYY-MM-DD --link id[,id] --relation --owner] | list [--status open|done|all --owner name|all] | show <id> | done <id> | reopen <id> | suggest <id> [--limit]', async ({ dataDir, positional, flags }) => {
+register("task", 'task add "<title>" [--body --due YYYY-MM-DD --link id[,id] --relation --owner --initiative <id>] | list [--status open|done|all --owner name|all --initiative <id>] | show <id> | done <id> | reopen <id> | move <task> --initiative <id> | --none | suggest <id> [--limit]', async ({ dataDir, positional, flags }) => {
   const [sub, ...rest] = positional;
   const dir = dataDir();
   switch (sub) {
@@ -370,17 +381,23 @@ register("task", 'task add "<title>" [--body --due YYYY-MM-DD --link id[,id] --r
       const title = rest.join(" ");
       if (!title) throw new Error('usage: jarvis task add "<title>"');
       const links = flagStr(flags, "link")?.split(",").map((s) => s.trim()).filter(Boolean);
-      const r = await addTask(dir, { title, body: flagStr(flags, "body"), due: flagStr(flags, "due"), owner: flagStr(flags, "owner"), author: flagStr(flags, "author"), links, relation: flagStr(flags, "relation") as Relation | undefined });
-      console.log(`task ${r.id}  ${title}${r.linked ? `  (${r.linked} link(s))` : ""}`);
+      const initiative = flagStr(flags, "initiative");
+      const r = await addTask(dir, { title, body: flagStr(flags, "body"), due: flagStr(flags, "due"), owner: flagStr(flags, "owner"), author: flagStr(flags, "author"), links, relation: flagStr(flags, "relation") as Relation | undefined, initiative });
+      let where = "";
+      if (initiative) {
+        const i = listInitiatives(dir, { status: "all" }).find((x) => x.id === initiative)!;
+        where = `  in ${i.title} (${i.total - i.done} of ${i.total} tasks)`;
+      }
+      console.log(`task ${r.id}  ${title}${where}${r.linked ? `  (${r.linked} link(s))` : ""}`);
       const sug = await suggestLinks(dir, r.id, { limit: 3 });
       if (sug.length) console.log("link suggestions:\n" + sug.map((s) => `  jarvis link ${r.id} ${s.id}   # ${s.title} — ${s.reason}`).join("\n"));
       return;
     }
     case "list":
-      return printTasks(listTasks(dir, { status: (flagStr(flags, "status") as "open" | "done" | "all") ?? "open", owner: flagStr(flags, "owner") }));
+      return printTasks(listTasks(dir, { status: (flagStr(flags, "status") as "open" | "done" | "all") ?? "open", owner: flagStr(flags, "owner"), initiative: flagStr(flags, "initiative") }));
     case "show": {
       const d = showTask(dir, rest[0]);
-      console.log(`${d.task.title}\nstatus: ${d.task.status}  owner: ${d.task.owner}${d.task.due ? `  due: ${d.task.due}` : ""}${d.task.completed_at ? `  completed: ${d.task.completed_at} by ${d.task.completed_by ?? ""}` : ""}\n\n${d.body.trim()}\n`);
+      console.log(`${d.task.title}\nstatus: ${d.task.status}  owner: ${d.task.owner}${d.task.due ? `  due: ${d.task.due}` : ""}${d.task.completed_at ? `  completed: ${d.task.completed_at} by ${d.task.completed_by ?? ""}` : ""}${d.task.initiative ? `\ninitiative: ${d.task.initiative.id}  ${d.task.initiative.title}` : ""}\n\n${d.body.trim()}\n`);
       console.log(`linked (${d.linked.length}):` + (d.linked.length ? "\n" + d.linked.map((l) => `  ${l.direction === "out" ? "→" : "←"} ${l.id}  ${l.title ?? ""}  [${l.relation}, ${l.createdBy}]`).join("\n") : " none"));
       console.log(`derived (${d.derived.length}):` + (d.derived.length ? "\n" + d.derived.map((l) => `  ${l.direction === "out" ? "→" : "←"} ${l.id}  ${l.title ?? ""}  [${l.relation}, ${l.createdBy}]`).join("\n") : " none"));
       return;
@@ -390,6 +407,15 @@ register("task", 'task add "<title>" [--body --due YYYY-MM-DD --link id[,id] --r
       if (!rest[0]) throw new Error(`usage: jarvis task ${sub} <id>`);
       const t = setTaskStatus(dir, rest[0], sub === "done" ? "done" : "open", flagStr(flags, "author"));
       console.log(`${t.status === "done" ? "✓ done" : "○ reopened"}: ${t.title}`);
+      if (t.initiativeCompleted) console.log(lastTaskNotice(t.initiativeCompleted));
+      return;
+    }
+    case "move": {
+      const target = flagStr(flags, "initiative");
+      if (!rest[0] || (!target && !flagBool(flags, "none"))) throw new Error("usage: jarvis task move <task> --initiative <id> | --none");
+      const r = await moveTask(dir, rest[0], target ?? null, flagStr(flags, "author"));
+      if (r.status === "unchanged") console.log(r.to ? `${rest[0]}  ${r.title}  is already in ${r.to}` : `${rest[0]}  ${r.title}  is not in an initiative`);
+      else console.log(`${rest[0]}  ${r.title}  → ${r.to ?? "no initiative"}${r.from ? `${r.to ? "  " : " "}(was ${r.from})` : ""}`);
       return;
     }
     case "suggest": {
@@ -400,16 +426,74 @@ register("task", 'task add "<title>" [--body --due YYYY-MM-DD --link id[,id] --r
       return;
     }
     default:
-      throw new Error("usage: jarvis task add|list|show|done|reopen|suggest");
+      throw new Error("usage: jarvis task add|list|show|done|reopen|move|suggest");
   }
 });
-register("tasks", "tasks  (open tasks for the current user)", async ({ dataDir, flags }) => {
-  printTasks(listTasks(dataDir(), { status: "open", owner: resolveAuthorCore(flagStr(flags, "author")) }));
+register("tasks", "tasks  (open tasks for the current user) [--initiative <id>]", async ({ dataDir, flags }) => {
+  printTasks(listTasks(dataDir(), { status: "open", owner: resolveAuthorCore(flagStr(flags, "author")), initiative: flagStr(flags, "initiative") }));
+});
+register("initiative", 'initiative add "<title>" --goal "<what done looks like>" [--owner] | edit <id> [--title --goal --owner] | list [--status open|closed|all] | show <id> [--all] | suggest <id> | close <id> [--anyway] | reopen <id>', async ({ dataDir, positional, flags }) => {
+  const [sub, ...rest] = positional;
+  const dir = dataDir();
+  const id = rest[0];
+  const need = (): string => {
+    if (!id) throw new Error(`usage: jarvis initiative ${sub} <id>`);
+    return id;
+  };
+  switch (sub) {
+    case "add": {
+      const title = rest.join(" ");
+      const r = await addInitiative(dir, { title, goal: flagStr(flags, "goal") ?? "", owner: flagStr(flags, "owner"), author: flagStr(flags, "author") });
+      console.log(`initiative ${r.id}  ${r.title}  (owner ${r.owner})`);
+      return;
+    }
+    case "edit": {
+      const r = await editInitiative(dir, need(), { title: flagStr(flags, "title"), goal: flagStr(flags, "goal"), owner: flagStr(flags, "owner"), author: flagStr(flags, "author") });
+      console.log(`updated: ${r.title}` + (r.changes.length ? "  " + style().dim(r.changes.join(", ")) : ""));
+      return;
+    }
+    case "list": {
+      const status = (flagStr(flags, "status") ?? "open") as "open" | "closed" | "all";
+      if (!["open", "closed", "all"].includes(status)) throw new Error("--status must be open|closed|all");
+      console.log(formatInitiativeList(listInitiatives(dir, { status }), style(), status));
+      return;
+    }
+    case "show": {
+      const d = await showInitiative(dir, need(), { all: flagBool(flags, "all") });
+      const sug = await initiativeSuggestions(dir, id!, { router: await getRouter(), limit: 5 });
+      console.log(formatInitiativeShow(d, sug.model ? sug.suggestions : null, style()));
+      return;
+    }
+    case "suggest": {
+      const d = await showInitiative(dir, need());
+      const sug = await initiativeSuggestions(dir, id!, { router: await getRouter() });
+      if (!sug.model) console.log("no suggestions: no model is available (jarvis doctor shows why)");
+      else if (!sug.suggestions.length) console.log("no suggestions");
+      else console.log(`suggestions for ${d.initiative.title}:\n` + suggestionLines(id!, sug.suggestions, style()).join("\n"));
+      return;
+    }
+    case "close": {
+      const r = await closeInitiative(dir, need(), { anyway: flagBool(flags, "anyway"), author: flagStr(flags, "author") });
+      console.log(`closed: ${r.title}  ${r.done} of ${r.total} done${r.left ? `, ${r.left} left open` : ""}`);
+      return;
+    }
+    case "reopen": {
+      const r = await reopenInitiative(dir, need(), flagStr(flags, "author"));
+      console.log(`○ reopened: ${r.title}`);
+      return;
+    }
+    default:
+      throw new Error("usage: jarvis initiative add|edit|list|show|suggest|close|reopen");
+  }
 });
 register("link", `link <src> <dst[,dst]> [--relation ${LINK_RELATIONS.join("|")} --author]`, async ({ dataDir, positional, flags }) => {
   const [src, dsts] = positional;
   if (!src || !dsts) throw new Error("usage: jarvis link <src> <dst[,dst]> [--relation]");
-  for (const r of linkItems(dataDir(), src, dsts.split(",").map((s) => s.trim()).filter(Boolean), { relation: flagStr(flags, "relation") as Relation | undefined, author: flagStr(flags, "author") })) console.log(`${r.status}: ${r.src} → ${r.dst} [${r.relation}]`);
+  for (const r of linkItems(dataDir(), src, dsts.split(",").map((s) => s.trim()).filter(Boolean), { relation: flagStr(flags, "relation") as Relation | undefined, author: flagStr(flags, "author") })) {
+    if (r.status === "member") {
+      console.log(memberLinkLine(r, style()));
+    } else console.log(`${r.status}: ${r.src} → ${r.dst} [${r.relation}]`);
+  }
 });
 
 // ---- M8: presentations, inbox, meeting summaries ----

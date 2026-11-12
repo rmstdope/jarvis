@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { Window } from "happy-dom";
-import { h, append, clear, toast, modal, metaLine } from "../web/src/ui.ts";
+import { h, append, clear, toast, modal, entryLine, highlightSnippet } from "../web/src/ui.ts";
 import { presentControl } from "../web/src/presentations.ts";
 
 const win = new Window();
@@ -49,27 +49,43 @@ describe("web ui helpers under happy-dom", () => {
     expect(ok).toBe(1);
     expect(document.querySelector(".modal-bg")).toBeNull();
   });
-  test("metaLine omits missing parts", () => {
-    expect(metaLine({ source: "note", created_at: "2026-02-03T00:00:00Z", author: "a" })).toBe("note · added 2026-02-03 by a");
+  test("a click outside the modal over nothing it can type into returns focus to where it was", () => {
+    const trigger = h("button", {}, "Open");
+    const off = h("textarea", { disabled: "" });
+    const heading = h("h1", { tabindex: "-1" }, "Title");
+    document.body.append(trigger, off, heading);
+    const hitTest = document.elementFromPoint;
+    try {
+      for (const under of [document.body, off, heading]) {
+        trigger.focus();
+        const bg = modal("Title", h("p", {}, "body"), [{ label: "OK", onClick: () => {} }]);
+        expect(document.activeElement?.textContent).toBe("OK");
+        document.elementFromPoint = (() => document.querySelector(".modal-bg") ?? under) as typeof document.elementFromPoint;
+        bg.dispatchEvent(new win.MouseEvent("click", { bubbles: true, clientX: 5, clientY: 5 }) as unknown as Event);
+        expect(document.querySelector(".modal-bg")).toBeNull();
+        expect(document.activeElement).toBe(trigger as unknown as Element);
+      }
+    } finally {
+      document.elementFromPoint = hitTest;
+      trigger.remove(); off.remove(); heading.remove();
+    }
+  });
+  test("entryLine joins kind, who and when and leaves out what is missing", () => {
+    expect(entryLine("note", "mia", "2026-02-03")).toBe("note · mia · 2026-02-03");
+    expect(entryLine("note", undefined, "2026-02-03")).toBe("note · 2026-02-03");
+    expect(highlightSnippet("a [b] <i> & c")).toBe("a <mark>b</mark> &lt;i> &amp; c");
   });
 });
 
 describe("presenting a deck", () => {
-  test("Present in Slidecraft when ready; otherwise what to do, never a dead link", () => {
-    const ready = presentControl({ status: "ready", launchUrl: "http://localhost:6110/v/team/presentations/q3" }, false);
-    const link = ready.querySelector("a") ?? (ready.tagName === "A" ? ready : null);
-    expect(link?.getAttribute("href")).toBe("http://localhost:6110/v/team/presentations/q3");
-    expect(link?.getAttribute("target")).toBe("_blank");
+  test("Present in Slidecraft when ready; otherwise nothing, never a dead link", () => {
+    const ready = presentControl({ status: "ready", launchUrl: "http://localhost:6110/v/team/presentations/q3" }, false)!;
+    expect(ready.getAttribute("href")).toBe("http://localhost:6110/v/team/presentations/q3");
+    expect(ready.getAttribute("target")).toBe("_blank");
     expect(ready.textContent).toBe("Present in Slidecraft");
     // Inside the macOS app the deck opens in the same window.
-    expect(presentControl({ status: "ready", launchUrl: "http://x/v/t/presentations/q3" }, true).getAttribute("target")).toBe("_self");
-    for (const status of ["not-running", "no-vault", "no-include"] as const) {
-      const el = presentControl({ status }, false);
-      expect(el.querySelector("a")).toBeNull();
-      expect(el.textContent).toContain("jarvis doctor");
-    }
-    expect(presentControl({ status: "not-running" }, false).textContent).toContain("Start Slidecraft");
-    expect(presentControl({ status: "no-vault" }, false).textContent).toContain("vault");
-    expect(presentControl({ status: "no-include" }, false).textContent).toContain("vault");
+    expect(presentControl({ status: "ready", launchUrl: "http://x/v/t/presentations/q3" }, true)!.getAttribute("target")).toBe("_self");
+    for (const status of ["not-running", "no-vault", "no-include"] as const) expect(presentControl({ status }, false)).toBeNull();
+    expect(presentControl({ status: "ready" }, false)).toBeNull();
   });
 });

@@ -1,4 +1,4 @@
-import { loadConfig } from "./core/config.ts";
+import { loadConfig, resolveAuthor } from "./core/config.ts";
 import { existsSync, statSync } from "node:fs";
 import { join, normalize } from "node:path";
 import { addFilter, readFilters } from "./core/filters.ts";
@@ -6,12 +6,13 @@ import { browse, getItem, itemBySource, recent, setContext, setTags } from "./co
 import { ingest, type CapturePayload } from "./core/ingest.ts";
 import { search, type SearchMode } from "./core/search.ts";
 import { sync, SyncBusyError } from "./core/sync.ts";
-import { withDb } from "./core/db.ts";
+import { withDb, withDbAsync } from "./core/db.ts";
 import type { Source } from "./core/constants.ts";
 import { ASK_MAX_LIMIT } from "./core/constants.ts";
 import { ask } from "./core/ask.ts";
 import { getRouter } from "./providers/index.ts";
 import "./core/passes.ts";
+import { decorateItems, initiativeOfTask } from "./core/initiativeDecor.ts";
 
 import { route, json, error, body, HttpError, listRoutes, matchRoute, type RouteHandler, type ServerContext } from "./http.ts";
 export { route, json, error, body, HttpError, listRoutes, type RouteHandler, type ServerContext };
@@ -53,7 +54,14 @@ route("GET", "/api/search", async (_r, url, _p, ctx) => {
   if (!q) return error("q is required");
   const mode = (url.searchParams.get("mode") ?? "hybrid") as SearchMode;
   const limit = Math.min(100, Math.max(1, Number(url.searchParams.get("limit") ?? 10) || 10));
-  return json(await search(ctx.dataDir, q, { mode, limit }));
+  const sp = url.searchParams;
+  const filter = { source: sp.get("source") ?? undefined, author: sp.get("author") ?? undefined, tag: sp.get("tag") ?? undefined, since: sp.get("since") ?? undefined };
+  // The web's result cards show "kind · who · when": add the author and capture time to each hit.
+  return json(await withDbAsync(ctx.dataDir, async (db) => {
+    const hits = await search(ctx.dataDir, q, { mode, limit, db, filter });
+    const row = db.query("SELECT author, created_at AS createdAt FROM documents WHERE id = ?");
+    return decorateItems(ctx.dataDir, hits.map((h) => ({ ...h, ...((row.get(h.docId) as { author: string; createdAt: string } | null) ?? {}) })), (h) => h.docId);
+  }));
 });
 
 route("POST", "/api/sync", async (_r, _u, _p, ctx) => {
@@ -68,10 +76,12 @@ route("POST", "/api/sync", async (_r, _u, _p, ctx) => {
 route("GET", "/api/browse", (_r, url, _p, ctx) => {
   const sp = url.searchParams;
   const num = (k: string) => (sp.get(k) === null ? undefined : Number(sp.get(k)) || 0);
-  return json(browse(ctx.dataDir, {
+  const r = browse(ctx.dataDir, {
     limit: num("limit"), addedOffset: num("addedOffset"), updatedOffset: num("updatedOffset"),
     source: sp.get("source") ?? undefined, author: sp.get("author") ?? undefined, tag: sp.get("tag") ?? undefined, since: sp.get("since") ?? undefined,
-  }));
+  });
+  const rows = decorateItems(ctx.dataDir, [...r.added, ...r.updated], (i) => i.id);
+  return json({ ...r, added: rows.slice(0, r.added.length), updated: rows.slice(r.added.length) });
 });
 route("GET", "/api/recent", (_r, url, _p, ctx) => json({ items: recent(ctx.dataDir, Number(url.searchParams.get("limit") ?? 10) || 10) }));
 route("GET", "/api/item-by-source", (_r, url, _p, ctx) => {
@@ -81,7 +91,9 @@ route("GET", "/api/item-by-source", (_r, url, _p, ctx) => {
 });
 route("GET", "/api/item/:id", (_r, _u, p, ctx) => {
   const r = getItem(ctx.dataDir, p.id);
-  return r ? json(r) : error("not found", 404);
+  if (!r) return error("not found", 404);
+  const initiative = r.item.source === "task" ? initiativeOfTask(ctx.dataDir, p.id) : undefined;
+  return json(initiative ? { ...r, initiative } : r);
 });
 route("POST", "/api/item/:id/tags", async (req, _u, p, ctx) => {
   const b = await body<{ tags?: string[]; author?: string }>(req);
@@ -139,7 +151,10 @@ export async function handle(req: Request, ctx: ServerContext, webDist?: string)
 }
 
 export function startServer(ctx: ServerContext, port: number, webDist?: string) {
-  return Bun.serve({ hostname: "127.0.0.1", port, fetch: (req) => handle(req, ctx, webDist) });
+  // idleTimeout 0: a sync, an ask or a briefing waits on model calls far longer than Bun's 10 s default, which
+  // dropped the answer while the work went on (jv-m9l). The service listens on loopback only.
+  const server = Bun.serve({ hostname: "127.0.0.1", port, idleTimeout: 0, fetch: (req) => handle(req, ctx, webDist) });
+  return server;
 }
 
 // ---- M4: briefings ----
@@ -159,7 +174,7 @@ route("POST", "/api/briefing/:id/comments", async (req, _u, p, ctx) => {
   const b = await body<{ comment?: string; text?: string; author?: string; selectedText?: string; contextText?: string; anchor?: Record<string, unknown> }>(req);
   const text = b.comment ?? b.text;
   if (!text) return error("comment is required");
-  return json(addComment(ctx.dataDir, p.id, { comment: text, author: b.author, selectedText: b.selectedText, contextText: b.contextText, anchor: b.anchor as never }));
+  return json(addComment(ctx.dataDir, p.id, { comment: text, author: resolveAuthor(b.author), selectedText: b.selectedText, contextText: b.contextText, anchor: b.anchor as never }));
 });
 
 // ---- M7: tasks + manual links (the routes the extension expects) ----
@@ -204,3 +219,6 @@ route("GET", "/api/presentation/:id", async (_r, _u, p, ctx) => {
 
 // ---- M9: chat ("Discuss") over Copilot ACP ----
 import "./chat/routes.ts";
+
+// ---- initiatives in the web UI ----
+import "./initiatives/routes.ts";

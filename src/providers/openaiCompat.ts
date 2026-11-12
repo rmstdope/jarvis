@@ -6,6 +6,32 @@ export interface OpenAICompatConfig {
   apiKeyEnv?: string;
   extraBody?: Record<string, unknown>;
 }
+/**
+ * The readable reason in a failed response: an OpenAI-style `{"error":{"message":…}}` body's message,
+ * a plain `{"error":"…"}` string, else the body as text, else the status text when the body is empty.
+ */
+export function errorReason(body: string, statusText = ""): string {
+  try {
+    const err = (JSON.parse(body) as { error?: unknown } | null)?.error;
+    const msg = typeof err === "string" ? err : (err as { message?: unknown } | null)?.message;
+    if (typeof msg === "string" && msg.trim()) return msg;
+  } catch {
+    // not JSON: the body is the reason
+  }
+  return body.trim() || statusText;
+}
+
+/** A chat call the server answered with a non-2xx status; `reason` is the server's own message. */
+export class ChatHttpError extends Error {
+  constructor(
+    readonly status: number,
+    readonly reason: string,
+    provider: string,
+  ) {
+    super(`${provider} chat failed (${status}): ${reason}`);
+  }
+}
+
 /** Any OpenAI-compatible chat-completions server: OpenAI itself, oMLX, vLLM, LM Studio, a gateway. */
 export const OPENAI_DEFAULTS = { baseUrl: "https://api.openai.com/v1", apiKeyEnv: "OPENAI_API_KEY" };
 
@@ -33,8 +59,8 @@ export function openaiCompatProvider(name: "openai-compat" = "openai-compat", cf
       if (opts.json) body.response_format = { type: "json_object" };
       else if (opts.reasoningEffort) body.reasoning_effort = opts.reasoningEffort; // mutually exclusive with response_format
       if (opts.maxTokens) body.max_tokens = opts.maxTokens;
-      const r = await fetch(`${baseUrl}/chat/completions`, { method: "POST", headers, body: JSON.stringify(body), signal: AbortSignal.timeout(LLM_TIMEOUT_MS) });
-      if (!r.ok) throw new Error(`${name} chat failed: ${r.status} ${await r.text()}`);
+      const r = await fetch(`${baseUrl}/chat/completions`, { method: "POST", headers, body: JSON.stringify(body), signal: AbortSignal.timeout(opts.timeoutMs ?? LLM_TIMEOUT_MS) });
+      if (!r.ok) throw new ChatHttpError(r.status, errorReason(await r.text(), r.statusText), name);
       const j = (await r.json()) as { choices?: { message?: { content?: string }; finish_reason?: string }[] };
       const c = j.choices?.[0];
       if (c?.finish_reason === "length") throw new TruncationError();

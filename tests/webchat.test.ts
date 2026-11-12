@@ -46,7 +46,7 @@ describe("first screen", () => {
   test("line, four suggestion cards, typing box and hint", async () => {
     await setup({ name: "Mia" });
     expect(q(".jv-sub").textContent).toBe("Ask anything about your team's knowledge — I'll cite what I find.");
-    expect(qa(".jv-sg").map((e) => e.textContent)).toEqual(["Summarise the newest captures", "What did the team decide this week?", "What are my open tasks?", "Which briefings are still drafts?"]);
+    expect(qa(".jv-sg").map((e) => e.textContent)).toEqual(["Summarise the newest captures", "What did the team decide this week?", "Turn this week's decisions into tasks for me", "Draft a briefing on what changed this week"]);
     expect(input().placeholder).toBe("Ask J.A.R.V.I.S.…");
     expect(q(".jv-hint").textContent).toBe("Enter to send · Shift+Enter for a new line");
     expect(q(".jv-send").title).toBe("Send");
@@ -252,6 +252,95 @@ describe("one conversation that survives", () => {
     expect(q(".jv-answer").textContent).toBe("Half");
     expect(q(".jv-stopped").textContent).toBe("Stopped.");
   });
+  describe("an answer that finishes with no text", () => {
+    const NOTICE = "I finished without writing an answer.";
+    const emptyWithSteps = () => ({ stream: async (push: (e: unknown) => void) => { push({ type: "status", text: "thinking" }); push({ type: "status", text: "List capture files" }); push({ type: "done" }); } });
+    test("steps start unfolded, the grey notice follows with Try again, and the toggle folds", async () => {
+      await setup({ answer: emptyWithSteps as never });
+      await ask("q");
+      expect(q(".jv-steps-toggle").textContent).toBe("▾ 2 steps");
+      expect(qa(".jv-step").length).toBe(2);
+      expect(q(".jv-noanswer").textContent).toContain(NOTICE);
+      expect(q(".jv-noanswer .jv-retry").textContent).toBe("Try again");
+      expect(document.querySelector(".jv-failed")).toBeNull();
+      q(".jv-steps-toggle").click();
+      expect(q(".jv-steps-toggle").textContent).toBe("▸ 2 steps");
+      expect(document.querySelector(".jv-step")).toBeNull();
+      expect(q(".jv-noanswer")).not.toBeNull();
+    });
+    test("no steps: the notice alone", async () => {
+      await setup({ answer: () => ({ stream: async (push) => { push({ type: "done" }); } }) });
+      await ask("q");
+      expect(document.querySelector(".jv-steps-toggle")).toBeNull();
+      expect(q(".jv-noanswer").textContent).toContain(NOTICE);
+    });
+    test("sources still appear, after the notice", async () => {
+      await setup({ answer: () => ({ stream: async (push) => { push({ type: "source", docId: "D1", title: "Doc one", source: "note" }); push({ type: "done" }); } }) });
+      await ask("q");
+      expect(q(".jv-noanswer").nextElementSibling?.className).toBe("jv-chips");
+    });
+    test("stopped before any text: Stopped. only", async () => {
+      await setup({ answer: () => ({ stream: async (_push, signal) => { await new Promise<void>((r) => signal.addEventListener("abort", () => r())); } }) });
+      type("q");
+      (q(".jv-send") as HTMLElement).click();
+      await env.tick(40);
+      (q(".jv-stop") as HTMLElement).click();
+      await env.tick(40);
+      expect(q(".jv-stopped").textContent).toBe("Stopped.");
+      expect(document.querySelector(".jv-noanswer")).toBeNull();
+    });
+    test("an answer with text has no notice", async () => {
+      await setup();
+      await ask("q");
+      expect(document.querySelector(".jv-noanswer")).toBeNull();
+    });
+    test("Try again removes the pair and asks the same question again", async () => {
+      let n = 0;
+      await setup({ answer: () => (++n === 1 ? { stream: async (push) => { push({ type: "done" }); } } : { stream: async (push) => { push({ type: "message", text: "Now" }); push({ type: "done" }); } }) });
+      await ask("same");
+      (q(".jv-noanswer .jv-retry") as HTMLElement).click();
+      await env.tick(60);
+      expect(q(".jv-answer").textContent).toBe("Now");
+      expect(qa(".jv-user").length).toBe(1);
+      expect(document.querySelector(".jv-noanswer")).toBeNull();
+    });
+    test("an answer of only whitespace counts as empty", async () => {
+      await setup({ answer: () => ({ stream: async (push) => { push({ type: "message", text: "\n " }); push({ type: "done" }); } }) });
+      await ask("q");
+      expect(q(".jv-noanswer")).not.toBeNull();
+    });
+    test("a failed answer shows only the red notice", async () => {
+      await setup({ answer: () => ({ status: 500, json: { error: "x" } }) });
+      await ask("q");
+      expect(q(".jv-failed")).not.toBeNull();
+      expect(document.querySelector(".jv-noanswer")).toBeNull();
+    });
+    test("an answer with no text but a change card gets no notice", async () => {
+      await setup({ answer: () => ({ stream: async (push) => { push({ type: "change", change: { id: "C1", ok: true, verb: "capture", items: [{ title: "T" }] } }); push({ type: "done" }); } }) });
+      await ask("q");
+      expect(document.querySelector(".jv-noanswer")).toBeNull();
+    });
+    test("Try again on an old empty answer while another answer is coming does nothing and keeps the question", async () => {
+      let n = 0;
+      await setup({ answer: () => (++n === 1 ? { stream: async (push) => { push({ type: "done" }); } } : { stream: async (_push, signal) => { await new Promise<void>((r) => signal.addEventListener("abort", () => r())); } }) });
+      await ask("first");
+      type("second");
+      (q(".jv-send") as HTMLElement).click();
+      await env.tick(40);
+      (q(".jv-noanswer .jv-retry") as HTMLElement).click();
+      await env.tick(20);
+      expect(qa(".jv-user").map((e) => e.textContent)).toEqual(["first", "second"]);
+    });
+    test("a reload shows the notice again with the steps unfolded", async () => {
+      await setup({ answer: emptyWithSteps as never });
+      await ask("q");
+      q(".jv-steps-toggle").click();
+      document.body.innerHTML = "";
+      await setup();
+      expect(q(".jv-steps-toggle").textContent).toBe("▾ 2 steps");
+      expect(q(".jv-noanswer")).not.toBeNull();
+    });
+  });
   test("hide and show keep the conversation and its scroll position", async () => {
     const chat = await setup();
     await ask("hello");
@@ -400,5 +489,214 @@ describe("ndjson decoder", () => {
     d('llo"}\n{"type":"usage","used":1,"size":2}\n{"type":"do');
     d('ne"}', true);
     expect(events).toEqual([{ type: "message", text: "hello" }, { type: "usage", used: 1, size: 2 }, { type: "done" }]);
+  });
+});
+
+describe("the agent acts: the change card (jv-oya.4)", () => {
+  const ch = (o: Record<string, unknown>) => ({ id: `C${Math.random().toString(36).slice(2, 8)}`, turn: "T", ok: true, undone: false, undoable: true, items: [], ...o });
+  const task = (id: string, title: string) => ({ id, title, kind: "task" });
+  async function answerWith(changes: Record<string, unknown>[], text = "Done.", opts: Setup = {}) {
+    const chat = await setup({ name: "Mia", ...opts, answer: () => ({ stream: async (push) => { for (const c of changes) push({ type: "change", change: c }); push({ type: "message", text }); push({ type: "done" }); } }) });
+    await ask("do it");
+    return chat;
+  }
+  const card = () => q(".jv-changes");
+  const rows = () => qa(".jv-crow").map((r) => r.textContent);
+
+  test("no changes, no card", async () => {
+    await answerWith([]);
+    expect(document.querySelector(".jv-changes")).toBeNull();
+  });
+  test("one change: heading, sentence with the title as a link, Undo and Undo all", async () => {
+    await answerWith([ch({ kind: "task.create", items: [task("T9", "Ring the vendor")] })]);
+    expect(card().querySelector("h4")!.textContent).toBe("I made 1 change");
+    expect(rows()).toEqual(["✓Created task Ring the vendorUndo"]);
+    expect(q(".jv-crow a").getAttribute("href")).toBe("#/item/T9");
+    expect(q(".jv-crow-undo").textContent).toBe("Undo");
+    expect(q(".jv-undoall").textContent).toBe("Undo all");
+    expect(q(".jv-answer").previousElementSibling).toBe(card());
+  });
+  test("every kind of row, in the words agreed", async () => {
+    await answerWith([
+      ch({ kind: "capture.note", items: [{ id: "N1", title: "A", kind: "doc" }] }),
+      ch({ kind: "capture.link", items: [{ id: "N2", title: "B", kind: "doc" }] }),
+      ch({ kind: "capture.file", items: [{ id: "N3", title: "C", kind: "doc" }] }),
+      ch({ kind: "capture.meeting", items: [{ id: "N4", title: "D", kind: "doc" }] }),
+      ch({ kind: "task.done", items: [task("T1", "E")] }),
+      ch({ kind: "task.reopen", items: [task("T1", "E")] }),
+      ch({ kind: "task.due", items: [task("T1", "E")], detail: { from: "2026-11-20", to: "2025-01-03" } }),
+      ch({ kind: "task.owner", items: [task("T1", "E")], detail: { from: "Sam", to: "you" } }),
+      ch({ kind: "link", items: [task("T1", "E"), { id: "N1", title: "A", kind: "doc" }], detail: { relation: "related" } }),
+      ch({ kind: "draft.briefing", items: [{ id: "B1", title: "F", kind: "briefing" }], draft: { kind: "briefing", sections: ["One", "Two"], sources: 3 } }),
+      ch({ kind: "draft.presentation", items: [{ id: "deck", title: "G", kind: "presentation" }], draft: { kind: "presentation", sections: ["S1"], sources: 0, slides: 4 } }),
+      ch({ kind: "initiative.create", items: [{ id: "I1", title: "H", kind: "initiative" }] }),
+    ]);
+    expect(card().querySelector("h4")!.textContent).toBe("I made 12 changes");
+    expect(rows().map((r) => r!.replace(/Undo$/, ""))).toEqual([
+      "✓Captured note A", "✓Captured link B", "✓Captured file C", "✓Captured meeting D", "✓Marked task E done", "✓Reopened task E",
+      "✓Changed task E: due 20 Nov 2026 → 3 Jan 2025".replace("20 Nov 2026", "20 Nov"), "✓Changed task E: owner Sam → you", "✓Linked E to A · relates to",
+      "✓Drafted briefing F", "✓Drafted presentation G", "✓Created initiative H"]);
+    const drafts = qa(".jv-draft");
+    expect(drafts[0].textContent).toBe("BRIEFING · DRAFT · 2 sections · 3 sourcesFOne · TwoOpen draft");
+    expect(drafts[1].querySelector(".jv-draft-k")!.textContent).toBe("PRESENTATION · DRAFT · 4 slides · 0 sources");
+    expect((drafts[0].querySelector("a") as HTMLElement).getAttribute("href")).toBe("#/briefing/B1");
+    expect((drafts[1].querySelector("a") as HTMLElement).getAttribute("href")).toBe("#/presentation/deck");
+  });
+  test("a failed change is a red row with the reason, counted in the heading, with no Undo", async () => {
+    await answerWith([ch({ kind: "task.create", items: [task("T1", "Ok")] }), ch({ kind: "link", ok: false, undoable: false, verb: "link", error: "the meeting note was not found", items: [{ id: "x", title: "Retire the channel", kind: "doc" }] })]);
+    expect(card().querySelector("h4")!.textContent).toBe("I made 1 change · 1 failed");
+    const bad = q(".jv-cfail");
+    expect(bad.textContent).toBe("✗Couldn't link Retire the channel — the meeting note was not found.");
+    expect(bad.querySelector("button")).toBeNull();
+  });
+  test("every change failed: heading counts 0 changes", async () => {
+    await answerWith([ch({ kind: "link", ok: false, undoable: false, verb: "link", error: "nope", items: [] })]);
+    expect(card().querySelector("h4")!.textContent).toBe("I made 0 changes · 1 failed");
+    expect(document.querySelector(".jv-undoall")).toBeNull();
+  });
+  test("Undo strikes the row, marks it Undone, keeps Undo all; the last Undo says all undone and removes Undo all", async () => {
+    const a = ch({ kind: "task.create", items: [task("T1", "One")] }), b = ch({ kind: "task.create", items: [task("T2", "Two")] });
+    await answerWith([a, b]);
+    env.routes.set(`POST /api/chat/conversations/${(JSON.parse(localStorage.getItem("jv.chat")!) as { conversationId: string }).conversationId}/changes/${a.id}/undo`, () => ({ json: { change: { ...a, undone: true } } }));
+    const cid = (JSON.parse(localStorage.getItem("jv.chat")!) as { conversationId: string }).conversationId;
+    env.routes.set(`POST /api/chat/conversations/${cid}/changes/${b.id}/undo`, () => ({ json: { change: { ...b, undone: true } } }));
+    (qa(".jv-crow-undo")[0]).click();
+    await env.tick(30);
+    expect(qa(".jv-crow")[0].classList.contains("jv-cundone")).toBe(true);
+    expect(qa(".jv-crow")[0].textContent).toBe("↺Created task OneUndone");
+    expect(document.activeElement).toBe(qa(".jv-crow-undo")[0]); // the next row's Undo
+    expect(q(".jv-undoall")).toBeTruthy();
+    (qa(".jv-crow-undo")[0]).click();
+    await env.tick(30);
+    expect(card().querySelector("h4")!.textContent).toBe("I made 2 changes · all undone");
+    expect(document.querySelector(".jv-undoall")).toBeNull();
+    expect(document.activeElement).toBe(input());
+  });
+  test("Undo on a Created task row shows its Linked rows Undone at once (jv-a9b)", async () => {
+    const a = ch({ kind: "task.create", items: [task("T1", "One")] }), l = ch({ kind: "link", items: [task("T1", "One"), { id: "N1", title: "Zoom drift", kind: "doc" }], detail: { relation: "related" } });
+    await answerWith([a, l]);
+    const cid = (JSON.parse(localStorage.getItem("jv.chat")!) as { conversationId: string }).conversationId;
+    env.routes.set(`POST /api/chat/conversations/${cid}/changes/${a.id}/undo`, () => ({ json: { change: { ...a, undone: true }, changes: [{ ...a, undone: true }, { ...l, undone: true }] } }));
+    q(".jv-crow-undo").click();
+    await env.tick(30);
+    expect(qa(".jv-crow").map((r) => r.classList.contains("jv-cundone"))).toEqual([true, true]);
+    expect(rows()[1]).toBe("↺Linked One to Zoom drift · relates toUndone");
+    expect(card().querySelector("h4")!.textContent).toBe("I made 2 changes · all undone");
+  });
+  test("Undo all asks for its own answer only", async () => {
+    const a = ch({ turn: "TURN-9", kind: "task.create", items: [task("T1", "One")] });
+    await answerWith([a]);
+    const cid = (JSON.parse(localStorage.getItem("jv.chat")!) as { conversationId: string }).conversationId;
+    env.routes.set(`POST /api/chat/conversations/${cid}/changes/undo-all`, () => ({ json: { changes: [{ ...a, undone: true }] } }));
+    q(".jv-undoall").click();
+    await env.tick(30);
+    expect(env.calls.find((c) => c.path.endsWith("/undo-all"))!.body).toEqual({ turn: "TURN-9" });
+  });
+  test("Undo all undoes the rest, then focus goes to the typing box", async () => {
+    const a = ch({ kind: "task.create", items: [task("T1", "One")] }), b = ch({ kind: "task.done", items: [task("T2", "Two")] });
+    await answerWith([a, b]);
+    const cid = (JSON.parse(localStorage.getItem("jv.chat")!) as { conversationId: string }).conversationId;
+    env.routes.set(`POST /api/chat/conversations/${cid}/changes/undo-all`, () => ({ json: { changes: [{ ...a, undone: true }, { ...b, undone: true }] } }));
+    q(".jv-undoall").click();
+    await env.tick(30);
+    expect(card().querySelector("h4")!.textContent).toBe("I made 2 changes · all undone");
+    expect(document.activeElement).toBe(input());
+  });
+  test("an Undo that cannot be done leaves the row as it was and shows the error", async () => {
+    const a = ch({ kind: "task.create", items: [task("T1", "One")] });
+    await answerWith([a]);
+    const cid = (JSON.parse(localStorage.getItem("jv.chat")!) as { conversationId: string }).conversationId;
+    env.routes.set(`POST /api/chat/conversations/${cid}/changes/${a.id}/undo`, () => ({ status: 409, json: { error: "Couldn't undo — One was changed after the agent changed it." } }));
+    q(".jv-crow-undo").click();
+    await env.tick(30);
+    expect(q(".toast.error").textContent).toBe("Couldn't undo — One was changed after the agent changed it.");
+    expect(rows()).toEqual(["✓Created task OneUndo"]);
+  });
+  test("after a reload the card comes back, with undone rows brought up to date from the service", async () => {
+    const a = ch({ kind: "task.create", items: [task("T1", "One")] });
+    await answerWith([a]);
+    const cid = (JSON.parse(localStorage.getItem("jv.chat")!) as { conversationId: string }).conversationId;
+    document.body.innerHTML = "";
+    env.routes.set(`GET /api/chat/conversations/${cid}/changes`, () => ({ json: { changes: [{ ...a, undone: true }] } }));
+    await setup({ name: "Mia" });
+    await env.tick(30);
+    expect(q(".jv-changes h4").textContent).toBe("I made 1 change · all undone");
+  });
+  test("a task the agent changed reloads the open tasks (the first screen's box) without a reload", async () => {
+    let loads = 0;
+    const chat = await setup({ name: "Mia", answer: () => ({ stream: async (push) => { push({ type: "change", change: ch({ kind: "task.create", items: [task("T1", "One")] }) }); push({ type: "done" }); } }) });
+    void chat;
+    env.routes.set("GET /api/tasks", () => { loads++; return { json: { tasks: [] } }; });
+    await ask("add a task");
+    expect(loads).toBe(1);
+  });
+  test("New chat: the question adds a line when changes are kept (plural, singular), and not otherwise", async () => {
+    const chat = await answerWith([ch({ kind: "task.create", items: [task("T1", "One")] }), ch({ kind: "task.create", items: [task("T2", "Two")] }), ch({ kind: "task.create", undone: true, items: [task("T3", "Three")] })]);
+    chat.newChat();
+    expect(q(".modal").textContent).toContain("This conversation will be cleared.");
+    expect(q(".modal .muted").textContent).toBe("The 2 changes the agent made are kept, but you won't be able to undo them from here.");
+    qa(".modal button")[0].click();
+    document.body.innerHTML = ""; localStorage.clear();
+    const c2 = await answerWith([ch({ kind: "task.create", items: [task("T1", "One")] })]);
+    c2.newChat();
+    expect(q(".modal .muted").textContent).toBe("The 1 change the agent made is kept, but you won't be able to undo it from here.");
+    qa(".modal button")[0].click();
+    document.body.innerHTML = ""; localStorage.clear();
+    const c3 = await answerWith([]);
+    c3.newChat();
+    expect(document.querySelector(".modal .muted")).toBeNull();
+  });
+});
+
+describe("attaching files (jv-oya.4)", () => {
+  const drop = (files: File[]) => {
+    const ev = new env.win.Event("drop", { bubbles: true, cancelable: true }) as unknown as Event & { dataTransfer: unknown };
+    ev.dataTransfer = { types: ["Files"], files };
+    q(".jv-chat").dispatchEvent(ev);
+  };
+  const file = (name: string, size = 10) => { const f = new File(["x"], name); Object.defineProperty(f, "size", { value: size }); return f; };
+  test("the paperclip opens the picker; chips show name and size; × removes and moves focus to the next ×", async () => {
+    await setup({ name: "Mia" });
+    let opened = false;
+    (q(".jv-picker") as HTMLInputElement).click = () => { opened = true; };
+    q(".jv-clip").click();
+    expect(opened).toBe(true);
+    drop([file("a.pdf", 1.2 * 1024 * 1024), file("b.md", 4096), file("c.txt", 312)]);
+    expect(qa(".jv-file").map((c) => c.textContent)).toEqual(["📄 a.pdf · 1.2 MB×", "📄 b.md · 4 KB×", "📄 c.txt · 312 B×"]);
+    qa(".jv-file-x")[0].click();
+    expect(document.activeElement).toBe(qa(".jv-file-x")[0]);
+    expect(qa(".jv-file").length).toBe(2);
+    qa(".jv-file-x")[1].click();
+    qa(".jv-file-x")[0].click();
+    expect(document.activeElement).toBe(input());
+  });
+  test("unsupported and oversize files are red chips with the reason and are not sent", async () => {
+    await setup({ name: "Mia" });
+    drop([file("demo.mov"), file("export.pdf", 26 * 1024 * 1024), file("ok.md")]);
+    const chips = qa(".jv-file");
+    expect(chips[0].textContent).toBe("⚠ demo.mov — can't capture this kind of file×");
+    expect(chips[1].textContent).toBe("⚠ export.pdf — larger than 25 MB×");
+    expect(chips[0].classList.contains("jv-bad") && chips[1].classList.contains("jv-bad") && !chips[2].classList.contains("jv-bad")).toBe(true);
+    await ask("capture it");
+    const sent = env.calls.find((c) => c.path === "/api/chat/sessions/S1/messages")!.body as { files: string[] };
+    expect(sent.files).toEqual(["ok.md"]);
+    expect(q(".jv-user").textContent).toContain("📄 ok.md");
+    expect(document.querySelector(".jv-files:not([hidden]) .jv-file")).toBeNull();
+  });
+  test("dragging shows the drop outline and message; leaving removes them", async () => {
+    await setup({ name: "Mia" });
+    const ev = (t: string) => { const e = new env.win.Event(t, { bubbles: true, cancelable: true }) as unknown as Event & { dataTransfer: unknown }; e.dataTransfer = { types: ["Files"] }; q(".jv-chat").dispatchEvent(e); };
+    ev("dragenter");
+    expect(q(".jv-chat").classList.contains("jv-dropping")).toBe(true);
+    expect(q(".jv-drop").textContent).toBe("Drop files to attach");
+    expect(q(".jv-drop").hidden).toBe(false);
+    ev("dragleave");
+    expect(q(".jv-drop").hidden).toBe(true);
+  });
+  test("no model: the paperclip is greyed out and a dropped file does nothing", async () => {
+    await setup({ available: false });
+    expect((q(".jv-clip") as HTMLButtonElement).disabled).toBe(true);
+    drop([file("a.md")]);
+    expect(document.querySelector(".jv-file")).toBeNull();
   });
 });

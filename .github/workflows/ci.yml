@@ -114,7 +114,12 @@ jobs:
         run: brew install sqlite
       - run: bun install --frozen-lockfile
       - name: sqlite-vec doctor check (cross-platform validation)
-        run: bun run src/cli.ts doctor --core-only --json | tee doctor.json
+        shell: bash
+        run: |
+          # doctor exits 1 here (no content repo, no embedder), so judge only the sqlite-vec check.
+          bun run src/cli.ts doctor --core-only --json > doctor.json || true
+          cat doctor.json
+          jq -e 'any(.checks[]; .name == "sqlite-vec" and .status == "ok")' doctor.json
         continue-on-error: ${{ runner.os == 'Windows' }}
       - name: run selected tests
         shell: bash

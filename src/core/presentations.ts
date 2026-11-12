@@ -72,6 +72,8 @@ export interface ShareOpts {
   slug: string;
   title?: string;
   author?: string;
+  /** What `provenance.imported_from` records instead of the source path (e.g. a temporary file). */
+  importedFrom?: string;
 }
 /** Copy a deck (file, or directory with index.mdx / exactly one root .mdx) into presentations/<slug>, injecting missing frontmatter. */
 export function sharePresentation(dataDir: string, source: string, opts: ShareOpts): Presentation {
@@ -122,7 +124,7 @@ export function sharePresentation(dataDir: string, source: string, opts: ShareOp
     author,
     created_at: typeof fm.created_at === "string" ? fm.created_at : nowIso(),
     starred: typeof fm.starred === "boolean" ? fm.starred : false,
-    provenance: { ...((fm.provenance as object) ?? {}), imported_from: src },
+    provenance: { ...((fm.provenance as object) ?? {}), imported_from: opts.importedFrom ?? src },
   } as PresentationFrontmatter;
   // stage, copy regular files (assets must not escape the source root), then atomic rename
   mkdirSync(presentationsDir(dataDir), { recursive: true });

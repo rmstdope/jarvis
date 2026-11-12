@@ -6,8 +6,9 @@ let env: WebEnv;
 const q = (sel: string) => document.querySelector(sel) as HTMLElement;
 const qa = (sel: string) => [...document.querySelectorAll(sel)] as HTMLElement[];
 const ITEM = { id: "I1", source: "note", title: "On-call rollout", author: "mia", created_at: "2026-01-01T00:00:00Z", updated_at: null, updated_by: null, source_url: null, starred: false, summary: null, tags: [], metadata: null, body: "Body text", proc_version: 1, file_path: null };
-async function boot(hash = "") {
+async function boot(hash = "", stored: Record<string, string> = {}) {
   env = installWebEnv(1280);
+  for (const [k, v] of Object.entries(stored)) localStorage.setItem(k, v);
   env.routes.set("GET /api/me", () => ({ json: { name: "Mia" } }));
   env.routes.set("GET /api/chat/status", () => ({ json: { available: true } }));
   env.routes.set("GET /api/tasks", () => ({ json: { tasks: [] } }));
@@ -22,6 +23,8 @@ async function boot(hash = "") {
   await env.tick(40);
 }
 afterEach(() => env.restore());
+/** Everything this page stored in localStorage, to carry into a fresh `boot` that stands for a reload. */
+const snapshotStorage = () => Object.fromEntries(Array.from({ length: localStorage.length }, (_, i) => localStorage.key(i)!).map((k) => [k, localStorage.getItem(k)!]));
 const key = (k: string, mods: Record<string, boolean> = {}, target: Element | Document = document) => target.dispatchEvent(new env.win.KeyboardEvent("keydown", { key: k, bubbles: true, cancelable: true, ...mods }) as unknown as Event);
 const go = async (hash: string) => { location.hash = hash; await env.tick(40); };
 
@@ -85,6 +88,21 @@ describe("keyboard", () => {
     expect(document.querySelector(".modal")).toBeNull();
     expect(q(".jv-user")).not.toBeNull();
   });
+  test("clicking the chat box behind the New chat dialog closes it and leaves the typing in the box (jv-m5e)", async () => {
+    const stored = JSON.stringify({ conversationId: "C1", scope: { type: "general", ids: [] }, messages: [{ role: "user", text: "hi" }, { role: "assistant", text: "Hello", status: "done" }] });
+    await boot("", { "jv.chat": stored });
+    q(".jv-new").focus();
+    q(".jv-new").click();
+    await env.tick(5);
+    expect(q(".modal h3").textContent).toBe("Start a new chat?");
+    // happy-dom has no layout: as in a browser, the hit-test finds the backdrop while it is there, else the chat box.
+    document.elementFromPoint = (() => document.querySelector(".modal-bg") ?? q(".jv-input")) as typeof document.elementFromPoint;
+    q(".modal-bg").dispatchEvent(new env.win.MouseEvent("click", { bubbles: true, clientX: 840, clientY: 728 }) as unknown as Event);
+    expect(document.querySelector(".modal")).toBeNull();
+    // Focus back on New chat would let the next typed space start a new chat and drop the words before it.
+    expect(document.activeElement?.className).toBe("jv-input");
+    expect(q(".jv-user").textContent).toBe("hi");
+  });
   test("/ jumps to the typing box unless a field has focus", async () => {
     await boot();
     (document.activeElement as HTMLElement | null)?.blur();
@@ -131,7 +149,7 @@ describe("keyboard", () => {
 });
 
 describe("sync", () => {
-  const syncOk = { committed: 1, committedEnriched: 0, pulled: true, pushed: true, conflicted: [], collisions: [], notes: [], remote: true };
+  const syncOk = { committed: 1, committedEnriched: 0, pulled: true, pushed: true, conflicted: [], collisions: [], notes: [], failures: [], remote: true };
   test("asks first, reports in a toast, shows the status line, and remembers Do not show again", async () => {
     await boot();
     expect(q(".jv-syncline").textContent).toBe("Not synced yet");
@@ -148,6 +166,52 @@ describe("sync", () => {
     q(".jv-sync").click();
     expect(document.querySelector(".modal")).toBeNull(); // skipped now
     await env.tick(30);
+  });
+  test("a sync that pushed but whose model step failed says it was shared and names the step (jv-m9l)", async () => {
+    await boot();
+    localStorage.setItem("sb.sync.noconfirm", "1");
+    const reason = 'Model "gpt-4.1" from --model flag is not available.';
+    env.routes.set("POST /api/sync", () => ({ json: { ...syncOk, committed: 7, failures: [{ step: "enrich", failed: 7, reason, doctor: true }] } }));
+    q(".jv-sync").click();
+    await env.tick(30);
+    expect(q(".toast").textContent).toBe(`Shared with the team, but enrichment failed for 7 item(s): ${reason} Run \`jarvis doctor\` for the fix.`);
+    expect(q(".jv-syncline").textContent).toBe("Synced just now · enrichment failed");
+    expect(q(".jv-syncline").classList.contains("jv-err")).toBe(true);
+  });
+  test("a reload still shows that the last sync's model step failed (jv-zgk)", async () => {
+    await boot();
+    localStorage.setItem("sb.sync.noconfirm", "1");
+    env.routes.set("POST /api/sync", () => ({ json: { ...syncOk, failures: [{ step: "enrich", failed: 2, reason: "file missing", doctor: false }] } }));
+    q(".jv-sync").click();
+    await env.tick(30);
+    expect(q(".jv-syncline").textContent).toBe("Synced just now · enrichment failed");
+    const stored = snapshotStorage();
+    env.restore();
+    await boot("", stored); // the reload: a fresh page over the same browser storage
+    expect(q(".jv-syncline").textContent).toBe("Synced just now · enrichment failed");
+    expect(q(".jv-syncline").classList.contains("jv-err")).toBe(true);
+    // A later clean sync clears it, and a reload after that shows no failure.
+    env.routes.set("POST /api/sync", () => ({ json: syncOk }));
+    q(".jv-sync").click();
+    await env.tick(30);
+    expect(q(".jv-syncline").textContent).toBe("Synced just now");
+    const stored2 = snapshotStorage();
+    env.restore();
+    await boot("", stored2);
+    expect(q(".jv-syncline").textContent).toBe("Synced just now");
+    expect(q(".jv-syncline").classList.contains("jv-err")).toBe(false);
+  });
+  test("an unpushed sync with two failed steps says so, and points at doctor only where it has a fix (jv-m9l)", async () => {
+    await boot();
+    localStorage.setItem("sb.sync.noconfirm", "1");
+    env.routes.set("POST /api/sync", () => ({ json: { ...syncOk, pushed: false, failures: [
+      { step: "enrich", failed: 1, reason: "file missing", doctor: false },
+      { step: "refine", failed: 2, reason: "no results array", doctor: false },
+    ] } }));
+    q(".jv-sync").click();
+    await env.tick(30);
+    expect(q(".toast").textContent).toBe("Not shared with the team, but enrichment failed for 1 item(s): file missing; link refinement failed for 2 batch(es): no results array.");
+    expect(q(".jv-syncline").textContent).toBe("Synced just now · enrichment and link refinement failed");
   });
   test("a failed sync says so in the line; a running one is reported as today", async () => {
     await boot();

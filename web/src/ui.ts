@@ -34,17 +34,23 @@ export function toast(message: string, kind: "ok" | "error" = "ok", ms = 4000): 
 }
 /**
  * A dialog over the page. Esc and a click outside close it; focus starts on the action labelled
- * `focus` (else the first button) and returns to where it was when the dialog closes.
+ * `focus` (else the first button) and returns to where it was when the dialog closes, except that a
+ * click outside on a field or control gives that one the focus, so what is typed next lands there.
  */
 export function modal(title: string, body: Child, actions: { label: string; primary?: boolean; onClick: () => void }[], focus?: string): HTMLElement {
   const before = document.activeElement as HTMLElement | null;
   const bg = h("div", { class: "modal-bg" });
-  const close = () => { document.removeEventListener("keydown", onKey, true); bg.remove(); before?.focus?.(); };
+  const close = (to: HTMLElement | null = before) => { document.removeEventListener("keydown", onKey, true); bg.remove(); to?.focus?.(); };
+  const under = (e: MouseEvent): HTMLElement | null => {
+    const el = document.elementFromPoint?.(e.clientX, e.clientY)?.closest<HTMLElement>('input, textarea, select, button, a[href], [tabindex]:not([tabindex="-1"])');
+    return el && !(el as HTMLInputElement).disabled ? el : null;
+  };
   const onKey = (e: Event) => { if ((e as KeyboardEvent).key === "Escape") { e.preventDefault(); e.stopPropagation(); close(); } };
   const buttons = actions.map((a) => h("button", { class: a.primary ? "primary" : "", onClick: () => { close(); a.onClick(); } }, a.label));
   const box = h("div", { class: "modal", role: "dialog", "aria-modal": "true", "aria-label": title }, h("h3", { style: "margin-top:0" }, title), body, h("div", { class: "row", style: "justify-content:flex-end;margin-top:14px" }, ...buttons));
   bg.appendChild(box);
-  bg.addEventListener("click", (e) => { if (e.target === bg) close(); });
+  // The backdrop goes first, or the hit-test finds the backdrop instead of what lies under it.
+  bg.addEventListener("click", (e) => { if (e.target === bg) { bg.remove(); close(under(e as MouseEvent) ?? before); } });
   document.addEventListener("keydown", onKey, true);
   document.body.appendChild(bg);
   (buttons[actions.findIndex((a) => a.label === focus)] ?? buttons[0])?.focus();
@@ -63,16 +69,17 @@ export function fmtDate(iso: string | null | undefined): string {
   const d = new Date(iso);
   return Number.isNaN(d.getTime()) ? String(iso) : d.toISOString().slice(0, 10);
 }
-/** `source · added 2026-01-01 by mia · updated 2026-01-02 by kim · source by byline` */
-export function metaLine(i: { source: string; created_at: string; author: string; updated_at?: string | null; updated_by?: string | null; metadata?: Record<string, unknown> | null }): string {
-  const parts = [i.source, `added ${fmtDate(i.created_at)} by ${i.author}`];
-  if (i.updated_at) parts.push(`updated ${fmtDate(i.updated_at)}${i.updated_by ? ` by ${i.updated_by}` : ""}`);
-  const byline = i.metadata?.source_author;
-  if (typeof byline === "string" && byline) parts.push(`source by ${byline}`);
-  return parts.join(" · ");
+/** "<kind> · <who> · <when>": the details line of every entry; missing parts are left out. */
+export function entryLine(...parts: (string | null | undefined)[]): string {
+  return parts.filter((p) => p).join(" · ");
+}
+/** Escape a search snippet and turn its `[matched]` words into <mark> (the only markup produced). */
+export function highlightSnippet(s: string): string {
+  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/\[([^\]]+)\]/g, "<mark>$1</mark>");
 }
 export function itemHref(i: { id: string; source: string }): string {
   if (i.source === "briefing") return `#/briefing/${i.id}`;
+  if (i.source === "initiative") return `#/initiative/${i.id}`;
   if (i.source === "presentation") return `#/presentation/${i.id}`;
   return `#/item/${i.id}`;
 }

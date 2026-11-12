@@ -110,7 +110,7 @@ The content repo layout that these pieces read and write:
   briefings/<id>.brief.mdx       briefings, lessons, meeting summaries (+ <id>.comments.json)
   presentations/<slug>/index.mdx MDX deck bundles with colocated assets
   config/glossary.toml           shared transcription terms and their ASR variants
-  config/team.toml               projection policy
+  config/team.toml               projection policy; `[privacy] transcripts_to_cloud` (default false)
   config/confluence.json         non-secret Confluence target
   filters.json                   shared capture blocklist
   .index/                        gitignored local projection
@@ -210,8 +210,8 @@ throws when the embedding server is down; hybrid degrades to keyword only.
 |---|---|---|
 | **CLI** `src/cli.ts` | Bun, `src/core/args.ts` | A command registry; each command is a few lines over the core. The entrypoint must stay the last statement because top-level `await` stops later registrations. |
 | **HTTP service** `src/server.ts`, `src/http.ts` | `Bun.serve` on `127.0.0.1:7281`, no auth | `src/http.ts` holds the route registry so feature modules (`src/chat/routes.ts`) never import `server.ts` back. Non-API paths serve `web/dist` with an SPA fallback. |
-| **Web UI** `web/` | vanilla TypeScript, hash routing, imperative DOM, bundled by `Bun.build` | Imports only `src/briefings/*` (never core). Opens in Chat, the front door: one persisted conversation (`web/src/chat.ts`) beside a foldable sidebar shell (`web/src/shell.ts`), with warm-light and glowing-dark looks. Pages (browse/search with facets, capture, briefings with TOC and comments rail, presentations, item detail) replace the chat in the main area; items and briefings offer "Ask about this". |
-| **Chat** `src/chat/` | Agent Client Protocol (JSON-RPC 2.0 over NDJSON stdio) | A dependency-free ACP client spawns one shared `copilot --acp` process, advertises no filesystem or terminal capabilities and answers every permission request "cancelled", so chat is strictly read-only. One ACP session per chat session, 60-minute idle expiry, NDJSON streaming to the browser. |
+| **Web UI** `web/` | vanilla TypeScript, hash routing, imperative DOM, bundled by `Bun.build` | Imports only `src/briefings/*` (never core). Opens in Chat, the front door: one persisted conversation (`web/src/chat.ts`) beside a foldable sidebar shell (`web/src/shell.ts`), with warm-light and glowing-dark looks. Pages (`web/src/pages/*`: browse/search as cards with pill filters, capture as a blank page, an item with a details panel, briefings in three columns whose Contents and Comments fold away, presentations; each opened through a "<page> › <title>" trail that returns to the page as left, with search, draft and column choices kept in `localStorage`) replace the chat in the main area; items and briefings offer "Ask about this". |
+| **Chat** `src/chat/` | Agent Client Protocol (JSON-RPC 2.0 over NDJSON stdio) | A dependency-free ACP client spawns one shared `copilot --acp` process, advertises no filesystem or terminal capabilities and answers every permission request "cancelled" and gives the agent no tools. The agent acts by writing fenced `jarvis-action` blocks in its answer (`src/chat/action-blocks.ts` strips them from the text, and drops the Copilot CLI's `Info:` lines); the chat service runs each through the executors in `src/chat/actions.ts` (capture, tasks, initiatives, links, drafting), so it works with any model and needs no MCP allow-list. Each change goes through the same core functions as the CLI, is recorded in the conversation's change log (`.index/chat/<conversation>.json`, local, never committed) and can be undone for the whole conversation; the agent never publishes or approves. One ACP session per chat session, 60-minute idle expiry, NDJSON streaming to the browser. |
 | **Browser extension** `extension/` | Chrome/Edge Manifest V3, TypeScript, bundled `@mozilla/readability` 0.6 | Opt-in auto-capture after a dwell timer, a single blocklist module (globs, allow overrides block), server-synced filters, and a popup for capture, context, tags, search, tasks and links. |
 | **macOS app** `jarvis-app/` | Swift, Cocoa + WebKit, built by `swiftc` from `bundle.sh` | A WKWebView over the web UI. Reuses a running service or starts a managed backend (`bun install`, `web:build`, `jarvis serve`) with logs under Application Support. |
 
@@ -269,9 +269,12 @@ should look the same everywhere use Slidecraft's built-in themes and components.
 
 ### 2.10 Model ids are configuration
 
-No model id is pinned in code for a third-party service. Live detection uses `gpt-4.1` for the Copilot
-CLI and OpenAI unless `JARVIS_COPILOT_MODEL` / `JARVIS_OPENAI_MODEL` say otherwise, the
-Chat model comes from `chatModel` in `config.toml` or `JARVIS_CHAT_MODEL`, and the shipped
+No model id is pinned in code for a third-party service. For the Copilot CLI, live detection and the
+shipped presets use the reserved id `default`, which passes no `--model` so Copilot picks the
+account's own default model (a named id is refused on an account that does not offer it); live
+detection uses `gpt-4o` for OpenAI. `JARVIS_COPILOT_MODEL` / `JARVIS_OPENAI_MODEL` override them; the
+Chat model comes from `chatModel` in `config.toml` or `JARVIS_CHAT_MODEL`; with neither, chat lets
+the Copilot CLI pick its own default model and forces no reasoning effort. The shipped
 presets carry a comment reminding you to use an id your entitlement offers.
 
 ### 2.11 Configuration, diagnostics and quality

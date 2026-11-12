@@ -1,12 +1,13 @@
 import { route, json, error, body, HttpError, type ServerContext } from "../http.ts";
-import { ChatService, ChatError, type ChatScope } from "./sessions.ts";
+import { ChatService, ChatError, type ChatFile, type ChatScope } from "./sessions.ts";
+import { UndoConflict } from "./changes.ts";
 
 const services = new Map<string, ChatService>();
 export function chatService(ctx: ServerContext): ChatService {
   const key = ctx.dataDir;
   let s = services.get(key);
   if (!s) {
-    s = new ChatService(ctx.dataDir, (ctx as ServerContext & { chatDeps?: ConstructorParameters<typeof ChatService>[1] }).chatDeps);
+    s = new ChatService(ctx.dataDir, { ...(ctx as ServerContext & { chatDeps?: ConstructorParameters<typeof ChatService>[1] }).chatDeps });
     services.set(key, s);
   }
   return s;
@@ -23,7 +24,7 @@ const wrap = async (fn: () => Promise<Response>): Promise<Response> => {
   } catch (e) {
     if (e instanceof ChatError) return error(e.message, e.status);
     if (e instanceof HttpError) return error(e.message, e.status);
-    return error((e as Error).message, /not found/i.test((e as Error).message) ? 404 : 500);
+    return error((e as Error).message, /not found/i.test((e as Error).message) ? 404 : /^invalid /.test((e as Error).message) ? 400 : 500);
   }
 };
 
@@ -34,16 +35,22 @@ route("GET", "/api/chat/status", (_r, _u, _p, ctx) => {
   return json({ available });
 });
 route("POST", "/api/chat/sessions", (req, _u, _p, ctx) => wrap(async () => {
-  const b = await body<{ scope?: ChatScope }>(req);
+  const b = await body<{ scope?: ChatScope; conversationId?: string }>(req);
   if (!b.scope) return error("scope is required");
-  const s = await chatService(ctx).create(b.scope);
+  const s = await chatService(ctx).create(b.scope, b.conversationId);
   return json({ sessionId: s.id, sources: s.sources, model: undefined });
 }));
 route("POST", "/api/chat/sessions/:id/messages", (req, _u, p, ctx) => wrap(async () => {
-  const b = await body<{ message?: string }>(req);
-  if (!b.message) return error("message is required");
+  let message: string | undefined;
+  const files: ChatFile[] = [];
+  if ((req.headers.get("content-type") ?? "").startsWith("multipart/form-data")) {
+    const form = await req.formData();
+    message = String(form.get("message") ?? "");
+    for (const f of form.getAll("files")) if (typeof f !== "string") files.push({ name: f.name, bytes: new Uint8Array(await f.arrayBuffer()) });
+  } else message = (await body<{ message?: string }>(req)).message;
+  if (!message) return error("message is required");
   const svc = chatService(ctx);
-  const gen = svc.send(p.id, b.message);
+  const gen = svc.send(p.id, message, files);
   const first = await gen.next(); // surface 404/409/400 before streaming
   const enc = new TextEncoder();
   const stream = new ReadableStream<Uint8Array>({
@@ -67,4 +74,16 @@ route("POST", "/api/chat/sessions/:id/cancel", (_r, _u, p, ctx) => wrap(async ()
 route("DELETE", "/api/chat/sessions/:id", (_r, _u, p, ctx) => wrap(async () => {
   chatService(ctx).delete(p.id);
   return json({ ok: true });
+}));
+route("GET", "/api/chat/conversations/:cid/changes", (_r, _u, p, ctx) => wrap(async () => json({ changes: chatService(ctx).changes(p.cid).list() })));
+route("POST", "/api/chat/conversations/:cid/changes/undo-all", (req, _u, p, ctx) => wrap(async () => json(await chatService(ctx).changes(p.cid).undoAll((await req.json().catch(() => ({}) as { turn?: string })).turn))));
+route("POST", "/api/chat/conversations/:cid/changes/:changeId/undo", (_r, _u, p, ctx) => wrap(async () => {
+  try {
+    const log = chatService(ctx).changes(p.cid);
+    const change = await log.undo(p.changeId);
+    return json({ change, changes: log.list() });
+  } catch (e) {
+    if (e instanceof UndoConflict) return error(e.message, 409);
+    throw e;
+  }
 }));

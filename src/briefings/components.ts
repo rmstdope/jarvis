@@ -55,12 +55,12 @@ const FONT = "font-family:ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,
 const s = (v: unknown, d = "") => (typeof v === "string" ? v : d);
 
 const VARIANTS: Record<string, { bg: string; border: string; label: string }> = {
-  accent: { bg: "#eef4ff", border: ACCENTS.blue, label: "Note" },
-  warn: { bg: "#fff7e6", border: ACCENTS.gold, label: "Warning" },
-  good: { bg: "#e8f8ef", border: "#14a05c", label: "Good" },
-  bad: { bg: "#fdecec", border: ACCENTS.red, label: "Problem" },
-  neutral: { bg: "#f3f4f6", border: ACCENTS.slate, label: "" },
-  investigate: { bg: "#f3eefe", border: ACCENTS.purple, label: "Investigate" },
+  accent: { bg: "var(--jv-tint-accent, #eef4ff)", border: ACCENTS.blue, label: "Note" },
+  warn: { bg: "var(--jv-tint-warn, #fff7e6)", border: ACCENTS.gold, label: "Warning" },
+  good: { bg: "var(--jv-tint-good, #e8f8ef)", border: "#14a05c", label: "Good" },
+  bad: { bg: "var(--jv-tint-bad, #fdecec)", border: ACCENTS.red, label: "Problem" },
+  neutral: { bg: "var(--jv-tint-neutral, #f3f4f6)", border: ACCENTS.slate, label: "" },
+  investigate: { bg: "var(--jv-tint-investigate, #f3eefe)", border: ACCENTS.purple, label: "Investigate" },
 };
 const PILL: Record<string, string> = { neutral: ACCENTS.slate, good: "#14a05c", warn: ACCENTS.gold, bad: ACCENTS.red };
 
@@ -85,7 +85,7 @@ registerComponent(
 );
 registerComponent(
   { id: "FlowDiagram", name: "FlowDiagram", category: "diagram", description: "A framed monospace ASCII block for hand-drawn flows.", props: [{ name: "caption", type: "string", description: "Caption" }], snippet: "<FlowDiagram caption=\"…\">\nA --> B --> C\n</FlowDiagram>", keywords: ["ascii", "flow", "monospace"], useCases: ["quick text flow without SVG"] },
-  () => (p, children) => figure(`<pre style="margin:0;padding:14px;border:1px solid ${BORDER};border-radius:8px;background:#f8fafc;font-size:13px;line-height:1.45;overflow-x:auto;color:${TEXT}">${escapeHtml(children.replace(/^\n+|\n+$/g, ""))}</pre>`, p.caption),
+  () => (p, children) => figure(`<pre style="margin:0;padding:14px;border:1px solid ${BORDER};border-radius:8px;background:var(--jv-code-bg, #f8fafc);font-size:13px;line-height:1.45;overflow-x:auto;color:${TEXT}">${escapeHtml(children.replace(/^\n+|\n+$/g, ""))}</pre>`, p.caption),
 );
 registerComponent(
   { id: "TagPill", name: "TagPill", category: "content", description: "Inline status pill.", props: [{ name: "variant", type: "neutral|good|warn|bad", description: "Colour" }], snippet: '<TagPill variant="good">Done</TagPill>', keywords: ["pill", "tag", "badge", "status"], useCases: ["inline status marker"] },
@@ -107,9 +107,9 @@ registerComponent(
     const body = rows.map((r) => {
       const cells = Array.isArray(r) ? r : Array.isArray((r as { cells?: unknown[] })?.cells) ? (r as { cells: unknown[] }).cells : [];
       const hl = !Array.isArray(r) && !!(r as { highlight?: boolean })?.highlight;
-      return `<tr${hl ? ' style="background:#e3fcef"' : ""}>${cells.map((c) => `<td style="padding:6px 10px;border:1px solid ${BORDER}">${escapeHtml(String(c ?? ""))}</td>`).join("")}</tr>`;
+      return `<tr${hl ? ' style="background:var(--jv-row-hl, #e3fcef)"' : ""}>${cells.map((c) => `<td style="padding:6px 10px;border:1px solid ${BORDER}">${escapeHtml(String(c ?? ""))}</td>`).join("")}</tr>`;
     }).join("");
-    return figure(`<table style="border-collapse:collapse;width:100%;font-size:14px;color:${TEXT};${FONT}"><thead><tr>${headers.map((h) => `<th style="text-align:left;padding:6px 10px;border:1px solid ${BORDER};background:#f3f4f6">${escapeHtml(String(h))}</th>`).join("")}</tr></thead><tbody>${body}</tbody></table>`, p.caption);
+    return figure(`<table style="border-collapse:collapse;width:100%;font-size:14px;color:${TEXT};${FONT}"><thead><tr>${headers.map((h) => `<th style="text-align:left;padding:6px 10px;border:1px solid ${BORDER};background:var(--jv-head-bg, #f3f4f6)">${escapeHtml(String(h))}</th>`).join("")}</tr></thead><tbody>${body}</tbody></table>`, p.caption);
   },
 );
 registerComponent(

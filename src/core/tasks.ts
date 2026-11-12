@@ -3,7 +3,8 @@ import { resolveAuthor } from "./config.ts";
 import { TASK_SUGGEST_LIMIT, TASK_SUGGEST_MIN_TERM, TASK_SUGGEST_QUERY_CHARS, type Relation } from "./constants.ts";
 import { openDb } from "./db.ts";
 import { getDocRow, readDocFile, upsertDocRow, writeDocFile } from "./docs.ts";
-import type { TaskBlock } from "./frontmatter.ts";
+import type { DocFrontmatter, TaskBlock } from "./frontmatter.ts";
+import { initiativeTitle, requireOpenInitiative } from "./initiativeRef.ts";
 import { ingest } from "./ingest.ts";
 import { link, targetExists } from "./links.ts";
 import { ftsQuery, search } from "./search.ts";
@@ -21,20 +22,32 @@ export interface TaskItem {
   completed_by?: string;
   author: string;
   links: number;
+  /** The initiative the task belongs to, if any. */
+  initiative?: { id: string; title: string };
+}
+
+/** Builds a TaskItem from a task doc (files are authoritative). */
+function toItem(dataDir: string, doc: { frontmatter: DocFrontmatter }, links: number): TaskItem {
+  const t = doc.frontmatter.task!;
+  const item: TaskItem = { id: doc.frontmatter.id, title: doc.frontmatter.title, status: t.status === "done" ? "done" : "open", owner: t.owner, due: t.due, created_at: doc.frontmatter.created_at, completed_at: t.completed_at, completed_by: t.completed_by, author: doc.frontmatter.author, links };
+  if (t.initiative) item.initiative = { id: t.initiative, title: initiativeTitle(dataDir, t.initiative) ?? t.initiative };
+  return item;
 }
 
 export function isValidDue(d: string): boolean {
   return /^\d{4}-\d{2}-\d{2}$/.test(d) && !Number.isNaN(Date.parse(d));
 }
 
-export async function addTask(dataDir: string, opts: { title: string; body?: string; due?: string; owner?: string; author?: string; links?: string[]; relation?: Relation; db?: Database }): Promise<{ id: string; linked: number }> {
+export async function addTask(dataDir: string, opts: { title: string; body?: string; due?: string; owner?: string; author?: string; links?: string[]; relation?: Relation; initiative?: string; db?: Database }): Promise<{ id: string; linked: number }> {
   if (!opts.title?.trim()) throw new Error("task title is required");
   if (opts.due && !isValidDue(opts.due)) throw new Error("--due must be YYYY-MM-DD");
   const db = opts.db ?? openDb(dataDir);
   try {
     for (const l of opts.links ?? []) if (!targetExists(db, dataDir, l)) throw new Error(`link target ${l} not found`);
+    if (opts.initiative) requireOpenInitiative(dataDir, opts.initiative);
     const author = resolveAuthor(opts.author);
     const task: TaskBlock = { status: "open", owner: opts.owner ?? author, due: opts.due };
+    if (opts.initiative) task.initiative = opts.initiative;
     const r = await ingest(dataDir, { source: "task", title: opts.title.trim(), body: opts.body?.trim() || opts.title.trim(), author, task }, { db });
     let linked = 0;
     if (opts.links?.length) linked = link(dataDir, r.id, opts.links, { relation: opts.relation, author, db }).filter((x) => x.status === "linked").length;
@@ -45,7 +58,7 @@ export async function addTask(dataDir: string, opts: { title: string; body?: str
 }
 
 /** Ids from the index; status read from files (files are authoritative). Order: open first, then due (undefined last), then created. */
-export function listTasks(dataDir: string, opts: { status?: "open" | "done" | "all"; owner?: string; db?: Database } = {}): TaskItem[] {
+export function listTasks(dataDir: string, opts: { status?: "open" | "done" | "all"; owner?: string; initiative?: string; db?: Database } = {}): TaskItem[] {
   const db = opts.db ?? openDb(dataDir);
   try {
     const ids = (db.query("SELECT id FROM documents WHERE source = 'task'").all() as { id: string }[]).map((r) => r.id);
@@ -57,7 +70,8 @@ export function listTasks(dataDir: string, opts: { status?: "open" | "done" | "a
       const status = t.status === "done" ? "done" : "open";
       if ((opts.status ?? "open") !== "all" && status !== (opts.status ?? "open")) continue;
       if (opts.owner && opts.owner !== "all" && t.owner !== opts.owner) continue;
-      out.push({ id, title: doc.frontmatter.title, status, owner: t.owner, due: t.due, created_at: doc.frontmatter.created_at, completed_at: t.completed_at, completed_by: t.completed_by, author: doc.frontmatter.author, links: readSidecar(dataDir, id).filter((l) => l.kind === "edge").length });
+      if (opts.initiative && t.initiative !== opts.initiative) continue;
+      out.push(toItem(dataDir, doc, readSidecar(dataDir, id).filter((l) => l.kind === "edge").length));
     }
     return out.sort((a, b) => (a.status === b.status ? 0 : a.status === "open" ? -1 : 1) || (a.due && b.due ? a.due.localeCompare(b.due) : a.due ? -1 : b.due ? 1 : 0) || a.created_at.localeCompare(b.created_at));
   } finally {
@@ -80,7 +94,7 @@ export function showTask(dataDir: string, id: string, dbIn?: Database): TaskDeta
     const rows = db.query("SELECT e.src, e.dst, e.relation, e.created_by, COALESCE(d.title, en.name) AS title FROM edges e LEFT JOIN documents d ON d.id = CASE WHEN e.src = ?1 THEN e.dst ELSE e.src END LEFT JOIN entities en ON en.id = CASE WHEN e.src = ?1 THEN e.dst ELSE e.src END WHERE e.src = ?1 OR e.dst = ?1").all(id) as { src: string; dst: string; relation: string; created_by: string; title: string | null }[];
     const map = (r: (typeof rows)[number]) => ({ id: r.src === id ? r.dst : r.src, title: r.title, relation: r.relation, createdBy: r.created_by, direction: (r.src === id ? "out" : "in") as "out" | "in" });
     return {
-      task: { id, title: doc.frontmatter.title, status: t.status === "done" ? "done" : "open", owner: t.owner, due: t.due, created_at: doc.frontmatter.created_at, completed_at: t.completed_at, completed_by: t.completed_by, author: doc.frontmatter.author, links: rows.filter((r) => r.created_by === "manual" || r.created_by === "llm").length },
+      task: toItem(dataDir, doc, rows.filter((r) => r.created_by === "manual" || r.created_by === "llm").length),
       body: doc.body,
       linked: rows.filter((r) => r.created_by === "manual" || r.created_by === "llm").map(map),
       derived: rows.filter((r) => ["backlink", "auto", "entity", "embedding"].includes(r.created_by)).map(map),
@@ -91,7 +105,7 @@ export function showTask(dataDir: string, id: string, dbIn?: Database): TaskDeta
 }
 
 /** Rewrites only the task block and updated_*; re-indexes the row without re-chunking. */
-export function setTaskStatus(dataDir: string, id: string, status: "open" | "done", author?: string, dbIn?: Database): TaskItem {
+export function setTaskStatus(dataDir: string, id: string, status: "open" | "done", author?: string, dbIn?: Database): TaskItem & { initiativeCompleted?: { id: string; title: string; done: number; total: number } } {
   const db = dbIn ?? openDb(dataDir);
   try {
     const doc = readDocFile(dataDir, id);
@@ -99,6 +113,7 @@ export function setTaskStatus(dataDir: string, id: string, status: "open" | "don
     const who = resolveAuthor(author);
     const now = nowIso();
     const t = doc.frontmatter.task;
+    const wasOpen = t.status !== "done";
     if (status === "done") {
       t.status = "done";
       t.completed_at = now;
@@ -114,7 +129,54 @@ export function setTaskStatus(dataDir: string, id: string, status: "open" | "don
     const row = getDocRow(db, id);
     upsertDocRow(db, doc, { fileHash: hash });
     if (row) db.run("UPDATE documents SET edged_at = ? WHERE id = ?", [row.edged_at, id]); // status change needs no re-edging
-    return { id, title: doc.frontmatter.title, status, owner: t.owner, due: t.due, created_at: doc.frontmatter.created_at, completed_at: t.completed_at, completed_by: t.completed_by, author: doc.frontmatter.author, links: readSidecar(dataDir, id).filter((l) => l.kind === "edge").length };
+    const item = toItem(dataDir, doc, readSidecar(dataDir, id).filter((l) => l.kind === "edge").length);
+    if (status !== "done" || !wasOpen || !item.initiative) return item;
+    if (readDocFile(dataDir, item.initiative.id)?.frontmatter.initiative?.status !== "open") return item; // a closed initiative needs no notice
+    const mates = listTasks(dataDir, { status: "all", initiative: item.initiative.id, db });
+    const done = mates.filter((m) => m.status === "done").length;
+    return done === mates.length ? { ...item, initiativeCompleted: { ...item.initiative, done, total: mates.length } } : item;
+  } finally {
+    if (!dbIn) db.close();
+  }
+}
+
+/** Changes only a task's due date and/or owner (`due: null` clears it); `from`/`to` report what moved. */
+export async function updateTask(dataDir: string, id: string, opts: { due?: string | null; owner?: string; author?: string; db?: Database }): Promise<{ title: string; due?: { from?: string; to?: string }; owner?: { from: string; to: string } }> {
+  if (typeof opts.due === "string" && !isValidDue(opts.due)) throw new Error("due must be YYYY-MM-DD");
+  const doc = readDocFile(dataDir, id);
+  if (!doc || doc.frontmatter.source !== "task" || !doc.frontmatter.task) throw new Error(`task ${id} not found`);
+  const t = doc.frontmatter.task;
+  const out: Awaited<ReturnType<typeof updateTask>> = { title: doc.frontmatter.title };
+  if (opts.due !== undefined && (opts.due ?? undefined) !== t.due) {
+    out.due = { from: t.due, to: opts.due ?? undefined };
+    if (opts.due === null) delete t.due;
+    else t.due = opts.due;
+  }
+  if (opts.owner !== undefined && opts.owner !== t.owner) {
+    out.owner = { from: t.owner, to: opts.owner };
+    t.owner = opts.owner;
+  }
+  if (out.due || out.owner) writeTaskDoc(dataDir, doc, resolveAuthor(opts.author), opts.db);
+  return out;
+}
+
+/** Puts a task's whole `task:` block back (used to undo a change); `null` block is refused. */
+export function restoreTaskBlock(dataDir: string, id: string, block: TaskBlock, author?: string, db?: Database): void {
+  const doc = readDocFile(dataDir, id);
+  if (!doc || doc.frontmatter.source !== "task") throw new Error(`task ${id} not found`);
+  doc.frontmatter.task = { ...block };
+  writeTaskDoc(dataDir, doc, resolveAuthor(author), db);
+}
+
+function writeTaskDoc(dataDir: string, doc: { frontmatter: DocFrontmatter; body: string }, who: string, dbIn?: Database): void {
+  const db = dbIn ?? openDb(dataDir);
+  try {
+    doc.frontmatter.updated_at = nowIso();
+    doc.frontmatter.updated_by = who;
+    const { hash } = writeDocFile(dataDir, doc);
+    const row = getDocRow(db, doc.frontmatter.id);
+    upsertDocRow(db, doc, { fileHash: hash });
+    if (row) db.run("UPDATE documents SET edged_at = ? WHERE id = ?", [row.edged_at, doc.frontmatter.id]);
   } finally {
     if (!dbIn) db.close();
   }
@@ -137,6 +199,7 @@ export async function suggestLinks(dataDir: string, id: string, opts: { limit?: 
     const tasks = new Set((db.query("SELECT id FROM documents WHERE source = 'task'").all() as { id: string }[]).map((r) => r.id));
     const out: Suggestion[] = [];
     const seen = new Set<string>([id]);
+    if (doc.frontmatter.task?.initiative) seen.add(doc.frontmatter.task.initiative); // already a member, nothing to link
     const push = (cand: { id: string; title: string; source: string }, reason: string) => {
       if (seen.has(cand.id) || linked.has(cand.id) || tasks.has(cand.id) || out.length >= limit) return;
       seen.add(cand.id);

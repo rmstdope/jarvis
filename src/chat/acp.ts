@@ -1,7 +1,8 @@
 /**
  * Minimal Agent Client Protocol client: JSON-RPC 2.0 over newline-delimited stdio.
- * The client advertises no filesystem or terminal capabilities and answers every
- * permission request "cancelled", so the agent is strictly read-only.
+ * The client advertises no filesystem or terminal capabilities and
+ * answers every permission request "cancelled": the agent acts only through `jarvis-action` blocks
+ * in its answer (see `action-blocks.ts`).
  */
 export interface AcpUpdate {
   sessionId: string;
@@ -135,9 +136,18 @@ export class AcpClient {
   }
 }
 
-/** Spawn the Copilot CLI in ACP mode with a read-only tool surface. */
-export function spawnCopilotAcp(model: string, cwd: string): AcpTransport {
-  const p = Bun.spawn(["copilot", "--acp", "--model", model, "--reasoning-effort", "medium", "--available-tools=", "--disable-builtin-mcps", "--no-custom-instructions", "--no-auto-update"], { cwd, stdin: "pipe", stdout: "pipe", stderr: "pipe", env: { ...process.env, NO_COLOR: "1" } });
+/**
+ * The Copilot CLI command line for ACP mode with every tool off. With no model the
+ * CLI picks its own default, and no reasoning effort is forced: Copilot refuses to open a
+ * session when the model does not support one (e.g. gpt-4.1).
+ */
+export function copilotAcpArgs(model: string | undefined): string[] {
+  return ["copilot", "--acp", ...(model ? ["--model", model] : []), "--available-tools=", "--disable-builtin-mcps", "--no-custom-instructions", "--no-auto-update"];
+}
+
+/** Spawn the Copilot CLI in ACP mode (see `copilotAcpArgs`). */
+export function spawnCopilotAcp(model: string | undefined, cwd: string): AcpTransport {
+  const p = Bun.spawn(copilotAcpArgs(model), { cwd, stdin: "pipe", stdout: "pipe", stderr: "pipe", env: { ...process.env, NO_COLOR: "1" } });
   return { stdin: p.stdin as unknown as WritableStream<Uint8Array>, stdout: p.stdout as ReadableStream<Uint8Array>, kill: () => p.kill(), exited: p.exited };
 }
 export function spawnBunAcp(script: string, cwd: string): AcpTransport {

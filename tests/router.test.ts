@@ -2,7 +2,10 @@ import { describe, expect, test } from "bun:test";
 import { createRouter } from "../src/providers/router.ts";
 import { parseModelsToml, serializeModelsToml, detectModels } from "../src/providers/models.ts";
 import { parseJsonObject, TruncationError, type Provider } from "../src/providers/types.ts";
-import { parseCopilotOutput, copilotProvider } from "../src/providers/copilot.ts";
+import { parseCopilotOutput, copilotProvider, type Spawn } from "../src/providers/copilot.ts";
+import { listPresets, readPreset } from "../src/core/presets.ts";
+import { TASK_KINDS } from "../src/providers/types.ts";
+import type { ModelsConfig } from "../src/providers/models.ts";
 
 const toml = `
 preference = ["copilot", "local"]
@@ -65,10 +68,11 @@ describe("models.toml", () => {
   });
   test("detection synthesizes a config", async () => {
     const cfg = await detectModels({ ollama: async () => ["qwen3-embedding:0.6b", "gemma4:26b", "qwen3:14b", "llama3:8b"], omlxModels: async () => ["Qwen3-30B"], copilotOnPath: () => true, openaiKey: () => true });
-    expect(cfg.models.map((m) => `${m.provider}:${m.id}:${m.quality}`)).toEqual(["local:gemma4:26b:high", "local:qwen3:14b:high", "local:llama3:8b:standard", "openai-compat:Qwen3-30B:high", "copilot:gpt-4.1:high", "openai-compat:gpt-4o:high"]);
+    expect(cfg.models.map((m) => `${m.provider}:${m.id}:${m.quality}`)).toEqual(["local:gemma4:26b:high", "local:qwen3:14b:high", "local:llama3:8b:standard", "openai-compat:Qwen3-30B:high", "copilot:default:high", "openai-compat:gpt-4o:high"]);
     expect(cfg.models[5]).toMatchObject({ baseUrl: "https://api.openai.com/v1", apiKeyEnv: "OPENAI_API_KEY" });
     expect(cfg.models[0].bestFor).toEqual(["cleanup"]);
-    expect(cfg.models[4].reasoningEffortByTask).toEqual({ "edge-judge": "xhigh" });
+    expect(cfg.models[4].reasoningEffort).toBeUndefined();
+    expect(cfg.models[4].reasoningEffortByTask).toBeUndefined();
     const none = await detectModels({ ollama: async () => [], omlxModels: async () => [], copilotOnPath: () => false, openaiKey: () => false });
     expect(none.models).toEqual([]);
   });
@@ -121,5 +125,86 @@ describe("provider helpers", () => {
   });
   test("TruncationError is an Error", () => {
     expect(new TruncationError()).toBeInstanceOf(Error);
+  });
+});
+
+describe("copilot model steps on live detection and the shipped presets (jv-zdv)", () => {
+  /** Copilot CLI 1.0.105: gpt-4.1 refuses any --reasoning-effort, as the real CLI does. */
+  const copilot1105: Spawn = async (args) => {
+    const model = args[args.indexOf("--model") + 1];
+    if (model === "gpt-4.1" && args.includes("--reasoning-effort")) return { code: 1, stdout: "", stderr: "Error: Model 'gpt-4.1' does not support reasoning effort configuration" };
+    return { code: 0, stdout: '{"type":"assistant.message","data":{"content":"{\\"ok\\":true}"}}\n', stderr: "" };
+  };
+  /** Only the Copilot CLI is present: every other provider is unavailable. */
+  const onlyCopilot = (entry: { provider: string }): Provider =>
+    entry.provider === "copilot" ? copilotProvider(copilot1105, () => "/usr/bin/copilot") : { name: entry.provider, available: async () => false, complete: async () => { throw new Error("unavailable"); } };
+  const completesEveryCopilotStep = async (config: ModelsConfig) => {
+    const r = await createRouter({ config, factory: onlyCopilot });
+    let routed = 0;
+    for (const kind of TASK_KINDS) {
+      const m = r.resolve({ kind, minQuality: "cheap" });
+      if (!m || m.provider !== "copilot") continue;
+      routed++;
+      expect(`${kind}: ${await m.complete("p", { json: true }).catch((e: Error) => e.message)}`).toBe(`${kind}: {"ok":true}`);
+    }
+    expect(routed > 0).toBe(config.models.some((m) => m.provider === "copilot"));
+  };
+  test("no models.toml: live detection's Copilot entry answers every task kind", async () => {
+    const detected = await detectModels({ ollama: async () => [], omlxModels: async () => [], copilotOnPath: () => true, openaiKey: () => false });
+    expect(detected.models.map((m) => `${m.provider}:${m.id}`)).toEqual(["copilot:default"]);
+    await completesEveryCopilotStep({ ...detected, source: "detected" });
+  });
+  for (const name of listPresets()) {
+    test(`preset ${name}: its Copilot entry answers the steps routed to it`, async () => {
+      await completesEveryCopilotStep({ ...parseModelsToml(readPreset(name)), source: "file" });
+    });
+  }
+});
+
+describe("copilot model steps on an account that does not offer gpt-4.1 (jv-l1q)", () => {
+  /** Copilot CLI 1.0.105 on the navigator's account: only gpt-5.6-luna by name, or Copilot's own default with no --model. */
+  const offered = new Set(["gpt-5.6-luna"]);
+  const copilotWithoutGpt41: Spawn = async (args) => {
+    const i = args.indexOf("--model");
+    if (i >= 0 && !offered.has(args[i + 1]!)) return { code: 1, stdout: "", stderr: `Error: Model "${args[i + 1]}" from --model flag is not available.` };
+    return { code: 0, stdout: '{"type":"assistant.message","data":{"content":"{\\"ok\\":true}"}}\n', stderr: "" };
+  };
+  const onlyCopilot = (entry: { provider: string }): Provider =>
+    entry.provider === "copilot" ? copilotProvider(copilotWithoutGpt41, () => "/usr/bin/copilot") : { name: entry.provider, available: async () => false, complete: async () => { throw new Error("unavailable"); } };
+  const completesEveryCopilotStep = async (config: ModelsConfig) => {
+    const r = await createRouter({ config, factory: onlyCopilot });
+    let routed = 0;
+    for (const kind of TASK_KINDS) {
+      const m = r.resolve({ kind, minQuality: "cheap" });
+      if (!m || m.provider !== "copilot") continue;
+      routed++;
+      expect(`${kind}: ${await m.complete("p", { json: true }).catch((e: Error) => e.message)}`).toBe(`${kind}: {"ok":true}`);
+    }
+    expect(routed > 0).toBe(config.models.some((m) => m.provider === "copilot"));
+  };
+  test("no models.toml: live detection lets Copilot pick its default model", async () => {
+    const detected = await detectModels({ ollama: async () => [], omlxModels: async () => [], copilotOnPath: () => true, openaiKey: () => false });
+    await completesEveryCopilotStep({ ...detected, source: "detected" });
+  });
+  for (const name of listPresets()) {
+    test(`preset ${name}: its Copilot entry lets Copilot pick its default model`, async () => {
+      await completesEveryCopilotStep({ ...parseModelsToml(readPreset(name)), source: "file" });
+    });
+  }
+  test("JARVIS_COPILOT_MODEL names the detected id; empty falls back to default", async () => {
+    const saved = process.env.JARVIS_COPILOT_MODEL;
+    const detect = () => detectModels({ ollama: async () => [], omlxModels: async () => [], copilotOnPath: () => true, openaiKey: () => false });
+    try {
+      process.env.JARVIS_COPILOT_MODEL = "gpt-5.6-luna";
+      expect((await detect()).models[0]!.id).toBe("gpt-5.6-luna");
+      process.env.JARVIS_COPILOT_MODEL = "";
+      expect((await detect()).models[0]!.id).toBe("default");
+    } finally {
+      if (saved === undefined) delete process.env.JARVIS_COPILOT_MODEL;
+      else process.env.JARVIS_COPILOT_MODEL = saved;
+    }
+  });
+  test("a configured model id the account offers is still passed with --model", async () => {
+    await completesEveryCopilotStep({ preference: ["copilot"], models: [{ provider: "copilot", id: "gpt-5.6-luna", quality: "high", bestFor: [...TASK_KINDS] }], source: "file" });
   });
 });

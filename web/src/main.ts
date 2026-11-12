@@ -1,23 +1,32 @@
-import { api, ApiError, type ItemSummary, type SearchHit } from "./api.ts";
-import { append, clear, fmtDate, h, itemHref, metaLine, modal, parseRoute, sinceIso, toast } from "./ui.ts";
-import { renderMarkdown } from "../../src/briefings/markdown.ts";
-import { renderBriefingHtml } from "../../src/briefings/render.ts";
-import type { Node as BriefingNode } from "../../src/briefings/parser.ts";
+import { api, ApiError, type SyncStepFailure } from "./api.ts";
+import { clear, h, modal, parseRoute, toast } from "./ui.ts";
 import { createChat, type Chat } from "./chat.ts";
-import { applyTheme, getPref, getTheme, KEY_LAST_SYNC, KEY_SYNC_SKIP, setPref } from "./prefs.ts";
+import { applyTheme, delPref, getPref, getTheme, KEY_LAST_SYNC, KEY_LAST_SYNC_FAILED, KEY_SYNC_SKIP, setPref } from "./prefs.ts";
 import { createShell, type Shell } from "./shell.ts";
-import { presentControl } from "./presentations.ts";
+import { createStrip, type Strip } from "./strip.ts";
+import { createTabs, KEY_TABS_STORE, type DocRef, type Tabs } from "./tabs.ts";
+import { renderDoc, type DocView } from "./docview.ts";
+import { kindLabel } from "./transcript.ts";
 
-declare global {
-  interface Window { __JARVIS_APP__?: boolean; }
-}
-const inApp = () => window.__JARVIS_APP__ === true;
+import { type Ctx, errorBox, inApp, skeleton } from "./pages/common.ts";
+import { resetBrowse, viewBrowse } from "./pages/browse.ts";
+import { viewCapture } from "./pages/capture.ts";
+import { viewBriefings } from "./pages/briefings.ts";
+import { viewInitiatives } from "./pages/initiatives.ts";
+import { viewPresentations } from "./pages/presentations.ts";
 
 // ---- chrome ----
 let page: HTMLElement;
 let main: HTMLElement; // where the current page draws
 let shell: Shell;
 let chat: Chat;
+let tabs: Tabs;
+let strip: Strip;
+let docHost: HTMLElement;
+const views = new Map<string, DocView>();
+let pageHash: string | null = null; // the hash the sidebar page on screen was drawn for
+let lastPageHash = "#/chat"; // where the address returns to after a document route
+let firstRender = true;
 
 async function confirmSync() {
   if (getPref(KEY_SYNC_SKIP) === "1") return runSync();
@@ -27,9 +36,22 @@ async function confirmSync() {
     { label: "Sync", primary: true, onClick: () => { if (cb.checked) setPref(KEY_SYNC_SKIP, "1"); void runSync(); } },
   ], "Sync");
 }
+/** The last sync as stored in this browser: when it ran and which model steps it failed, if any. */
 function lastSyncState() {
   const at = Number(getPref(KEY_LAST_SYNC));
-  return at > 0 ? { kind: "ok" as const, at } : { kind: "never" as const };
+  return at > 0 ? { kind: "ok" as const, at, failedSteps: getPref(KEY_LAST_SYNC_FAILED) || undefined } : { kind: "never" as const };
+}
+/** Remember a sync that shared its work, with the model steps it failed (none clears them). */
+function recordSync(failedSteps?: string) {
+  setPref(KEY_LAST_SYNC, String(Date.now()));
+  if (failedSteps) setPref(KEY_LAST_SYNC_FAILED, failedSteps); else delPref(KEY_LAST_SYNC_FAILED);
+}
+const STEP_LABEL: Record<string, [label: string, unit: string]> = { enrich: ["enrichment", "item(s)"], refine: ["link refinement", "batch(es)"] };
+const stepLabel = (f: SyncStepFailure) => STEP_LABEL[f.step]?.[0] ?? f.step;
+/** The toast for a sync whose model steps failed: whether the work was shared, each step with its count and why, and doctor where it has the fix. */
+function failedStepsToast(r: { pushed: boolean }, failures: SyncStepFailure[]): string {
+  const steps = failures.map((f) => `${stepLabel(f)} failed for ${f.failed} ${STEP_LABEL[f.step]?.[1] ?? "time(s)"}${f.reason ? `: ${f.reason.replace(/\.$/, "")}` : ""}`).join("; ");
+  return `${r.pushed ? "Shared with the team" : "Not shared with the team"}, but ${steps}.${failures.some((f) => f.doctor) ? " Run \`jarvis doctor\` for the fix." : ""}`;
 }
 async function runSync() {
   shell.setSync({ kind: "syncing" });
@@ -37,7 +59,11 @@ async function runSync() {
   try {
     const r = await api.sync();
     if (r.conflicted.length) { failed = true; toast(`Sync stopped: resolve ${r.conflicted.length} merge conflict(s).`, "error", 8000); }
-    else { setPref(KEY_LAST_SYNC, String(Date.now())); toast(`Synced: ${r.committed} captured, ${r.committedEnriched} enriched, ${r.pulled ? "pulled" : "no pull"}, ${r.pushed ? "pushed" : "not pushed"}${r.collisions.length ? `, ${r.collisions.length} collision(s)` : ""}`); }
+    else if (r.failures?.length) {
+      recordSync(r.failures.map(stepLabel).join(" and "));
+      toast(failedStepsToast(r, r.failures), "error", 12000);
+    }
+    else { recordSync(); toast(`Synced: ${r.committed} captured, ${r.committedEnriched} enriched, ${r.pulled ? "pulled" : "no pull"}, ${r.pushed ? "pushed" : "not pushed"}${r.collisions.length ? `, ${r.collisions.length} collision(s)` : ""}`); }
     if (parseRoute(location.hash).name === "browse") void render();
   } catch (e) {
     if (e instanceof ApiError && e.status === 409) toast("A sync is already running.", "error", 6000);
@@ -47,179 +73,160 @@ async function runSync() {
   }
 }
 
-// ---- views ----
-function card(i: ItemSummary): HTMLElement {
-  return h("div", { class: "card" }, h("h3", {}, h("a", { href: itemHref(i) }, i.title || "(untitled)")), h("div", { class: "muted small" }, metaLine(i)), i.summary ? h("div", { class: "small" }, i.summary) : null, i.tags?.length ? h("div", {}, ...i.tags.map((t) => h("span", { class: "tag" }, t))) : null);
-}
-function hitCard(x: SearchHit): HTMLElement {
-  return h("div", { class: "card hit" }, h("span", { class: "score" }, x.score.toFixed(3)), h("h3", {}, h("a", { href: itemHref({ id: x.docId, source: x.source }) }, x.title || x.docId)), h("div", { class: "muted small" }, x.source), h("div", { class: "small snip", html: escapeSnippet(x.snippet) }));
-}
-function escapeSnippet(s: string): string {
-  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/\[([^\]]+)\]/g, "<b>$1</b>");
-}
-
-const browseState = { q: "", mode: "hybrid", source: "", author: "", tag: "", days: "", addedOffset: 0, updatedOffset: 0 };
-async function viewBrowse() {
-  const qInput = h("input", { type: "search", placeholder: "Search J.A.R.V.I.S.…", value: browseState.q });
-  const mode = h("select", {}, ...["hybrid", "semantic", "keyword"].map((m) => h("option", { value: m, selected: browseState.mode === m }, m)));
-  const form = h("form", { class: "row", onSubmit: (e: Event) => { e.preventDefault(); browseState.q = qInput.value.trim(); browseState.mode = mode.value; browseState.addedOffset = browseState.updatedOffset = 0; render(); } }, h("div", { style: "flex:1;min-width:240px" }, qInput), mode, h("button", { class: "primary" }, "Search"));
-  const facets = h("div", { class: "facets" });
-  const lists = h("div");
-  main.append(form, facets, lists);
-  if (browseState.q) {
-    const hits = await api.search(browseState.q, browseState.mode, 20);
-    lists.append(h("h2", {}, `${hits.length} result(s)`), ...(hits.length ? hits.map(hitCard) : [h("p", { class: "muted" }, "No results.")]));
-    return;
-  }
-  const b = await api.browse({ limit: 20, addedOffset: browseState.addedOffset, updatedOffset: browseState.updatedOffset, source: browseState.source, author: browseState.author, tag: browseState.tag, since: browseState.days ? sinceIso(Number(browseState.days)) : undefined });
-  const sel = (label: string, key: "source" | "author" | "tag" | "days", opts: { value: string; label: string }[]) => {
-    const s = h("select", { onChange: () => { browseState[key] = s.value; browseState.addedOffset = browseState.updatedOffset = 0; render(); } }, h("option", { value: "" }, label), ...opts.map((o) => h("option", { value: o.value, selected: browseState[key] === o.value }, o.label)));
-    return s;
-  };
-  facets.append(
-    sel("All sources", "source", b.facets.sources.map((f) => ({ value: f.value, label: `${f.value} (${f.count})` }))),
-    sel("All contributors", "author", b.facets.authors.map((f) => ({ value: f.value, label: `${f.value} (${f.count})` }))),
-    sel("All tags", "tag", b.facets.tags.map((f) => ({ value: f.value, label: `${f.value} (${f.count})` }))),
-    sel("Any time", "days", [{ value: "1", label: "Last day" }, { value: "7", label: "Last 7 days" }, { value: "30", label: "Last 30 days" }, { value: "365", label: "Last year" }]),
-  );
-  const pager = (key: "addedOffset" | "updatedOffset", p: { offset: number; limit: number; total: number; hasMore: boolean }) =>
-    h("div", { class: "row small muted" }, `${p.total ? p.offset + 1 : 0}–${Math.min(p.offset + p.limit, p.total)} of ${p.total}`, h("button", { disabled: p.offset === 0, onClick: () => { browseState[key] = Math.max(0, p.offset - p.limit); render(); } }, "Prev"), h("button", { disabled: !p.hasMore, onClick: () => { browseState[key] = p.offset + p.limit; render(); } }, "Next"));
-  lists.append(h("div", { class: "two" },
-    h("section", {}, h("h2", {}, "Recently added"), ...(b.added.length ? b.added.map(card) : [h("p", { class: "muted" }, "Nothing yet. Capture something!")]), pager("addedOffset", b.pagination.added)),
-    h("section", {}, h("h2", {}, "Recently updated"), ...(b.updated.length ? b.updated.map(card) : [h("p", { class: "muted" }, "No updates yet.")]), pager("updatedOffset", b.pagination.updated)),
-  ));
-}
-
-function viewCapture() {
-  const title = h("input", { type: "text", placeholder: "Title" });
-  const body = h("textarea", { rows: 14, placeholder: "Paste or write anything…" });
-  const btn = h("button", { class: "primary" }, "Capture");
-  main.append(h("h2", {}, "Capture"), h("form", { onSubmit: async (e: Event) => {
-    e.preventDefault();
-    if (!title.value.trim() || !body.value.trim()) return toast("Title and text are required", "error");
-    btn.setAttribute("disabled", "true");
-    try {
-      const r = await api.capture(title.value.trim(), body.value);
-      toast(`${r.status}: ${title.value.trim()}`);
-      location.hash = `#/item/${r.id}`;
-    } catch (err) { toast(`Capture failed: ${(err as Error).message}`, "error"); } finally { btn.removeAttribute("disabled"); }
-  } }, h("p", {}, title), h("p", {}, body), btn));
-}
-
-async function viewItem(id: string) {
-  const { item, edges } = await api.item(id);
-  append(main, [
-    h("h1", {}, item.title), h("div", { class: "muted small" }, metaLine(item)),
-    item.source_url ? h("p", { class: "small" }, h("a", { href: safeHref(item.source_url), target: "_blank", rel: "noopener" }, item.source_url)) : null,
-    item.tags?.length ? h("p", {}, ...item.tags.map((t) => h("span", { class: "tag" }, t))) : null,
-    item.summary ? h("p", { class: "card" }, item.summary) : null,
-    h("div", { class: "row", style: "margin:8px 0" }, h("button", { onClick: () => chat.askAbout({ type: "item", ids: [item.id] }, item.title) }, "Ask about this")),
-    h("div", { class: "body-md", html: renderMarkdown(item.body) }),
-    h("h3", {}, `Links (${edges.length})`),
-    h("ul", { class: "edges" }, ...edges.map((e) => h("li", {}, h("span", { class: "pill" }, e.relation), " ", e.direction === "out" ? "→" : "←", " ", h("a", { href: `#/item/${e.otherId}` }, e.otherTitle ?? e.otherId), h("span", { class: "muted small" }, ` (${e.createdBy}${e.weight != null ? `, ${e.weight.toFixed(2)}` : ""})`)))),
-  ]);
-}
-function safeHref(u: string): string { return /^https?:\/\//i.test(u) ? u : "#"; }
-
-const briefState = { filter: "", sort: "updated" as "updated" | "created" | "title" };
-async function viewBriefings() {
-  const list = await api.briefings();
-  const f = h("input", { type: "search", placeholder: "Filter…", value: briefState.filter, onInput: () => { briefState.filter = f.value; draw(); } });
-  const s = h("select", { onChange: () => { briefState.sort = s.value as typeof briefState.sort; draw(); } }, ...(["updated", "created", "title"] as const).map((k) => h("option", { value: k, selected: briefState.sort === k }, `Sort by ${k}`)));
-  const box = h("div");
-  main.append(h("h2", {}, "Briefings"), h("div", { class: "row" }, h("div", { style: "flex:1" }, f), s), box);
-  function draw() {
-    clear(box);
-    const q = briefState.filter.toLowerCase();
-    const items = list.filter((b) => !q || b.title.toLowerCase().includes(q) || (b.subtitle ?? "").toLowerCase().includes(q) || (b.tags ?? []).some((t) => t.toLowerCase().includes(q)))
-      .sort((a, b) => briefState.sort === "title" ? a.title.localeCompare(b.title) : briefState.sort === "created" ? b.createdAt.localeCompare(a.createdAt) : b.updatedAt.localeCompare(a.updatedAt));
-    append(box, items.length ? items.map((b) => h("div", { class: "card" }, h("h3", {}, h("a", { href: `#/briefing/${b.id}` }, b.title)), h("div", { class: "muted small" }, `${b.kind} · updated ${fmtDate(b.updatedAt)}${b.author ? ` by ${b.author}` : ""} `, b.status ? h("span", { class: `pill ${b.status === "approved" ? "green" : "orange"}` }, b.status) : null), b.subtitle ? h("div", { class: "small" }, b.subtitle) : null)) : [h("p", { class: "muted" }, "No briefings yet. Create one with `jarvis briefing create --title …`.")]);
-  }
-  draw();
-}
-
-async function viewBriefing(id: string) {
-  const [b, comments] = await Promise.all([api.briefing(id), api.comments(id)]);
-  const html = renderBriefingHtml(b.tree as BriefingNode[]);
-  const toc = b.toc ? h("nav", { class: "toc" }, h("div", { class: "muted small" }, "Contents"), ...b.toc.map((t) => h("a", { href: `#/briefing/${id}#${t.slug}`, class: t.level >= 3 ? "l3" : "", onClick: (e: Event) => { e.preventDefault(); document.getElementById(t.slug)?.scrollIntoView({ behavior: "smooth" }); } }, t.text))) : h("div");
-  const rail = h("aside", { class: "comments" });
-  const drawComments = (cs: typeof comments) => {
-    clear(rail);
-    const ta = h("textarea", { rows: 3, placeholder: "Add a comment…" });
-    rail.append(h("h3", { style: "margin-top:0" }, `Comments (${cs.length})`), ...cs.map((c) => h("div", { class: "comment" }, h("div", { class: "muted small" }, `${c.author ?? "anonymous"} · ${fmtDate(c.createdAt)} `, h("span", { class: `pill ${c.status === "done" ? "green" : c.status === "handled" ? "purple" : ""}` }, c.status)), h("div", {}, c.comment))),
-      h("form", { onSubmit: async (e: Event) => { e.preventDefault(); if (!ta.value.trim()) return; try { await api.addComment(id, ta.value.trim()); drawComments(await api.comments(id)); toast("Comment added"); } catch (err) { toast((err as Error).message, "error"); } } }, ta, h("button", { class: "primary", style: "margin-top:6px" }, "Post")));
-  };
-  drawComments(comments);
-  append(main, [
-    h("div", { class: "row" }, h("h1", { style: "flex:1;margin:0" }, b.title), b.status ? h("span", { class: `pill ${b.status === "approved" ? "green" : "orange"}` }, b.status) : null, h("button", { onClick: () => chat.askAbout({ type: "briefing", ids: [id] }, b.title) }, "Ask about this")),
-    b.subtitle ? h("p", { class: "muted" }, b.subtitle) : null,
-    h("div", { class: "brief-layout" }, toc, h("article", { class: "brief", html }), rail),
-  ]);
-}
-
-async function viewPresentations() {
-  main.append(h("h2", {}, "Presentations"));
-  try {
-    const list = await api.presentations();
-    append(main, list.length ? list.map((p) => h("div", { class: "card" }, h("h3", {}, h("a", { href: `#/presentation/${p.slug}` }, p.title)), h("div", { class: "muted small" }, `${p.slug} · ${fmtDate(p.created_at)} by ${p.author} `, h("span", { class: `pill ${p.indexed ? "green" : ""}` }, p.indexed ? "indexed" : "not indexed")))) : [h("p", { class: "muted" }, "No presentations yet.")]);
-  } catch (e) {
-    main.append(h("p", { class: "muted" }, e instanceof ApiError && e.status === 404 ? "Presentations are not available in this service build yet." : (e as Error).message));
-  }
-}
-async function viewPresentation(id: string) {
-  const p = await api.presentation(id);
-  const present = presentControl(p.slidecraft, inApp());
-  main.append(h("h1", {}, p.title), h("div", { class: "muted small" }, `${p.slug} · added ${fmtDate(p.created_at)} by ${p.author} `, h("span", { class: `pill ${p.indexed ? "green" : ""}` }, p.indexed ? "indexed" : "not indexed")), h("p", {}, present), h("h3", {}, "MDX source"), h("pre", { class: "body-md" }, h("code", {}, p.body)));
-}
-
 // ---- router ----
-async function render() {
+const DOC_ROUTES: Record<string, DocRef["type"]> = { item: "item", briefing: "briefing", presentation: "presentation", initiative: "initiative" };
+const guessKind = (t: DocRef["type"]): string => (t === "briefing" ? "Briefing" : t === "presentation" ? "Presentation" : t === "initiative" ? "Initiative" : kindLabel("note"));
+
+/** Make sure the tab's page exists (drawn once, kept hidden while another tab shows). */
+function ensureView(key: string): DocView {
+  let v = views.get(key);
+  if (v) return v;
+  const t = tabs.list().find((x) => x.key === key)!;
+  v = renderDoc({ type: t.type, id: t.id }, {
+    chat,
+    scroller: docHost,
+    askAbout: (scope, title) => chat.askAbout(scope, title),
+    close: () => closeTab(key),
+    loaded: (title, kind) => { tabs.setTitle(key, title, kind); strip.draw(tabs.list(), tabs.shown()); },
+    inApp,
+  });
+  views.set(key, v);
+  v.el.hidden = true;
+  docHost.append(v.el);
+  return v;
+}
+/** Draw what the state says: the shown tab, else Chat, else the sidebar page already drawn. */
+function syncView(focusDoc = false): void {
+  const key = tabs.shown();
   const r = parseRoute(location.hash);
-  shell.setActive(r.name);
-  if (r.name === "chat") {
+  for (const [k] of views) if (!tabs.has(k)) { views.get(k)!.el.remove(); views.delete(k); }
+  docHost.hidden = !key;
+  for (const [k, v] of views) v.el.hidden = k !== key;
+  const onChat = r.name === "chat" || !r.name;
+  if (key) {
+    const v = ensureView(key);
+    v.el.hidden = false;
+    chat.hide();
     page.hidden = true;
-    chat.show();
+    shell.setActive("");
+    shell.setChatDot(chat.hasConversation());
+    if (focusDoc) void v.ready.then(() => { if (tabs.shown() === key) v.el.querySelector<HTMLElement>("[data-doc-title]")?.focus(); });
+  } else if (onChat) {
+    page.hidden = true;
+    if (chat.el.hidden) chat.show();
+    shell.setActive("chat");
     shell.setChatDot(false);
-    return;
+  } else {
+    chat.hide();
+    page.hidden = false;
+    shell.setActive(r.name);
+    shell.setChatDot(chat.hasConversation());
   }
-  chat.hide();
-  page.hidden = false;
-  shell.setChatDot(chat.hasConversation());
+  strip.draw(tabs.list(), key ?? (onChat ? "chat" : null));
+  chat.redraw();
+}
+/** Open a document as a tab: shown now (a click) or quietly with a dot (the agent). */
+function openDoc(ref: DocRef, title: string, kind: string, show: boolean, after: string | null = null): void {
+  tabs.open(ref, title, kind, { show, dot: !show, after });
+  syncView(show);
+}
+function showTab(key: string | null, focusDoc = true): void {
+  if (key === null) { tabs.show(null); if (parseRoute(location.hash).name !== "chat") location.hash = "#/chat"; else syncView(); return; }
+  tabs.show(key);
+  syncView(focusDoc);
+}
+function closeTab(key: string): void {
+  tabs.close(key);
+  views.get(key)?.el.remove(); views.delete(key);
+  syncView(true);
+  if (tabs.shown() === null && parseRoute(location.hash).name === "chat") chat.focusInput();
+}
+let renderSeq = 0;
+async function drawPage(r: { name: string; id?: string }): Promise<void> {
+  pageHash = location.hash;
+  const mine = ++renderSeq;
   clear(main);
+  main.append(skeleton());
+  const view = h("div", { class: "jv-view" });
+  const ctx: Ctx = { main: view, scroller: main, chat, rerender: () => void render() };
+  let after: void | (() => void) = undefined;
   try {
     switch (r.name) {
-      case "tasks": browseState.q = ""; browseState.source = "task"; browseState.addedOffset = browseState.updatedOffset = 0; await viewBrowse(); break;
-      case "browse": case "search": await viewBrowse(); break;
-      case "capture": viewCapture(); break;
-      case "briefings": await viewBriefings(); break;
-      case "briefing": if (r.id) await viewBriefing(r.id.split("#")[0]); break;
-      case "presentations": await viewPresentations(); break;
-      case "presentation": if (r.id) await viewPresentation(r.id); break;
-      case "item": if (r.id) await viewItem(r.id); break;
-      default: main.append(h("p", {}, "Not found. ", h("a", { href: "#/chat" }, "Back to chat")));
+      case "tasks": resetBrowse({ source: "task" }); after = await viewBrowse(ctx); break;
+      case "browse": case "search": after = await viewBrowse(ctx); break;
+      case "capture": after = await viewCapture(ctx); break;
+      case "briefings": after = await viewBriefings(ctx); break;
+      case "initiatives": after = await viewInitiatives(ctx); break;
+      case "presentations": after = await viewPresentations(ctx); break;
+      default: view.append(h("p", {}, "Not found. ", h("a", { href: "#/chat" }, "Back to chat")));
     }
   } catch (e) {
-    main.append(h("p", { class: "muted" }, e instanceof ApiError && e.status === 404 ? "Not found." : `Error: ${(e as Error).message}`));
+    clear(view);
+    view.append(errorBox("Couldn't load this page.", (e as Error).message, () => void render()));
   }
+  if (mine !== renderSeq) return;
+  clear(main);
+  main.append(view);
+  main.scrollTop = 0;
+  after?.();
+}
+async function render() {
+  const r = parseRoute(location.hash);
+  const type = DOC_ROUTES[r.name];
+  if (type && r.id) {
+    // A document route: the click that opens a tab. The address goes back to where the person was.
+    const id = r.id.split("#")[0];
+    const ref: DocRef = { type, id };
+    firstRender = false;
+    const had = tabs.list().find((t) => t.type === type && t.id === id);
+    window.history.replaceState(null, "", lastPageHash);
+    // A link inside a tab opens right after it, as in a browser; from a sidebar page or Chat no tab is shown.
+    openDoc(ref, had?.title ?? id, had?.kind ?? guessKind(type), true, tabs.shown());
+    return;
+  }
+  lastPageHash = location.hash || "#/chat";
+  const keepShown = firstRender && tabs.shown() !== null; // a reload keeps the tab that was shown
+  firstRender = false;
+  if (!keepShown) tabs.show(null);
+  if (r.name !== "chat" && (!keepShown || pageHash !== location.hash)) await drawPage(r);
+  syncView();
 }
 const typing = (t: EventTarget | null) => t instanceof HTMLElement && (["INPUT", "TEXTAREA", "SELECT"].includes(t.tagName) || t.isContentEditable);
 function onKey(e: KeyboardEvent) {
   const mod = e.metaKey || e.ctrlKey;
   const k = e.key.toLowerCase();
-  if (mod && e.shiftKey && k === "o") { e.preventDefault(); chat.newChat(); }
+  if ((e.ctrlKey && e.key === "Tab") || (e.ctrlKey && e.altKey && (e.key === "ArrowRight" || e.key === "ArrowLeft"))) {
+    e.preventDefault();
+    const d = e.key === "ArrowLeft" || (e.key === "Tab" && e.shiftKey) ? -1 : 1;
+    const keys: (string | null)[] = [null, ...tabs.list().map((t) => t.key)];
+    showTab(keys[(keys.indexOf(tabs.shown()) + d + keys.length) % keys.length]);
+  }
+  else if (mod && e.shiftKey && k === "o") { e.preventDefault(); chat.newChat(); }
   else if (mod && e.shiftKey && k === "s") { e.preventDefault(); shell.toggleFold(); }
-  else if (e.key === "Escape") { if (shell.menuOpen()) shell.closeMenu(); else if (chat.isAnswering()) chat.stop(); }
-  else if (e.key === "/" && !mod && !typing(e.target)) { e.preventDefault(); if (parseRoute(location.hash).name !== "chat") location.hash = "#/chat"; chat.focusInput(); }
+  else if (e.key === "Escape") { if (strip.closeLists()) return; if (shell.menuOpen()) shell.closeMenu(); else if (chat.isAnswering()) chat.stop(); }
+  else if (e.key === "/" && !mod && !typing(e.target)) { e.preventDefault(); if (tabs.shown() !== null || parseRoute(location.hash).name !== "chat") showTab(null); chat.focusInput(); }
 }
 
 /** Build the app into `root` and start routing. */
 export function mountApp(root: HTMLElement): void {
   applyTheme(getTheme());
-  shell = createShell({ onNewChat: () => chat.newChat(), onSync: () => void confirmSync() });
-  chat = createChat({ navigate: (hash) => { if (location.hash === hash) void render(); else location.hash = hash; }, onChange: () => shell.setChatDot(chat.hasConversation() && parseRoute(location.hash).name !== "chat") });
+  views.clear(); pageHash = null; lastPageHash = "#/chat"; firstRender = true;
+  tabs = createTabs({ get: () => getPref(KEY_TABS_STORE), set: (v) => setPref(KEY_TABS_STORE, v) });
+  strip = createStrip({ show: showTab, close: closeTab });
+  window.addEventListener("resize", () => strip.draw(tabs.list(), tabs.shown() ?? (parseRoute(location.hash).name === "chat" ? "chat" : null)));
+  shell = createShell({ onNewChat: () => chat.newChat(), onSync: () => void confirmSync(), strip, onNav: () => { if (tabs.shown() !== null) { tabs.show(null); syncView(); } } });
+  chat = createChat({
+    navigate: (hash) => { if (location.hash === hash) void render(); else location.hash = hash; },
+    onChange: () => shell.setChatDot(chat.hasConversation() && (tabs.shown() !== null || parseRoute(location.hash).name !== "chat")),
+    openQuietly: (ref, title, kind) => openDoc(ref, title, kind, false),
+    showDoc: (ref, title, kind) => openDoc(ref, title, kind, true),
+    shownKey: () => tabs.shown(),
+  });
+  docHost = h("div", { class: "jv-doc-host", hidden: "" });
+  docHost.hidden = true;
   page = h("div", { class: "jv-page" });
   main = page;
-  shell.main.append(chat.el, page);
+  shell.main.append(chat.el, page, docHost);
   shell.setSync(lastSyncState());
   root.append(shell.el);
   window.addEventListener("hashchange", () => void render());

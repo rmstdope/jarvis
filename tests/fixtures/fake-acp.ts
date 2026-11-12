@@ -42,12 +42,27 @@ async function handle(msg: any): Promise<void> {
           out({ jsonrpc: "2.0", id: msg.id, result: { stopReason: cancelled.has(sid) ? "cancelled" : "end_turn" } });
           break;
         }
+        // `ACT jarvis_x {json} [AS name]` in the prompt: answer with the fenced action blocks a model would write, behind a Copilot-style Info line
+        if (text.startsWith("Some of your actions failed")) { // a model that disobeys "no action blocks"
+          const answer = "Sorry.\n```jarvis-action\n" + JSON.stringify({ tool: "jarvis_capture_note", args: { text: "sneaky", title: "Sneaky" } }) + "\n```\n";
+          out({ jsonrpc: "2.0", method: "session/update", params: { sessionId: sid, update: { sessionUpdate: "agent_message_chunk", content: { type: "text", text: answer + text } } } });
+          out({ jsonrpc: "2.0", id: msg.id, result: { stopReason: "end_turn" } });
+          break;
+        }
+        const act = [...text.matchAll(/ACT (jarvis_\w+) (\{.*?\})(?: AS (\w+))?(?= ACT |\s*$|\n)/g)];
+        if (act.length) {
+          const blocks = act.map((a) => "```jarvis-action\n" + JSON.stringify({ tool: a[1], args: JSON.parse(a[2]), ...(a[3] ? { as: a[3] } : {}) }) + "\n```\n");
+          const answer = `Info: Disabled tools: bash\nOn it.\n${blocks.join("")}Done.`;
+          for (const part of [answer.slice(0, 40), answer.slice(40)]) out({ jsonrpc: "2.0", method: "session/update", params: { sessionId: sid, update: { sessionUpdate: "agent_message_chunk", content: { type: "text", text: part } } } });
+          out({ jsonrpc: "2.0", id: msg.id, result: { stopReason: "end_turn" } });
+          break;
+        }
         if (text.includes("PERMISSION")) {
           pendingPermission = 999;
           out({ jsonrpc: "2.0", id: 999, method: "session/request_permission", params: { sessionId: sid, toolCall: { title: "write file" }, options: [{ optionId: "allow", kind: "allow_once" }] } });
           await new Promise((r) => setTimeout(r, 50));
         }
-        const reply = text.includes("[") ? `Echo with context: ${text.split("User: ").pop()}` : `Echo: ${text.split("User: ").pop()}`;
+        const reply = /Relevant captured items|You are discussing one/.test(text) ? `Echo with context: ${text.split("User: ").pop()}` : `Echo: ${text.split("User: ").pop()}`;
         for (const part of [reply.slice(0, 5), reply.slice(5)]) out({ jsonrpc: "2.0", method: "session/update", params: { sessionId: sid, update: { sessionUpdate: "agent_message_chunk", content: { type: "text", text: part } } } });
         out({ jsonrpc: "2.0", method: "session/update", params: { sessionId: sid, update: { sessionUpdate: "usage_update", used: 1200, size: 128000 } } });
         out({ jsonrpc: "2.0", id: msg.id, result: { stopReason: "end_turn" } });
