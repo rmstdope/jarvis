@@ -41,6 +41,13 @@ describe("initiatives", () => {
     await expect(editInitiative(t.dir, a.id, {})).rejects.toThrow(/usage: jarvis initiative edit/);
   });
 
+  test("edit refuses an empty title, goal or owner and leaves the file alone", async () => {
+    const a = await addInitiative(t.dir, { title: "Move billing", goal: "ledger", author: "anna" });
+    await expect(editInitiative(t.dir, a.id, { owner: "  " })).rejects.toThrow("an initiative needs an owner");
+    await expect(editInitiative(t.dir, a.id, { title: " " })).rejects.toThrow("an initiative needs a title");
+    expect(readDocFile(t.dir, a.id)!.frontmatter.initiative).toEqual({ status: "open", owner: "anna" });
+  });
+
   test("unknown id and task id get the agreed errors", async () => {
     const task = await addTask(t.dir, { title: "A task", author: "me" });
     await expect(showInitiative(t.dir, "01ZZZZZZ")).rejects.toThrow("no initiative 01ZZZZZZ — see them all: jarvis initiative list");

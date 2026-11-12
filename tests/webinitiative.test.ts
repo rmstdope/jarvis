@@ -352,3 +352,268 @@ describe("review fixes", () => {
     expect(btn("Reopen")).toBeDefined();
   });
 });
+
+describe("editing in place", () => {
+  const edit = (f: string) => q(`[data-edit="${f}"]`);
+  const field = () => q(".jv-ed input, .jv-ed textarea") as HTMLInputElement;
+  const key = (el: Element, k: string, o: Record<string, unknown> = {}) => el.dispatchEvent(new env.win.KeyboardEvent("keydown", { key: k, bubbles: true, cancelable: true, ...o }) as unknown as Event);
+  const type = (el: HTMLInputElement, v: string) => { el.value = v; el.dispatchEvent(new env.win.Event("input", { bubbles: true }) as unknown as Event); };
+  const edits = () => env.calls.filter((c) => c.path === "/api/initiative/IA/edit");
+  const today = new Date().toISOString().slice(0, 10);
+  const okEdit = () => env.routes.set("POST /api/initiative/IA/edit", () => ({ json: { title: "x", changes: [] } }));
+
+  test("reading: the three pieces are focusable with their tooltips, and the meta line reads as before", async () => {
+    await boot("#/initiative/IA");
+    expect(["title", "owner", "goal"].map((f) => [edit(f).getAttribute("title"), edit(f).getAttribute("tabindex")])).toEqual([["Edit title", "0"], ["Edit owner", "0"], ["Edit goal", "0"]]);
+    expect(text(".jv-meta")).toBe("Initiative · anna · started 2026-02-02 · updated 2026-03-05");
+    expect(text(".jv-title")).toBe("Move billing");
+  });
+
+  test("title: click opens a focused field, Esc puts the old text back and returns focus", async () => {
+    await boot("#/initiative/IA");
+    click(edit("title"));
+    expect(field().value).toBe("Move billing");
+    expect(document.activeElement).toBe(field());
+    expect(text(".jv-ed-hint")).toBe("Enter saves · Esc cancels");
+    type(field(), "Changed");
+    key(field(), "Escape");
+    expect(q(".jv-ed")).toBeNull();
+    expect(text(".jv-title")).toBe("Move billing");
+    expect(document.activeElement).toBe(edit("title"));
+    expect(edits()).toHaveLength(0);
+  });
+
+  test("title: Enter and Space open it from the keyboard; Enter saves and the bar, the tab and the meta line follow", async () => {
+    await boot("#/initiative/IA");
+    okEdit();
+    key(edit("title"), " ");
+    expect(field()).not.toBeNull();
+    type(field(), "  Billing on the ledger ");
+    key(field(), "Enter");
+    await env.tick(30);
+    expect(edits()[0].body).toEqual({ title: "Billing on the ledger" });
+    expect(q(".jv-ed")).toBeNull();
+    expect(text(".jv-title")).toBe("Billing on the ledger");
+    expect(text(".jv-dhead .jv-dtitle")).toBe("Billing on the ledger");
+    expect(text('.jv-tab[data-key="initiative:IA"] .jv-tab-t')).toBe("Billing on the ledger");
+    expect(text(".jv-meta")).toContain(`updated ${today}`);
+    expect(document.activeElement).toBe(edit("title"));
+    expect(q(".toast")).toBeNull();
+  });
+
+  test("title: while saving the field cannot be typed into and says Saving…", async () => {
+    await boot("#/initiative/IA");
+    let release!: () => void;
+    env.routes.set("POST /api/initiative/IA/edit", () => new Promise((r) => { release = () => r({ json: {} }); }));
+    click(edit("title"));
+    type(field(), "Later");
+    key(field(), "Enter");
+    await env.tick(10);
+    expect(field().readOnly).toBe(true);
+    expect(text(".jv-ed-hint")).toBe("Saving…");
+    release();
+    await env.tick(20);
+    expect(text(".jv-title")).toBe("Later");
+  });
+
+  test("saving the same text sends nothing and leaves updated alone", async () => {
+    await boot("#/initiative/IA");
+    click(edit("title"));
+    key(field(), "Enter");
+    await env.tick(20);
+    expect(edits()).toHaveLength(0);
+    expect(q(".jv-ed")).toBeNull();
+    expect(text(".jv-meta")).toContain("updated 2026-03-05");
+  });
+
+  test("clicking away saves", async () => {
+    await boot("#/initiative/IA");
+    okEdit();
+    click(edit("title"));
+    type(field(), "Away");
+    field().blur();
+    await env.tick(30);
+    expect(edits()[0].body).toEqual({ title: "Away" });
+  });
+
+  test("an emptied field cannot be saved: red border, the agreed words, Esc restores", async () => {
+    await boot("#/initiative/IA");
+    for (const [f, msg] of [["title", "An initiative needs a title."], ["owner", "An initiative needs an owner."]] as const) {
+      click(edit(f));
+      type(field(), "  ");
+      key(field(), "Enter");
+      await env.tick(10);
+      expect(field().getAttribute("aria-invalid")).toBe("true");
+      expect(text(".jv-ed-err")).toBe(msg);
+      key(field(), "Escape");
+    }
+    click(edit("goal"));
+    type(field(), "");
+    click(btn("Save"));
+    await env.tick(10);
+    expect(text(".jv-ed-err")).toBe("An initiative needs a goal.");
+    click(btn("Cancel"));
+    expect(text(".jv-goal")).toBe("All billing on the new ledger");
+    expect(edits()).toHaveLength(0);
+  });
+
+  test("a failed save keeps the field and what was typed; Enter tries again", async () => {
+    await boot("#/initiative/IA");
+    env.routes.set("POST /api/initiative/IA/edit", () => ({ status: 500, json: { error: "down" } }));
+    click(edit("title"));
+    type(field(), "Retry me");
+    key(field(), "Enter");
+    await env.tick(30);
+    expect(field().value).toBe("Retry me");
+    expect(field().readOnly).toBe(false);
+    expect(text(".jv-ed-err")).toBe("Couldn’t save the title. Press Enter to try again.");
+    expect(q(".toast")).toBeNull();
+    okEdit();
+    key(field(), "Enter");
+    await env.tick(30);
+    expect(q(".jv-ed")).toBeNull();
+    expect(text(".jv-title")).toBe("Retry me");
+  });
+
+  test("owner: names of owners of initiatives and tasks are suggested once typing starts; arrows and Enter pick; free text is saved as typed", async () => {
+    await boot("#/initiative/IA");
+    env.routes.set("GET /api/initiatives", () => ({ json: { initiatives: [{ id: "IA", owner: "anna" }, { id: "IB", owner: "annika" }] } }));
+    env.routes.set("GET /api/tasks", () => ({ json: { tasks: [{ id: "T1", owner: "jonas" }, { id: "T2", owner: "anders" }] } }));
+    okEdit();
+    click(edit("owner"));
+    await env.tick(20);
+    expect(qa("[role=option]")).toHaveLength(0); // nothing typed yet
+    type(field(), "an");
+    await env.tick(10);
+    expect(qa("[role=option]").map((o) => o.textContent)).toEqual(["anders", "anna", "annika"]);
+    key(field(), "ArrowDown"); key(field(), "ArrowDown");
+    key(field(), "Enter"); // picks "anna"? the second option
+    expect(field().value).toBe("anna");
+    expect(edits()).toHaveLength(0);
+    type(field(), "zed");
+    await env.tick(10);
+    expect(qa("[role=option]")).toHaveLength(0); // nothing matches: no list
+    key(field(), "Enter");
+    await env.tick(30);
+    expect(edits()[0].body).toEqual({ owner: "zed" });
+    expect(text(".jv-meta")).toBe(`Initiative · zed · started 2026-02-02 · updated ${today}`);
+    expect(document.activeElement).toBe(edit("owner"));
+  });
+
+  test("owner: a failed save says so with the agreed words", async () => {
+    await boot("#/initiative/IA");
+    env.routes.set("POST /api/initiative/IA/edit", () => ({ status: 500, json: { error: "down" } }));
+    click(edit("owner"));
+    type(field(), "bo");
+    key(field(), "Enter");
+    await env.tick(30);
+    expect(text(".jv-ed-err")).toBe("Couldn’t save the owner. Press Enter to try again.");
+  });
+
+  test("goal: Enter is a new line; Save, Ctrl+Enter or Cancel decide; the hint names the key", async () => {
+    await boot("#/initiative/IA");
+    okEdit();
+    click(edit("goal"));
+    expect(field().tagName).toBe("TEXTAREA");
+    expect(qa(".jv-ed button").map((b) => b.textContent)).toEqual(["Save", "Cancel"]);
+    expect(text(".jv-ed-hint")).toMatch(/^(⌘↵|Ctrl\+Enter) saves · Esc cancels$/);
+    type(field(), "line one\nline two");
+    key(field(), "Enter");
+    expect(edits()).toHaveLength(0);
+    click(btn("Save"));
+    await env.tick(30);
+    expect(edits()[0].body).toEqual({ goal: "line one\nline two" });
+    expect(text(".jv-goal")).toBe("line one\nline two");
+    expect(document.activeElement).toBe(edit("goal"));
+    click(edit("goal"));
+    type(field(), "second");
+    key(field(), "Enter", { ctrlKey: true });
+    await env.tick(30);
+    expect(edits()[1].body).toEqual({ goal: "second" });
+    click(edit("goal"));
+    type(field(), "dropped");
+    click(btn("Cancel"));
+    expect(text(".jv-goal")).toBe("second");
+    expect(edits()).toHaveLength(2);
+  });
+
+  test("goal: a failed save says Press Save", async () => {
+    await boot("#/initiative/IA");
+    env.routes.set("POST /api/initiative/IA/edit", () => ({ status: 500, json: { error: "down" } }));
+    click(edit("goal"));
+    type(field(), "x");
+    click(btn("Save"));
+    await env.tick(30);
+    expect(text(".jv-ed-err")).toBe("Couldn’t save the goal. Press Save to try again.");
+    expect(field().value).toBe("x");
+  });
+
+  test("only one field is open: opening another saves the first", async () => {
+    await boot("#/initiative/IA");
+    okEdit();
+    click(edit("title"));
+    type(field(), "First");
+    click(edit("goal"));
+    await env.tick(40);
+    expect(edits()[0].body).toEqual({ title: "First" });
+    expect(qa(".jv-ed")).toHaveLength(1);
+    expect(q(".jv-ed textarea")).not.toBeNull();
+    expect(text(".jv-title")).toBe("First");
+  });
+
+  test("Tab out of an unchanged field closes it and leaves focus where Tab sent it", async () => {
+    await boot("#/initiative/IA");
+    click(edit("title"));
+    const next = q(".jv-dhead button") as HTMLElement;
+    next.focus(); // what Tab does: focus moves, then the field's blur is handled
+    await env.tick(20);
+    expect(q(".jv-ed")).toBeNull();
+    expect((document.activeElement as HTMLElement).getAttribute("data-act")).toBe("close"); // the redraw rebuilt the button; focus stayed on its twin
+    expect(edits()).toHaveLength(0);
+  });
+
+  test("an editor survives a redraw (suggestions arriving) without saving half-typed text", async () => {
+    let release!: () => void;
+    await boot("#/initiative/IA", { suggest: () => new Promise((r) => { release = () => r({ model: true, suggestions: [] }); }) });
+    click(edit("title"));
+    type(field(), "Half");
+    release();
+    await env.tick(40);
+    expect(field().value).toBe("Half");
+    expect(document.activeElement).toBe(field());
+    expect(edits()).toHaveLength(0);
+  });
+
+  test("an editor left open when the page goes away saves nothing later and leaves no listener working", async () => {
+    await boot("#/initiative/IA");
+    env.routes.set("POST /api/initiative/IA/edit", () => ({ status: 500, json: { error: "down" } }));
+    click(edit("title"));
+    type(field(), "Abandoned");
+    key(field(), "Enter");
+    await env.tick(30);
+    expect(edits()).toHaveLength(1); // the failed save
+    q(".jv-ed")!.remove(); // the tab and its page are gone
+    document.dispatchEvent(new env.win.MouseEvent("mouseup", { bubbles: true }) as unknown as Event);
+    await env.tick(20);
+    expect(edits()).toHaveLength(1);
+  });
+
+  test("an initiative without an owner still shows a place to set one", async () => {
+    const d = base();
+    d.initiative.owner = "";
+    await boot("#/initiative/IA", { detail: d });
+    expect(edit("owner").textContent).toBe("no owner");
+  });
+
+  test("a closed initiative edits the same way and keeps its closed wording", async () => {
+    const d = base();
+    Object.assign(d.initiative, { status: "closed", closed_at: "2026-03-09T00:00:00Z", closed_by: "mira" });
+    await boot("#/initiative/IA", { detail: d });
+    okEdit();
+    click(edit("owner"));
+    type(field(), "bo");
+    key(field(), "Enter");
+    await env.tick(30);
+    expect(text(".jv-meta")).toBe("Initiative · bo · closed 2026-03-09 by mira");
+  });
+});
