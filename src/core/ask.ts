@@ -21,7 +21,6 @@ export const NO_MODEL_ANSWER = "No chat model is available, so J.A.R.V.I.S. skip
  * with a high-quality model. With no such model the synthesis is skipped, not failed: the matching
  * items come back with a fix line.
  */
-
 export async function ask(dataDir: string, router: Router | null, question: string, opts: { mode?: SearchMode; limit?: number; contextChars?: number } = {}): Promise<AskResult> {
   const limit = Math.min(ASK_MAX_LIMIT, Math.max(1, opts.limit ?? ASK_DEFAULT_LIMIT));
   const maxChars = Math.min(ASK_MAX_CONTEXT_CHARS, Math.max(1000, opts.contextChars ?? ASK_CONTEXT_CHARS));
@@ -46,7 +45,7 @@ export async function ask(dataDir: string, router: Router | null, question: stri
   }
   if (parts.length === 0) return { answer: NO_CONTEXT_ANSWER, model: "none", citations: [] };
   const model = router?.resolve({ kind: "synthesis", minQuality: "high" });
-  if (!model) return { answer: NO_MODEL_ANSWER, model: "none", citations, skipped: `add a [[model]] with quality = "high" to ${modelsPath()}, or run jarvis doctor` };
+  if (!model) return { answer: NO_MODEL_ANSWER, model: "none", citations, skipped: `add or enable a [[model]] with quality = "high" in ${modelsPath()}, or run jarvis doctor` };
   const answer = await model.complete(askPrompt(question, parts.join("\n\n---\n\n")), { maxTokens: ASK_MAX_TOKENS });
   return { answer: answer.trim(), model: model.id, citations };
 }

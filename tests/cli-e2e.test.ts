@@ -275,6 +275,6 @@ describe("cli end to end (subprocess)", () => {
     expect(a.out).not.toContain("error");
     expect(a.code).toBe(0);
     expect(a.out).toContain(`[${id}] Breathing`);
-    expect(a.out).toContain(`fix: add a [[model]] with quality = "high" to ${join(home, "models.toml")}`);
+    expect(a.out).toContain(`fix: add or enable a [[model]] with quality = "high" in ${join(home, "models.toml")}`);
   });
 });
