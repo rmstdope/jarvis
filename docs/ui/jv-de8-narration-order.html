@@ -1,0 +1,49 @@
+<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Narration in order</title>
+<style>
+:root{--bg:#f6f6f4;--panel:#fff;--border:#ddd;--muted:#777;--green:#2f8f4e;--error:#c0392b;--accent:#2a62c9;--user:#e9eef8}
+@media (prefers-color-scheme:dark){:root{--bg:#161616;--panel:#202020;--border:#383838;--muted:#999;--green:#6fc28a;--error:#ec7063;--accent:#7aa7f0;--user:#26324a}}
+body{font:15px/1.5 -apple-system,system-ui,sans-serif;background:var(--bg);color:inherit;max-width:760px;margin:24px auto;padding:0 16px}
+@media (prefers-color-scheme:dark){body{color:#ddd}}
+h1{font-size:20px}h2{font-size:15px;margin:34px 0 4px;border-top:1px solid var(--border);padding-top:16px}
+p.note{color:var(--muted);margin:2px 0 10px;font-size:13px}
+.chat{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:6px 16px}
+.u{background:var(--user);border-radius:12px;padding:8px 12px;margin:14px 0 14px auto;width:fit-content;max-width:80%}
+.a{margin:14px 0}.a p{margin:6px 0}
+.card{border:1px solid var(--border);border-radius:12px;padding:10px 14px;margin:8px 0}
+.card h4{margin:0 0 6px;font-size:14px}
+.row{display:flex;gap:8px;font-size:14px;padding:3px 0}.row .m{color:var(--green);width:14px}.row .t{flex:1}
+.row.f,.row.f .m{color:var(--error)}
+.undo{border:1px solid var(--border);border-radius:8px;padding:0 10px;font-size:13px;color:var(--accent);height:22px}
+.foot{text-align:right;margin-top:4px}
+a{color:var(--accent)}.muted{color:var(--muted)}.small{font-size:13px}
+.steps{font-size:13px;color:var(--muted);margin:4px 0}.steps div{margin-left:14px}
+.plan{font-size:13px;color:var(--muted);border-left:3px solid var(--border);padding-left:10px;margin:4px 0 4px 14px}
+.cursor{display:inline-block;width:7px;height:15px;background:var(--muted);vertical-align:-2px}
+.narrow{max-width:340px}
+</style></head><body>
+<h1>Option A — everything in the order it happened</h1>
+<p class="note">What the agent wrote before acting, then the card where the action happened, then what it wrote after. Nothing is rewritten or hidden; "I'll link…" is followed by the card that says it was done, so it reads as a story, not a contradiction. Today the card sits above all the text, which is what makes "I'll link…" appear under "Linked".</p>
+<h2>A link that worked</h2>
+<div class="chat"><div class="u">link the weekly sync to Q4 planning</div><div class="a"><p>I'll link the newer Weekly sync meeting (11 Nov) to Q4 planning.</p><div class="card"><h4>I made 1 change</h4><div class="row"><span class="m">✓</span><span class="t">Linked <a href="#">Weekly sync</a> to <a href="#">Q4 planning</a> · relates to</span><span class="undo">Undo</span></div></div></div></div>
+<h2>A link that was refused</h2>
+<div class="chat"><div class="u">link the weekly sync to Q4 planning</div><div class="a"><p>I'll link the Weekly sync meeting to Q4 planning.</p><div class="card"><h4>I made 0 changes · 1 failed</h4><div class="row f"><span class="m">✗</span><span class="t">Couldn't link <i>Weekly sync</i> — two meetings share that title.</span></div></div><p>I couldn't create the link: there are two meetings called Weekly sync, from 4 Nov and 11 Nov. Which one do you mean?</p></div></div>
+<h2>Two actions, one failed</h2>
+<div class="chat"><div class="u">add a task to book the venue and put it under Offsite 2027</div><div class="a"><p>I'll create the task Book the venue and file it under Offsite 2027.</p><div class="card"><h4>I made 1 change · 1 failed</h4><div class="row"><span class="m">✓</span><span class="t">Created task <a href="#">Book the venue</a></span><span class="undo">Undo</span></div><div class="row f"><span class="m">✗</span><span class="t">Couldn't link <i>Book the venue</i> — no initiative called Offsite 2027.</span></div><div class="foot"><span class="undo">Undo all</span></div></div><p>The task is created, but I couldn't file it under Offsite 2027 — there is no initiative with that name.</p></div></div>
+<h2>An answer and an action in one turn</h2>
+<div class="chat"><div class="u">what did we decide about the venue? and make a task to book it</div><div class="a"><p>On 11 Nov the team chose the Harbour Hall for the offsite, as long as it stays under budget. I'll add a task to book it.</p><div class="card"><h4>I made 1 change</h4><div class="row"><span class="m">✓</span><span class="t">Created task <a href="#">Book the Harbour Hall</a></span><span class="undo">Undo</span></div></div></div></div>
+<h2>While it is working</h2>
+<p class="note">The card appears beneath the sentence as soon as the first action has run; text written after it streams below the card.</p>
+<div class="chat"><div class="u">add a task to book the venue and put it under Offsite 2027</div><div class="a"><p>I'll create the task Book the venue and file it under Offsite 2027.</p><div class="card"><h4>I made 1 change</h4><div class="row"><span class="m">✓</span><span class="t">Created task <a href="#">Book the venue</a></span><span class="undo">Undo</span></div></div><span class="cursor"></span></div></div>
+<h2>A narrow window</h2>
+<div class="chat narrow"><div class="u">link the weekly sync to Q4 planning</div><div class="a"><p>I'll link the Weekly sync meeting to Q4 planning.</p><div class="card"><h4>I made 0 changes · 1 failed</h4><div class="row f"><span class="m">✗</span><span class="t">Couldn't link <i>Weekly sync</i> — two meetings share that title.</span></div></div><p>I couldn't create the link: there are two meetings called Weekly sync, from 4 Nov and 11 Nov. Which one do you mean?</p></div></div>
+<h2>A turn with no action — unchanged</h2>
+<div class="chat"><div class="u">what did we decide about the venue?</div><div class="a"><p>On 11 Nov the team chose the Harbour Hall, as long as it stays under budget.</p></div></div>
+<h1 style="margin-top:48px">Several actions in one reply — one card, where the first action happened</h1>
+<p class="note">All of a reply's changes stay in one card, with one heading and one Undo all. It sits after the words that came before the first action; everything written after that comes below it.</p>
+<h2>Actions written apart, with words between them</h2>
+<div class="chat"><div class="u">make a task to book the Harbour Hall, link it to the offsite notes, and what was the budget again?</div><div class="a"><p>I'll create a task to book the Harbour Hall.</p><div class="card"><h4>I made 2 changes</h4><div class="row"><span class="m">✓</span><span class="t">Created task <a href="#">Book the Harbour Hall</a></span><span class="undo">Undo</span></div><div class="row"><span class="m">✓</span><span class="t">Linked <a href="#">Book the Harbour Hall</a> to <a href="#">Offsite notes</a> · relates to</span><span class="undo">Undo</span></div><div class="foot"><span class="undo">Undo all</span></div></div><p>Then I'll link it to the offsite notes.</p><p>The budget agreed on 11 Nov is 4,000 € for the venue, catering included.</p></div></div>
+<h2>While it is working — the second row joins the same card</h2>
+<div class="chat"><div class="u">make a task to book the Harbour Hall, link it to the offsite notes, and what was the budget again?</div><div class="a"><p>I'll create a task to book the Harbour Hall.</p><div class="card"><h4>I made 1 change</h4><div class="row"><span class="m">✓</span><span class="t">Created task <a href="#">Book the Harbour Hall</a></span><span class="undo">Undo</span></div></div><p>Then I'll link it to the offsite notes.</p><span class="cursor"></span></div></div>
+<h2>A narrow window</h2>
+<div class="chat narrow"><div class="u">make a task to book the Harbour Hall, link it to the offsite notes, and what was the budget again?</div><div class="a"><p>I'll create a task to book the Harbour Hall.</p><div class="card"><h4>I made 2 changes</h4><div class="row"><span class="m">✓</span><span class="t">Created task <a href="#">Book the Harbour Hall</a></span><span class="undo">Undo</span></div><div class="row"><span class="m">✓</span><span class="t">Linked <a href="#">Book the Harbour Hall</a> to <a href="#">Offsite notes</a> · relates to</span><span class="undo">Undo</span></div><div class="foot"><span class="undo">Undo all</span></div></div><p>Then I'll link it to the offsite notes.</p><p>The budget agreed on 11 Nov is 4,000 € for the venue, catering included.</p></div></div>
+</body></html>
