@@ -101,7 +101,7 @@ export function ignoredModelsEntries(text: string): string[] {
     const hasId = typeof m.id === "string";
     if (!hasProvider && !hasId) ignored.push(`the [[model]] #${i + 1} missing provider and id`);
     else if (!hasProvider) ignored.push(`the [[model]] with id "${m.id}" missing provider`);
-    else if (!PROVIDER_NAMES.includes(m.provider as ProviderName)) ignored.push(`the [[model]] with provider "${m.provider}"${hasId ? ` (${m.id})` : ""}`);
+    else if (!PROVIDER_NAMES.includes(m.provider as ProviderName)) ignored.push(`the [[model]] with provider "${m.provider}"${hasId ? ` (${m.id})` : " missing id"}`);
     else if (!hasId) ignored.push(`the [[model]] with provider "${m.provider}" missing id`);
   });
   return ignored;
