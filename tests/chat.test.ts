@@ -574,3 +574,11 @@ describe("the agent acts (jv-oya.4)", () => {
     expect(readFileSync(join(t.dir, "edges", `${created.frontmatter.id}.jsonl`), "utf8")).toContain(spec.id);
   });
 });
+
+describe("what the assistant says before acting (jv-de8)", () => {
+  test("the rules ask for intent before an action, never a claim that it is happening or done", async () => {
+    const { CHAT_RULES } = await import("../src/chat/sessions.ts");
+    expect(CHAT_RULES).toContain("I'll link Weekly sync to Q4 planning.");
+    expect(CHAT_RULES).toContain("never as already happening or done");
+  });
+});

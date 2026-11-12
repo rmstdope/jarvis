@@ -516,6 +516,34 @@ describe("the agent acts: the change card (jv-oya.4)", () => {
     expect(q(".jv-undoall").textContent).toBe("Undo all");
     expect(q(".jv-answer").previousElementSibling).toBe(card());
   });
+  describe("narration in order (jv-de8)", () => {
+    const order = () => [...q(".jv-a").children].map((e) => (e.classList.contains("jv-changes") ? "card" : e.classList.contains("jv-answer") ? `text:${e.textContent!.trim()}` : e.className));
+    const streamed = (pieces: ({ say: string } | { change: Record<string, unknown> })[], opts: Setup = {}) => setup({ name: "Mia", ...opts, answer: () => ({ stream: async (push) => { for (const p of pieces) push("say" in p ? { type: "message", text: p.say } : { type: "change", change: p.change }); push({ type: "done" }); } }) });
+    test("text before the first action, then the one card, then the later text", async () => {
+      await streamed([{ say: "I'll link it." }, { change: ch({ kind: "task.create", items: [task("T1", "A")] }) }, { say: "Then I'll tell you." }, { change: ch({ kind: "task.create", items: [task("T2", "B")] }) }, { say: " Done." }]);
+      await ask("do it");
+      expect(order()).toEqual(["text:I'll link it.", "card", "text:Then I'll tell you. Done."]);
+      expect(qa(".jv-changes").length).toBe(1);
+      expect(qa(".jv-crow").length).toBe(2);
+    });
+    test("an action before any text puts the card first", async () => {
+      await streamed([{ change: ch({ kind: "task.create", items: [task("T1", "A")] }) }, { say: "Done." }]);
+      await ask("do it");
+      expect(order()).toEqual(["card", "text:Done."]);
+    });
+    test("the order survives a reload; a reply saved without a position keeps the card first", async () => {
+      await streamed([{ say: "Before." }, { change: ch({ kind: "task.create", items: [task("T1", "A")] }) }, { say: "After." }]);
+      await ask("do it");
+      const saved = JSON.parse(localStorage.getItem("jv.chat")!) as { messages: { changesAt?: number }[] };
+      expect(saved.messages[1].changesAt).toBe(7);
+      document.body.innerHTML = ""; await streamed([]);
+      expect(order()).toEqual(["text:Before.", "card", "text:After."]);
+      delete saved.messages[1].changesAt;
+      localStorage.setItem("jv.chat", JSON.stringify(saved));
+      document.body.innerHTML = ""; await streamed([]);
+      expect(order()).toEqual(["card", "text:Before.After."]);
+    });
+  });
   test("every kind of row, in the words agreed", async () => {
     await answerWith([
       ch({ kind: "capture.note", items: [{ id: "N1", title: "A", kind: "doc" }] }),
