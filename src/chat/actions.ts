@@ -99,12 +99,12 @@ const resolveRef = (ctx: ActionContext, ref: string, source?: string): string =>
     const said = title !== ref.trim() && !sourceOfTrailingKind(title) ? sourceOfTrailingKind(ref) : undefined;
     if (found.length > 1 && said) {
       const narrowed = found.filter((f) => f.source === said);
-      if (narrowed.length === 1) found = narrowed;
+      if (narrowed.length >= 1) found = narrowed; // one left is the item; several left are asked about as a group
     }
     // Several of one kind share the title: ask the user which, once per title; otherwise (a mix of kinds, or already asked) the agent picks by id (jv-bt4).
-    const kind = found[0]?.source;
-    if (found.length > 1 && found.every((f) => f.source === kind) && !ctx.asked?.has(`${kind}:${title.toLowerCase()}`)) {
-      ctx.asking?.add(`${kind}:${title.toLowerCase()}`);
+    const kind = found[0]?.source, name = found[0]?.title.toLowerCase();
+    if (found.length > 1 && found.every((f) => f.source === kind) && !ctx.asked?.has(`${kind}:${name}`)) {
+      ctx.asking?.add(`${kind}:${name}`);
       throw askWhich(dataDir, found.map((f) => f.id), found[0].title, kind, ctx);
     }
     if (found.length > 1) throw new Error(`more than one item is called "${title}": ${found.map((f) => `${f.title} [${f.id}] from ${f.created_at.slice(0, 10)}`).join(", ")}; pass one of these ids, or ask the user which`);
