@@ -51,12 +51,15 @@ function asEffort(e: unknown, where: string): ReasoningEffort | undefined {
   return e as ReasoningEffort;
 }
 
-/** Parse models.toml. Entries missing provider/id are dropped; `jarvis doctor` names them and misspelt ones ({@link ignoredModelsEntries}). */
+/**
+ * Parse models.toml. Entries missing provider/id, and a single `[model]` table, are dropped; `jarvis doctor`
+ * names them and misspelt ones ({@link ignoredModelsEntries}). Throws on malformed TOML ({@link modelsTomlError}).
+ */
 export function parseModelsToml(text: string): { preference: ProviderName[]; models: ModelEntry[] } {
   const t = Bun.TOML.parse(text) as { preference?: unknown; model?: Record<string, unknown>[] };
   const preference = Array.isArray(t.preference) ? (t.preference.filter((p) => PROVIDER_NAMES.includes(p as ProviderName)) as ProviderName[]) : DEFAULT_PREFERENCE;
   const models: ModelEntry[] = [];
-  for (const m of t.model ?? []) {
+  for (const m of Array.isArray(t.model) ? t.model : []) {
     if (!m || typeof m.provider !== "string" || typeof m.id !== "string" || !PROVIDER_NAMES.includes(m.provider as ProviderName)) continue;
     const where = `models.toml [[model]] ${m.provider}:${m.id}`;
     const entry: ModelEntry = { provider: m.provider as ProviderName, id: m.id, quality: asQuality(m.quality) };
@@ -79,11 +82,22 @@ export function parseModelsToml(text: string): { preference: ProviderName[]; mod
   return { preference: preference.length ? preference : DEFAULT_PREFERENCE, models };
 }
 
+/** The TOML parser's message when `text` is not valid TOML, else null; `jarvis doctor` shows it. */
+export function modelsTomlError(text: string): string | null {
+  try {
+    Bun.TOML.parse(text);
+    return null;
+  } catch (e) {
+    return e instanceof Error ? e.message : String(e);
+  }
+}
+
 /**
  * The entries {@link parseModelsToml} skips, each named as a person would find it in the file:
- * a `models` table or key (the parser reads `[[model]]`), every `[[model]]` whose provider is not one of
- * {@link PROVIDER_NAMES}, and every `[[model]]` missing its provider or id (named by the key it does have,
- * or by its 1-based position when it has neither). Empty when none occurs; malformed TOML is the parser's to report.
+ * a `models` table or key and a single `[model]` table (the parser reads `[[model]]`), every `[[model]]`
+ * whose provider is not one of {@link PROVIDER_NAMES}, and every `[[model]]` missing its provider or id (named
+ * by the key it does have, or by its 1-based position when it has neither). Empty when none occurs; malformed
+ * TOML is {@link modelsTomlError}'s to report.
  */
 export function ignoredModelsEntries(text: string): string[] {
   let t: { models?: unknown; model?: unknown };
@@ -94,6 +108,7 @@ export function ignoredModelsEntries(text: string): string[] {
   }
   const ignored: string[] = [];
   if (t.models !== undefined) ignored.push(Array.isArray(t.models) ? "the [[models]] table" : "the models key");
+  if (t.model !== undefined && !Array.isArray(t.model)) ignored.push("the [model] table");
   const entries = Array.isArray(t.model) ? (t.model as Record<string, unknown>[]) : [];
   entries.forEach((m, i) => {
     if (!m || typeof m !== "object") return;

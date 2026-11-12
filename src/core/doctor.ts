@@ -9,7 +9,7 @@ import { CHAT_PROBE_TIMEOUT_MS, EMBEDDING_DIMS, PROBE_TIMEOUT_MS } from "./const
 import { ensureCustomSqlite } from "./db.ts";
 import { getEmbedder } from "./embed.ts";
 import { hasRemote, isWorkTree } from "./git.ts";
-import { ignoredModelsEntries, modelsPath } from "../providers/models.ts";
+import { ignoredModelsEntries, modelsPath, modelsTomlError } from "../providers/models.ts";
 import { getRouter } from "../providers/index.ts";
 import { COPILOT_CLI_DEFAULT, readCopilotModelCatalog } from "../providers/copilot.ts";
 import { unresolvedKinds, type RouterEntry } from "../providers/router.ts";
@@ -161,15 +161,26 @@ export async function doctor(opts: DoctorOpts = {}): Promise<DoctorReport> {
   }
 
   const mp = modelsPath();
-  const ignored = existsSync(mp) ? ignoredModelsEntries(readFileSync(mp, "utf8")) : [];
+  const modelsText = existsSync(mp) ? readFileSync(mp, "utf8") : null;
+  const tomlError = modelsText === null ? null : modelsTomlError(modelsText);
+  const ignored = modelsText === null ? [] : ignoredModelsEntries(modelsText);
+  // A router that cannot load models.toml is reported in models-config, not a reason to stop the report.
+  let routerError: string | null = null;
+  const router = await getRouter().catch((e: unknown) => {
+    routerError = e instanceof Error ? e.message : String(e);
+    return null;
+  });
   checks.push(
-    !existsSync(mp)
+    modelsText === null
       ? warn("models-config", `${mp} missing; models are detected live`, "jarvis config preset <name>   or   jarvis config redetect --write")
-      : ignored.length
-        ? warn("models-config", `${mp}: ignored ${ignored.join(", ")}`, `spell each table [[model]] and give it a provider and id, with provider local, copilot or openai-compat, in ${mp}   or   jarvis config preset <name>`)
-        : ok("models-config", false, mp),
+      : tomlError
+        ? warn("models-config", `${mp} is not valid TOML: ${tomlError}`, `fix the TOML in ${mp}, and spell each table [[model]]   or   jarvis config preset <name>`)
+        : routerError
+          ? warn("models-config", `${mp}: ${routerError}`, `fix that entry in ${mp}   or   jarvis config preset <name>`)
+          : ignored.length
+            ? warn("models-config", `${mp}: ignored ${ignored.join(", ")}`, `spell each table [[model]] and give it a provider and id, with provider local, copilot or openai-compat, in ${mp}   or   jarvis config preset <name>`)
+            : ok("models-config", false, mp),
   );
-  const router = await getRouter();
   if (router) {
     // A named Copilot id outside the CLI's catalog is refused at run time (`--model … is not available`).
     const named = router.entries.filter((e) => e.available && e.entry.provider === "copilot" && e.entry.id !== COPILOT_CLI_DEFAULT && e.entry.id !== "auto");

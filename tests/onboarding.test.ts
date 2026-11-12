@@ -127,6 +127,31 @@ describe("doctor", () => {
     expect(check.detail).not.toContain("qwen3:14b");
     expect(check.fix).toContain("provider and id");
   });
+  test("a models.toml doctor cannot read is reported in models-config, not thrown (jv-3ah)", async () => {
+    const mp = join(home, "models.toml");
+    // The real router reads models.toml, as `jarvis doctor` does; every file here fails before any provider is probed.
+    try {
+      for (const [text, problem, fix] of [
+        ['[model]\nprovider = "local"\nid = "qwen3:14b"\n', "[model]", "spell each table [[model]]"],
+        ['[[models]\nprovider = "local"\n', "TOML Parse error", "spell each table [[model]]"],
+        ['[[model]]\nprovider = "copilot"\nid = "x"\nreasoningEffort = "huge"\n', 'invalid reasoningEffort "huge"', "fix that entry in"],
+      ] as const) {
+        writeFileSync(mp, text);
+        setRouterForTests(undefined);
+        const r = await doctor({ coreOnly: true, which: (b) => `/bin/${b}` });
+        const names = r.checks.map((c) => c.name);
+        expect(names).toContain("user-config");
+        expect(names).toContain("data-dir");
+        const check = r.checks.find((c) => c.name === "models-config")!;
+        expect(check.status).toBe("warn");
+        expect(check.detail).toContain(mp);
+        expect(check.detail).toContain(problem);
+        expect(check.fix).toContain(fix);
+      }
+    } finally {
+      setRouterForTests(null);
+    }
+  });
   test("doctor says whether decks can be presented in Slidecraft, with the exact fix", async () => {
     const data = join(t.dir, "content");
     await init({ yes: true, data, author: "tester", preset: "cpu-only-minimal", embedding: "ollama", log: () => {} });
