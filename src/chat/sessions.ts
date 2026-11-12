@@ -62,6 +62,16 @@ ${ACTION_REFERENCE}
 
 When the user asks for a change, write its block straight away without asking first; every change can be undone. Write one block per change. After the blocks run you are told what happened; if something failed, say so plainly. The blocks are removed from what the person reads and a card in your answer, where the first block ran, shows what was done or failed, so do not claim a result and do not repeat the block's content. Word what you write before an action as what you are about to do ("I'll link Weekly sync to Q4 planning."), never as already happening or done ("I'm linking…", "Linked…"); explain any failure after the results, in a sentence or two. Never publish or approve anything: a briefing or presentation you make is a draft, and you say so. Capture an attached file only when the user asks. To open a document for the user in a tab beside the chat, write <<open:ID>> with its id in your answer.`;
 
+/**
+ * What the agent is told about the item a scoped chat is about. In an initiative's chat, "it" and a
+ * change asked for mean that initiative: it is edited by its id, never re-created (jv-2uf).
+ */
+export function scopeRule(type: ChatScope["type"], id: string): string {
+  const answer = "Answer from its content; say when it does not cover the question.";
+  if (type !== "initiative") return answer;
+  return `"It", "this" and "the initiative" mean this initiative. When the user asks to change its title, goal or owner, write jarvis_edit_initiative with initiative "${id}" and only the fields to change; never jarvis_create_initiative unless they ask for a new, separate initiative. Otherwise answer from its content; say when it does not cover the question.`;
+}
+
 export interface ChatSession {
   id: string;
   /** The browser's conversation; the change log is keyed by it so Undo outlives this session. */
@@ -253,7 +263,7 @@ export class ChatService {
         title = b.title;
         body = b.body;
       }
-      return { prompt: `You are discussing one ${s.scope.type} from a team knowledge base. Answer from its content; say when it does not cover the question.\n\n[${id}] ${title}\n\n${body.slice(0, CHAT_GROUNDED_BODY_CHARS)}\n\n---\nUser: ${message}`, sources: s.sources };
+      return { prompt: `You are discussing one ${s.scope.type} from a team knowledge base. ${scopeRule(s.scope.type, id)}\n\n[${id}] ${title}\n\n${body.slice(0, CHAT_GROUNDED_BODY_CHARS)}\n\n---\nUser: ${message}`, sources: s.sources };
     }
     return { prompt: message, sources: [] };
   }

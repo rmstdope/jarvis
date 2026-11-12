@@ -212,6 +212,16 @@ describe("chat service", () => {
     expect(svc.buildPrompt(s, "more").prompt).toBe("more");
     await svc.shutdown();
   });
+  test("initiative scope: the first turn tells the agent a change to it edits this initiative, by its id, never a new one (jv-2uf)", async () => {
+    const ini = await addInitiative(t.dir, { title: "Ledger move", goal: "everything on the new ledger", author: "me" });
+    const svc = new ChatService(t.dir, { spawn });
+    const s = await svc.create({ type: "initiative", ids: [ini.id] });
+    const first = svc.buildPrompt(s, "set its goal to all invoices on the new ledger").prompt;
+    const scoped = first.slice(first.indexOf("You are discussing one initiative"));
+    expect(scoped).toContain(`jarvis_edit_initiative with initiative "${ini.id}"`);
+    expect(scoped).toMatch(/never jarvis_create_initiative/i);
+    await svc.shutdown();
+  });
   test("a meeting kept off cloud models still reaches the prompt by title and id, never its transcript (jv-9z6)", async () => {
     const meeting = await ingest(t.dir, { source: "meeting", title: "Weekly sync", body: "zebrafish rollout decided by Sam", author: "me" });
     const note = await ingest(t.dir, { source: "note", title: "Zoom drift", body: "audio drifts after an hour", author: "me" });
