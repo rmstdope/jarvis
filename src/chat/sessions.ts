@@ -66,7 +66,7 @@ When the user asks for a change, write its block straight away without asking fi
  * What the agent is told about the item a scoped chat is about. In an initiative's chat, "it" and a
  * change asked for mean that initiative: it is edited by its id, never re-created (jv-2uf).
  */
-export function scopeRule(type: ChatScope["type"], id: string): string {
+function scopeRule(type: ChatScope["type"], id: string): string {
   const answer = "Answer from its content; say when it does not cover the question.";
   if (type !== "initiative") return answer;
   return `"It", "this" and "the initiative" mean this initiative. When the user asks to change its title, goal or owner, write jarvis_edit_initiative with initiative "${id}" and only the fields to change; never jarvis_create_initiative unless they ask for a new, separate initiative. Otherwise answer from its content; say when it does not cover the question.`;
@@ -314,7 +314,7 @@ export class ChatService {
       for (const a of list) {
         chain = chain.then(async () => {
           try {
-            const r = await runTool(new ChangeLog(this.dataDir, s.conversationId), turn, a.tool, resolveRefs(a.args, aliases), { dataDir: this.dataDir, attachments, seen, asked: s.asked, asking });
+            const r = await runTool(new ChangeLog(this.dataDir, s.conversationId), turn, a.tool, resolveRefs(a.args, aliases), { dataDir: this.dataDir, attachments, seen, asked: s.asked, asking, about: s.scope.type === "initiative" ? s.scope.ids[0] : undefined });
             results.push(r.text);
             if (r.asked) asks.push(r.question ?? r.text);
             else if (r.change && !r.change.ok) failed.push(r.text);

@@ -6,7 +6,7 @@ import { readSidecar } from "../src/core/sidecar.ts";
 import { spawnBunAcp, AcpClient, copilotAcpArgs } from "../src/chat/acp.ts";
 import { ChatService, retrievalTerms, chatModel } from "../src/chat/sessions.ts";
 import { ingest } from "../src/core/ingest.ts";
-import { addInitiative } from "../src/core/initiatives.ts";
+import { addInitiative, listInitiatives } from "../src/core/initiatives.ts";
 import { addTask } from "../src/core/tasks.ts";
 import { link } from "../src/core/links.ts";
 import { createBriefing } from "../src/briefings/store.ts";
@@ -220,6 +220,23 @@ describe("chat service", () => {
     const scoped = first.slice(first.indexOf("You are discussing one initiative"));
     expect(scoped).toContain(`jarvis_edit_initiative with initiative "${ini.id}"`);
     expect(scoped).toMatch(/never jarvis_create_initiative/i);
+    expect(first).toMatch(/jarvis_create_initiative .*To change an existing initiative, use jarvis_edit_initiative instead\./); // the tool list says it too
+    const item = await svc.create({ type: "item", ids: [ini.id] });
+    expect(svc.buildPrompt(item, "q").prompt).toContain("You are discussing one item from a team knowledge base. Answer from its content; say when it does not cover the question.\n\n"); // other scopes keep their rule
+    await svc.shutdown();
+  });
+  test("initiative scope: an agent that creates an initiative named like the one in scope changes that one instead (jv-2uf)", async () => {
+    const ini = await addInitiative(t.dir, { title: "Software Principles", goal: "old goal", owner: "me", author: "me" });
+    const svc = new ChatService(t.dir, { spawn });
+    const s = await svc.create({ type: "initiative", ids: [ini.id] });
+    const evs = await collect(svc.send(s.id, 'ACT jarvis_create_initiative {"title":"software principles","goal":"Every service follows the principles"}'));
+    const changes = evs.filter((e) => e.type === "change").map((e) => (e as unknown as { change: { kind: string; ok: boolean; items: { id: string }[] } }).change);
+    expect(changes.map((c) => [c.kind, c.ok, c.items[0]?.id])).toEqual([["initiative.goal", true, ini.id]]);
+    expect(readDocFile(t.dir, ini.id)!.body.trim()).toBe("Every service follows the principles");
+    expect(listInitiatives(t.dir, { status: "all" }).map((i) => i.id)).toEqual([ini.id]);
+    // a differently named initiative is still a new one
+    const other = await collect(svc.send(s.id, 'ACT jarvis_create_initiative {"title":"Hiring","goal":"two engineers"}'));
+    expect(other.filter((e) => e.type === "change").map((e) => (e as unknown as { change: { kind: string } }).change.kind)).toEqual(["initiative.create"]);
     await svc.shutdown();
   });
   test("a meeting kept off cloud models still reaches the prompt by title and id, never its transcript (jv-9z6)", async () => {

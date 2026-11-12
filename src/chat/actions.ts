@@ -51,6 +51,8 @@ export interface ActionContext {
   asking?: Set<string>;
   /** The tool being run, recorded on the question it may raise. */
   tool?: string;
+  /** The id of the initiative an initiative-scoped chat is about: a create named like it changes it instead (jv-2uf). */
+  about?: string;
 }
 /** What a tool did; `also` holds further rows the same call made (the links of a new task), each undone on its own. */
 interface Done { kind: ChangeKind; items: ChangeItem[]; ops: Op[]; detail?: Change["detail"]; draft?: Change["draft"]; undoable?: boolean; also?: Done[] }
@@ -220,7 +222,10 @@ async function perform(tool: string, a: Record<string, unknown>, ctx: ActionCont
       return { kind, items: [item(d, id)], detail, ops: [{ op: "task", id, before: beforeCopy, after }] };
     }
     case "jarvis_create_initiative": {
-      const value = await addInitiative(d, { title: need(a, "title"), goal: need(a, "goal"), owner: str(a, "owner"), author });
+      const title = need(a, "title");
+      if (ctx.about && readDocFile(d, ctx.about)?.frontmatter.title.trim().toLowerCase() === title.toLowerCase())
+        return perform("jarvis_edit_initiative", { initiative: ctx.about, goal: a.goal, owner: a.owner }, ctx); // the agent re-created the initiative in scope: the user asked to change it
+      const value = await addInitiative(d, { title, goal: need(a, "goal"), owner: str(a, "owner"), author });
       return { kind: "initiative.create", items: [item(d, value.id)], ops: docOp(d, value.id) };
     }
     case "jarvis_edit_initiative": {
