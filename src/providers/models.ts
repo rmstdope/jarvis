@@ -51,8 +51,17 @@ function asEffort(e: unknown, where: string): ReasoningEffort | undefined {
   return e as ReasoningEffort;
 }
 
+/** Whether a `[[model]]` provider or id is usable: a non-empty string. */
+function isKey(v: unknown): v is string {
+  return typeof v === "string" && v !== "";
+}
+/** How a `[[model]]` key reads: usable, absent, or present but empty or not a string. */
+function keyState(v: unknown): "ok" | "missing" | "bad" {
+  return isKey(v) ? "ok" : v === undefined ? "missing" : "bad";
+}
+
 /**
- * Parse models.toml. Entries missing provider/id, and a single `[model]` table, are dropped; `jarvis doctor`
+ * Parse models.toml. Entries whose provider/id is missing, empty or not a string, and a single `[model]` table, are dropped; `jarvis doctor`
  * names them and misspelt ones ({@link ignoredModelsEntries}). Throws on malformed TOML ({@link modelsTomlError}).
  */
 export function parseModelsToml(text: string): { preference: ProviderName[]; models: ModelEntry[] } {
@@ -60,7 +69,7 @@ export function parseModelsToml(text: string): { preference: ProviderName[]; mod
   const preference = Array.isArray(t.preference) ? (t.preference.filter((p) => PROVIDER_NAMES.includes(p as ProviderName)) as ProviderName[]) : DEFAULT_PREFERENCE;
   const models: ModelEntry[] = [];
   for (const m of Array.isArray(t.model) ? t.model : []) {
-    if (!m || typeof m.provider !== "string" || typeof m.id !== "string" || !PROVIDER_NAMES.includes(m.provider as ProviderName)) continue;
+    if (!m || !isKey(m.provider) || !isKey(m.id) || !PROVIDER_NAMES.includes(m.provider as ProviderName)) continue;
     const where = `models.toml [[model]] ${m.provider}:${m.id}`;
     const entry: ModelEntry = { provider: m.provider as ProviderName, id: m.id, quality: asQuality(m.quality) };
     if (Array.isArray(m.langs)) entry.langs = m.langs.map(String);
@@ -95,8 +104,9 @@ export function modelsTomlError(text: string): string | null {
 /**
  * The entries {@link parseModelsToml} skips, each named as a person would find it in the file:
  * a `models` table or key and a single `[model]` table (the parser reads `[[model]]`), every `[[model]]`
- * whose provider is not one of {@link PROVIDER_NAMES}, and every `[[model]]` missing its provider or id (named
- * by the key it does have, or by its 1-based position when it has neither). Empty when none occurs; malformed
+ * whose provider is not one of {@link PROVIDER_NAMES}, and every `[[model]]` whose provider or id is missing, or
+ * present but empty or not a string, each said as such (named by the key it does have, or by its 1-based position
+ * when it has neither). Empty when none occurs; malformed
  * TOML is {@link modelsTomlError}'s to report.
  */
 export function ignoredModelsEntries(text: string): string[] {
@@ -112,12 +122,16 @@ export function ignoredModelsEntries(text: string): string[] {
   const entries = Array.isArray(t.model) ? (t.model as Record<string, unknown>[]) : [];
   entries.forEach((m, i) => {
     if (!m || typeof m !== "object") return;
-    const hasProvider = typeof m.provider === "string";
-    const hasId = typeof m.id === "string";
-    if (!hasProvider && !hasId) ignored.push(`the [[model]] #${i + 1} missing provider and id`);
-    else if (!hasProvider) ignored.push(`the [[model]] with id "${m.id}" missing provider`);
-    else if (!PROVIDER_NAMES.includes(m.provider as ProviderName)) ignored.push(`the [[model]] with provider "${m.provider}"${hasId ? ` (${m.id})` : " missing id"}`);
-    else if (!hasId) ignored.push(`the [[model]] with provider "${m.provider}" missing id`);
+    const provider = keyState(m.provider);
+    const id = keyState(m.id);
+    const wrong = (key: string, state: "missing" | "bad"): string => (state === "missing" ? `missing ${key}` : `whose ${key} is empty or not a string`);
+    if (provider !== "ok" && id !== "ok") {
+      const both =
+        provider === id ? (provider === "missing" ? "missing provider and id" : "whose provider and id are empty or not strings") : `${wrong("provider", provider)} and ${wrong("id", id)}`;
+      ignored.push(`the [[model]] #${i + 1} ${both}`);
+    } else if (provider !== "ok") ignored.push(`the [[model]] with id "${m.id}" ${wrong("provider", provider)}`);
+    else if (!PROVIDER_NAMES.includes(m.provider as ProviderName)) ignored.push(`the [[model]] with provider "${m.provider}"${id === "ok" ? ` (${m.id})` : ` ${wrong("id", id)}`}`);
+    else if (id !== "ok") ignored.push(`the [[model]] with provider "${m.provider}" ${wrong("id", id)}`);
   });
   return ignored;
 }
