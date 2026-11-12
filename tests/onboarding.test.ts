@@ -274,6 +274,32 @@ describe("doctor: an openai-compat model id the server refuses (jv-6sk)", () => 
   });
 });
 
+describe("doctor: an openai-compat server that refuses connections (jv-asw)", () => {
+  afterEach(() => setRouterForTests(null));
+  // A port that was just served and stopped: connecting to it is refused.
+  const closedBaseUrl = () => {
+    const s = Bun.serve({ hostname: "127.0.0.1", port: 0, fetch: () => new Response("") });
+    const url = `http://127.0.0.1:${s.port}/v1`;
+    s.stop(true);
+    return url;
+  };
+
+  test("models-available names the baseUrl, and its fix says to start the server there or change baseUrl", async () => {
+    const baseUrl = closedBaseUrl();
+    setRouterForTests(await createRouter({ config: { preference: ["openai-compat"], models: [{ provider: "openai-compat", id: "qwen3", quality: "high", bestFor: [], baseUrl }], source: "file" } }));
+    const r = await doctor({ coreOnly: true, which: (b) => `/bin/${b}` });
+    const c = r.checks.find((x) => x.name === "models-available");
+    expect(c).toMatchObject({ status: "warn", detail: `no configured model is reachable: nothing answers at ${baseUrl}` });
+    expect(c!.fix).toBe(`start the server at ${baseUrl}   or   change baseUrl in ${modelsPath()}`);
+  });
+
+  test("an entry whose key env is unset is a missing key, not a silent server", async () => {
+    setRouterForTests(await createRouter({ config: { preference: ["openai-compat"], models: [{ provider: "openai-compat", id: "qwen3", quality: "high", bestFor: [], baseUrl: closedBaseUrl(), apiKeyEnv: "JARVIS_TEST_UNSET_KEY" }], source: "file" } }));
+    const r = await doctor({ coreOnly: true, which: (b) => `/bin/${b}` });
+    expect(r.checks.find((x) => x.name === "models-available")).toMatchObject({ status: "warn", detail: "no configured model is reachable", fix: "start Ollama / install the Copilot CLI / set OPENAI_API_KEY (or the key env named in models.toml)" });
+  });
+});
+
 describe("init", () => {
   test("non-interactive init creates repo, config, preset and indexes existing docs", async () => {
     const data = join(t.dir, "content");

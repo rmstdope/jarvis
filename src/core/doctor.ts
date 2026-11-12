@@ -179,7 +179,12 @@ export async function doctor(opts: DoctorOpts = {}): Promise<DoctorReport> {
     refused.push(...probed.filter((x) => x.probe.kind === "refused").map((x) => x.e));
     const avail = router.entries.filter((e) => e.available && !refused.includes(e));
     // When only refused ids remain, the copilot-model / openai-model failures above are the whole story: every task would route to them.
-    if (avail.length || !refused.length) checks.push(router.entries.length === 0 ? warn("models-available", "no chat models configured (Tier 0: capture/search only)", "jarvis config preset <name>") : avail.length ? ok("models-available", false, avail.map((e) => `${e.entry.provider}:${e.entry.id}`).join(", ")) : warn("models-available", "no configured model is reachable", "start Ollama / install the Copilot CLI / set OPENAI_API_KEY (or the key env named in models.toml)"));
+    // An openai-compat server whose key is set (or needs none) and still did not answer is down or at the wrong baseUrl: name it.
+    const silent = [...new Set(router.entries.filter((e) => !e.available && e.entry.provider === "openai-compat" && e.entry.baseUrl && !(e.entry.apiKeyEnv && !process.env[e.entry.apiKeyEnv])).map((e) => e.entry.baseUrl!))];
+    const unreachable = silent.length
+      ? warn("models-available", `no configured model is reachable: nothing answers at ${silent.join(", ")}`, `start the server at ${silent.join(" / ")}   or   change baseUrl in ${mp}`)
+      : warn("models-available", "no configured model is reachable", "start Ollama / install the Copilot CLI / set OPENAI_API_KEY (or the key env named in models.toml)");
+    if (avail.length || !refused.length) checks.push(router.entries.length === 0 ? warn("models-available", "no chat models configured (Tier 0: capture/search only)", "jarvis config preset <name>") : avail.length ? ok("models-available", false, avail.map((e) => `${e.entry.provider}:${e.entry.id}`).join(", ")) : unreachable);
     const missing = unresolvedKinds(router);
     if (avail.length || !refused.length) checks.push(missing.length ? warn("models-tasks", `no model for: ${missing.join(", ")}`, "add a model with quality >= the task's minimum to models.toml") : ok("models-tasks", false, "every task kind resolves"));
   }
