@@ -500,10 +500,29 @@ describe("the agent acts (jv-oya.4)", () => {
     expect(seen).toEqual(expect.arrayContaining([m1.id, m2.id])); // both meetings were in the agent's context
     const c = evs.find((e) => e.type === "change").change;
     expect([c.kind, c.ok]).toEqual(["link", false]);
-    for (const id of [m1.id, m2.id]) expect(c.error).toContain(`[${id}]`);
-    expect(c.error).not.toContain(`[${task.id}]`); // the task is not a meeting: the agent told them apart
-    expect(c.error).toContain("ask the user which");
+    expect(c.error).toBeUndefined(); // a question, not a failure (jv-bt4)
+    expect(c.ask.options.map((o: { id: string }) => o.id).sort()).toEqual([m1.id, m2.id].sort());
+    expect(c.ask.options.map((o: { id: string }) => o.id)).not.toContain(task.id); // the task is not a meeting: the agent told them apart
+    expect([c.ask.title, c.ask.source, c.ask.tool]).toEqual(["Weekly sync", "meeting", "jarvis_link"]);
     expect(readSidecar(t.dir, m1.id).filter((l) => l.kind === "edge")).toEqual([]);
+  });
+  test("a question to the user is put to the agent as one follow-up prompt without ids, and the sources sharing a title carry their detail (jv-bt4)", async () => {
+    const m1 = await ingest(t.dir, { source: "meeting", title: "Weekly sync", body: "agenda one", author: "me" });
+    const m2 = await ingest(t.dir, { source: "meeting", title: "Weekly sync", body: "agenda two", author: "me" });
+    const rota = await ingest(t.dir, { source: "note", title: "Lunch rota", body: "who brings lunch", author: "me" });
+    const sid = await open("conv-bt4a");
+    const evs = await ndjson(await call("POST", `/api/chat/sessions/${sid}/messages`, { message: `link the Weekly sync meeting to the Lunch rota note ACT jarvis_link {"src":"${m1.id}","dst":"${rota.id}"}` }));
+    const said = evs.filter((e) => e.type === "message").map((e) => e.text).join("");
+    expect(said).toContain("You need the user to choose");
+    expect(said).toContain("2 meetings are called \"Weekly sync\"");
+    expect(said).not.toContain("Some of your actions failed");
+    for (const id of [m1.id, m2.id]) expect(said).not.toContain(id);
+    const sources = evs.filter((e) => e.type === "source");
+    const byId = Object.fromEntries(sources.map((s) => [s.docId, s]));
+    expect(byId[m1.id].detail).toMatch(/^(\d\d:\d\d|“agenda one”)$/);
+    expect(byId[m2.id].detail).toBeTruthy();
+    expect(byId[m1.id].detail).not.toBe(byId[m2.id].detail);
+    expect(byId[rota.id].detail).toBeUndefined(); // a title nobody else shares stays bare
   });
   test("once the user was asked which, the agent's next pick of one of the meetings stands (jv-6c1)", async () => {
     const m1 = await ingest(t.dir, { source: "meeting", title: "Weekly sync", body: "agenda one", author: "me" });
@@ -528,8 +547,8 @@ describe("the agent acts (jv-oya.4)", () => {
     const evs = await ndjson(await call("POST", `/api/chat/sessions/${sid}/messages`, { message: `link the Weekly sync meeting to the Lunch rota note and close the Weekly sync task ${act} ${act} ACT jarvis_set_task_status {"task":"${t1.id}","status":"done"}` }));
     const changes = evs.filter((e) => e.type === "change").map((e) => e.change);
     expect(changes.map((c) => [c.kind, c.ok])).toEqual([["link", false], ["link", false], ["task.done", false]]);
-    for (const id of [m1.id, m2.id]) expect(changes[1].error).toContain(`[${id}]`);
-    for (const id of [t1.id, t2.id]) expect(changes[2].error).toContain(`[${id}]`);
+    expect(changes[1].ask.options.map((o: { id: string }) => o.id).sort()).toEqual([m1.id, m2.id].sort());
+    expect(changes[2].ask.options.map((o: { id: string }) => o.id).sort()).toEqual([t1.id, t2.id].sort());
   });
   test("a new task linked to a meeting picked among namesakes in context is not created at all (jv-6c1)", async () => {
     const m1 = await ingest(t.dir, { source: "meeting", title: "Weekly sync", body: "agenda one", author: "me" });
@@ -538,7 +557,7 @@ describe("the agent acts (jv-oya.4)", () => {
     const evs = await ndjson(await call("POST", `/api/chat/sessions/${sid}/messages`, { message: `make a task to book the room, linked to the Weekly sync meeting ACT jarvis_create_task {"title":"Book the room","link":["${m1.id}"]}` }));
     const changes = evs.filter((e) => e.type === "change").map((e) => e.change);
     expect(changes.map((c) => [c.kind, c.ok])).toEqual([["task.create", false]]);
-    expect(changes[0].error).toContain("ask the user which");
+    expect(changes[0].ask.options.length).toBe(2);
     const { readdirSync } = await import("node:fs");
     const titles = readdirSync(join(t.dir, "docs")).map((f) => readDocFile(t.dir, f.replace(/\.md$/, ""))?.frontmatter.title);
     expect(titles).toContain("Weekly sync"); // the listing reads the docs

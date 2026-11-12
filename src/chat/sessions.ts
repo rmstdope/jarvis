@@ -15,6 +15,7 @@ import { formatInitiativeShow, PLAIN } from "../core/initiativeView.ts";
 import { readBriefing } from "../briefings/store.ts";
 import { readPresentation } from "../core/presentations.ts";
 import { OpenFilter } from "./open.ts";
+import { distinguish } from "./choice.ts";
 
 export const CHAT_GROUNDED_BODY_CHARS = 60_000;
 export const CHAT_SNIPPET_CHARS = 8_000;
@@ -24,7 +25,7 @@ export const CHAT_IDLE_MS = 60 * 60_000;
 
 export type ChatScope = { type: "jarvis" | "item" | "briefing" | "initiative"; ids: string[] };
 export type ChatEvent =
-  | { type: "source"; docId: string; title: string; source: string }
+  | { type: "source"; docId: string; title: string; source: string; detail?: string }
   | { type: "open"; docId: string; title: string; source: string }
   | { type: "message"; text: string }
   | { type: "change"; change: Change }
@@ -56,7 +57,7 @@ export const CHAT_RULES = `You can act on the knowledge base by writing action b
 {"tool": "jarvis_create_task", "args": {"title": "Ring the vendor", "due": "2026-11-13"}, "as": "t1"}
 \`\`\`
 
-Later blocks of the same answer may pass "$t1" wherever an id is needed (for example link or initiative). Ids of existing items are in square brackets in the context; for an existing item whose id you do not have, pass its exact title instead. When several items of one kind in the context share the name the user said, ask which one they mean instead of choosing. Actions (a key ending in ? is optional; write it without the ?):
+Later blocks of the same answer may pass "$t1" wherever an id is needed (for example link or initiative). Ids of existing items are in square brackets in the context; for an existing item whose id you do not have, pass its exact title instead. When several items of one kind in the context share the name the user said, ask which one they mean instead of choosing; the user is shown a button for each, so never put an id or a list in your question. Actions (a key ending in ? is optional; write it without the ?):
 ${ACTION_REFERENCE}
 
 When the user asks for a change, write its block straight away without asking first; every change can be undone. Write one block per change. After the blocks run you are told what happened; if something failed, say so plainly. The blocks are removed from what the person reads and a card in your answer, where the first block ran, shows what was done or failed, so do not claim a result and do not repeat the block's content. Word what you write before an action as what you are about to do ("I'll link Weekly sync to Q4 planning."), never as already happening or done ("I'm linking…", "Linked…"); explain any failure after the results, in a sentence or two. Never publish or approve anything: a briefing or presentation you make is a draft, and you say so. Capture an attached file only when the user asks. To open a document for the user in a tab beside the chat, write <<open:ID>> with its id in your answer.`;
@@ -95,6 +96,19 @@ export function retrievalTerms(message: string): string[] {
     if (w.length < 3 || STOP.has(w) || out.includes(w)) continue;
     out.push(w);
     if (out.length >= CHAT_MAX_TERMS) break;
+  }
+  return out;
+}
+
+/** For sources sharing a title (any case): the detail that tells each apart in its link (jv-bt4). */
+function sourceDetails(dataDir: string, sources: { docId: string; title: string }[]): Map<string, string> {
+  const out = new Map<string, string>();
+  const groups = new Map<string, string[]>();
+  for (const s of sources) groups.set(s.title.toLowerCase(), [...(groups.get(s.title.toLowerCase()) ?? []), s.docId]);
+  for (const ids of groups.values()) {
+    if (ids.length < 2) continue;
+    const rows = ids.flatMap((id) => { const d = readDocFile(dataDir, id); return d ? [{ id, title: d.frontmatter.title, created_at: d.frontmatter.created_at, body: d.body }] : []; });
+    for (const o of distinguish(rows)) out.set(o.id, o.chip);
   }
   return out;
 }
@@ -282,6 +296,7 @@ export class ChatService {
     let chain: Promise<void> = Promise.resolve();
     const results: string[] = [];
     const failed: string[] = [];
+    const asks: string[] = []; // questions to the user: not failures (jv-bt4)
     let seen: ChatSession["sources"] = [];
     const asking = new Set<string>(); // a refusal this turn counts from the next one, once the user has been asked
     /** Run the agent's actions in order, each recorded and pushed as a `change` event. */
@@ -291,7 +306,8 @@ export class ChatService {
           try {
             const r = await runTool(new ChangeLog(this.dataDir, s.conversationId), turn, a.tool, resolveRefs(a.args, aliases), { dataDir: this.dataDir, attachments, seen, asked: s.asked, asking });
             results.push(r.text);
-            if (r.change && !r.change.ok) failed.push(r.text);
+            if (r.asked) asks.push(r.text);
+            else if (r.change && !r.change.ok) failed.push(r.text);
             if (r.change) {
               push({ type: "change", change: r.change });
               for (const m of r.more) push({ type: "change", change: m });
@@ -343,16 +359,19 @@ export class ChatService {
     try {
       const { prompt, sources } = this.buildPrompt(s, message, names);
       seen = sources;
-      for (const src of sources) push({ type: "source", ...src });
+      const details = sourceDetails(this.dataDir, sources);
+      for (const src of sources) push({ type: "source", ...src, ...(details.has(src.docId) ? { detail: details.get(src.docId) } : {}) });
       const agent = await this.agent();
       let finished = false;
       const done = agent.prompt(s.acpSessionId, prompt).then(async (r) => {
         finishText();
         await chain;
-        if (failed.length && r?.stopReason !== "cancelled") { // the agent says so in its answer: one more prompt, with what failed
+        if ((failed.length || asks.length) && r?.stopReason !== "cancelled") { // the agent says so in its answer: one more prompt, with what failed and what the user must choose
           textOnly = true;
           push({ type: "message", text: "\n\n" });
-          await agent.prompt(s.acpSessionId, `Some of your actions failed:\n${failed.map((f) => `- ${f}`).join("\n")}\nTell the user plainly, in one or two sentences, what did not work and why. Do not write action blocks.`).catch(() => null);
+          const bad = failed.length ? `Some of your actions failed:\n${failed.map((f) => `- ${f}`).join("\n")}\nTell the user plainly, in one or two sentences, what did not work and why. ` : "";
+          const ask = asks.length ? `You need the user to choose:\n${asks.map((f) => `- ${f}`).join("\n")}\nAsk it in one sentence in your own words: the count, the kind and whether the dates match, then what you will do once they choose. Never write an id and do not list the items; they are shown as buttons. ` : "";
+          await agent.prompt(s.acpSessionId, `${bad}${ask}Do not write action blocks.`).catch(() => null);
           finishText();
           await chain; // the follow-up's last text goes out before done
         }

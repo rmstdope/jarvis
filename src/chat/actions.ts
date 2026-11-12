@@ -19,6 +19,7 @@ import { addTask, setTaskStatus, updateTask } from "../core/tasks.ts";
 import type { Relation } from "../core/constants.ts";
 import { meetingToPayload } from "../producers/meeting.ts";
 import { pdfToPayload } from "../producers/pdf.ts";
+import { AmbiguousPick, distinguish, onOneDay } from "./choice.ts";
 import { createdOp, type Change, type ChangeItem, type ChangeKind, type ChangeLog, type Op } from "./changes.ts";
 
 /** The tool names the agent sees, with a one-line description and JSON-schema properties each. */
@@ -48,6 +49,8 @@ export interface ActionContext {
   asked?: ReadonlySet<string>;
   /** Where a refusal records the title it asked about, for `asked` from the next turn on. */
   asking?: Set<string>;
+  /** The tool being run, recorded on the question it may raise. */
+  tool?: string;
 }
 /** What a tool did; `also` holds further rows the same call made (the links of a new task), each undone on its own. */
 interface Done { kind: ChangeKind; items: ChangeItem[]; ops: Op[]; detail?: Change["detail"]; draft?: Change["draft"]; undoable?: boolean; also?: Done[] }
@@ -119,8 +122,9 @@ const pickFromContext = (dataDir: string, ref: string, ctx: ActionContext): stri
   if (same.length < 2 || ctx.asked?.has(key)) return ref;
   ctx.asking?.add(key);
   const rows = withDb(dataDir, (db) =>
-    db.query<{ id: string; title: string; created_at: string }, string[]>(`SELECT id, title, created_at FROM documents WHERE id IN (${same.map(() => "?").join(",")}) ORDER BY created_at DESC`).all(...same));
-  throw new Error(`more than one ${picked.source} in the context is called "${picked.title}": ${rows.map((f) => `${f.title} [${f.id}] from ${f.created_at.slice(0, 10)}`).join(", ")}; ask the user which they mean`);
+    db.query<{ id: string; title: string; created_at: string }, string[]>(`SELECT id, title, created_at FROM documents WHERE id IN (${same.map(() => "?").join(",")}) ORDER BY created_at DESC`).all(...same))
+    .map((r) => ({ ...r, body: readDocFile(dataDir, r.id)?.body ?? "" }));
+  throw new AmbiguousPick({ tool: ctx.tool ?? "", title: picked.title, source: picked.source, sameDay: onOneDay(rows), options: distinguish(rows) });
 };
 /** The id an action's reference names, by title (`resolveRef`) or as an id the agent picked from its context (`pickFromContext`). */
 const refOf = (ctx: ActionContext, ref: string, source?: string): string => pickFromContext(ctx.dataDir, resolveRef(ctx.dataDir, ref, source), ctx);
@@ -280,16 +284,21 @@ async function perform(tool: string, a: Record<string, unknown>, ctx: ActionCont
  * Run one tool call and record it; a failure is recorded as a failed row, never thrown. Returns the
  * row, any further rows the call made (`more`: the links of a new task), and the text the model reads.
  */
-export async function runTool(log: ChangeLog, turn: string, tool: string, args: Record<string, unknown>, ctx: ActionContext): Promise<{ change: Change | null; more: Change[]; text: string }> {
+export async function runTool(log: ChangeLog, turn: string, tool: string, args: Record<string, unknown>, ctx: ActionContext): Promise<{ change: Change | null; more: Change[]; text: string; asked?: boolean }> {
   if (!(tool in VERBS)) throw new Error(`unknown tool ${tool}`);
   try {
-    const done = await perform(tool, args, ctx);
+    const done = await perform(tool, args, { ...ctx, tool });
     const rec = (x: Done): Change => log.record({ turn, kind: x.kind, ok: true, items: x.items, detail: x.detail, draft: x.draft, undoable: x.undoable }, x.ops);
     const change = rec(done);
     const more = (done.also ?? []).map(rec);
     const said = (x: Done) => x.items.map((i) => `${i.title} [${i.id}]`).join(" → ");
     return { change, more, text: `Done: ${[done, ...(done.also ?? [])].map(said).join("; ")}` };
   } catch (e) {
+    if (e instanceof AmbiguousPick) {
+      const a = e.ask;
+      const change = log.record({ turn, kind: KIND_OF_TOOL[tool], ok: false, items: [], ask: a, verb: VERBS[tool] }, []);
+      return { change, more: [], asked: true, text: `Not done yet: ${a.options.length} ${a.source}s are called "${a.title}", ${a.sameDay ? "all from the same day" : "from different days"}. The user now sees a button for each, with what tells them apart.` };
+    }
     const error = (e as Error).message.replace(/\.$/, "");
     const subject = (tool === "jarvis_edit_initiative" ? str(args, "initiative") : str(args, "title")) ?? str(args, "task") ?? str(args, "src") ?? str(args, "attachment");
     const title = subject && /^[0-9A-Z]{26}$/.test(subject) ? titleOf(ctx.dataDir, subject) : subject;
