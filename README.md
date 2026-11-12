@@ -107,8 +107,6 @@ is working with:
 `docs/ARCHITECTURE.md` is the design. Planned work is tracked in beads (`bd`, prefix `jv`); GitHub issues
 are for outside requests and bug reports. `CLAUDE.md` holds the rules for agents that develop J.A.R.V.I.S.
 
-`bun test` is hermetic (two-clone git sync, every pipeline pass, parsers, routes, the LLM providers and
-embedders over mocked HTTP, the CLI as a real subprocess, a fake ACP agent, the web UI under happy-dom);
-`bun run test:coverage` reports line coverage. CI is change-aware: `bun run ci:plan` prints what a set of changed files would
-run (docs-only changes run nothing); `main` requires the `ci-status` check to pass before anything merges.
-`bun run typecheck` covers the core, web and extension trees. CI runs on Linux, macOS and Windows.
+CI runs on Linux, macOS and Windows and is change-aware: `bun run ci:plan` prints what a set of
+changed files would run. `main` requires the `ci-status` check to pass before anything merges; the
+checks to run locally are listed in `CLAUDE.md`.

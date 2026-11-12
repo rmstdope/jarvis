@@ -63,7 +63,7 @@ describe("pdf", () => {
   test("extracts text and metadata", async () => {
     const p = await pdfToPayload(fx("hello.pdf"));
     expect(p.source).toBe("pdf");
-    expect(p.body).toContain("Hello Second Brain PDF");
+    expect(p.body).toContain("Hello PDF fixture");
     expect(p.title).toBe("Fixture Title");
     expect(p.source_url).toMatch(/^file:\//);
     expect(p.source_url).not.toContain("\\");
