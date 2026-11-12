@@ -1,4 +1,4 @@
-import { existsSync, mkdtempSync, realpathSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readdirSync, realpathSync, rmSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { posix } from "node:path";
@@ -16,6 +16,7 @@ import { unresolvedKinds, type RouterEntry } from "../providers/router.ts";
 import { TruncationError } from "../providers/types.ts";
 import { ChatHttpError } from "../providers/openaiCompat.ts";
 import { detectWhisperBackend } from "../producers/whisper.ts";
+import { discoverSlidecraft, listPresentations, SLIDECRAFT_DECK_GLOB, vaultListsDeck, type SlidecraftStatus } from "./presentations.ts";
 
 export type CheckStatus = "ok" | "warn" | "fail" | "skip";
 export interface Check {
@@ -35,6 +36,8 @@ export interface DoctorOpts {
   dataDir?: string;
   which?: (b: string) => string | null;
   embedProbe?: () => Promise<number>; // returns dims
+  /** Where decks can be presented; defaults to probing for a running Slidecraft. */
+  slidecraft?: (dataDir: string) => Promise<SlidecraftStatus>;
   /** Absolute path of the code repo doctor runs from (seam for tests). */
   codeRepo?: string;
   /** The user's home directory (seam for tests). */
@@ -207,6 +210,10 @@ export async function doctor(opts: DoctorOpts = {}): Promise<DoctorReport> {
     checks.push(which("yt-dlp") ? ok("yt-dlp", false, "on PATH") : warn("yt-dlp", "yt-dlp not on PATH (YouTube capture unavailable)", process.platform === "darwin" ? "brew install yt-dlp" : "pipx install yt-dlp"));
     const wb = detectWhisperBackend(undefined, which);
     checks.push(wb ? ok("whisper", false, wb) : warn("whisper", "no Whisper backend (audio transcription unavailable; Teams .vtt and pasted transcripts still work)", process.platform === "darwin" ? "pipx install mlx-whisper" : "pipx install faster-whisper"));
+    if (dataDir && existsSync(dataDir)) {
+      checks.push(slidecraftCheck(await (opts.slidecraft ?? discoverSlidecraft)(dataDir), dataDir));
+      checks.push(decksOutsideCheck(dataDir));
+    }
     const inbox = process.env.JARVIS_INBOX ?? loadConfig().inboxDir;
     if (inbox && dataDir && inbox.startsWith(dataDir)) checks.push(warn("inbox", `inbox ${inbox} is inside the content repo`, "jarvis config set-inbox <path outside the repo>"));
     else checks.push(ok("inbox", false, inbox ?? "~/.jarvis/inbox (default)"));
@@ -251,4 +258,33 @@ export function formatDoctor(r: DoctorReport): string {
   const lines = r.checks.map((c) => `${icon[c.status]} ${c.name.padEnd(18)} ${c.detail}${c.fix && c.status !== "ok" ? `\n    fix: ${c.fix}` : ""}`);
   lines.push("", `${r.summary.ok} ok, ${r.summary.warn} warning(s), ${r.summary.fail} failure(s)${r.summary.healthy ? "" : " — fix the failures above"}`);
   return lines.join("\n");
+}
+
+/** Presenting decks is optional, so every Slidecraft state short of ready is a warning with its exact fix. */
+function slidecraftCheck(s: SlidecraftStatus, dataDir: string): Check {
+  if (s.status === "not-running")
+    return warn("slidecraft", "Slidecraft is not running (decks are listed and searchable, but cannot be presented)", "start Slidecraft (its release binary, or `bun run dev` in its checkout)   or   set JARVIS_SLIDECRAFT_URL to where it runs");
+  if (s.status === "no-vault")
+    return warn("slidecraft", `Slidecraft at ${s.base} has no vault for the content repo`, `add ${dataDir} as a vault on ${s.base}/settings (its default include covers ${SLIDECRAFT_DECK_GLOB})`);
+  const slugs = listPresentations(dataDir).map((p) => p.slug);
+  const unlisted = (slugs.length ? slugs : ["deck"]).filter((slug) => !vaultListsDeck(s.include, slug));
+  if (unlisted.length)
+    return warn("slidecraft", `Slidecraft vault "${s.vault}" is the content repo, but its include does not list ${slugs.length ? `these decks: ${unlisted.join(", ")}` : "decks under presentations/"}`, `add "${SLIDECRAFT_DECK_GLOB}" to the "include" of vault "${s.vault}" in ${s.configFile ?? "Slidecraft's config.json"}, then restart Slidecraft`);
+  const where = `decks present in Slidecraft at ${s.base}, vault "${s.vault}"`;
+  return ok("slidecraft", false, s.readOnly ? `${where} (read-only: present only; Slidecraft cannot edit decks there or keep its skill in the repo)` : where);
+}
+
+/**
+ * Slidecraft creates decks at its vault's top level, which for the content repo is outside
+ * `presentations/`: such a deck is neither indexed nor shared until it is brought in.
+ */
+function decksOutsideCheck(dataDir: string): Check {
+  let names: string[] = [];
+  try {
+    names = readdirSync(dataDir, { withFileTypes: true })
+      .filter((e) => e.isDirectory() && !e.name.startsWith(".") && e.name !== "presentations" && existsSync(join(dataDir, e.name, "index.mdx")))
+      .map((e) => e.name).sort();
+  } catch {}
+  if (!names.length) return ok("decks-outside", false, "every deck is under presentations/");
+  return warn("decks-outside", `deck(s) outside presentations/, neither indexed nor shared: ${names.join(", ")}`, names.map((n) => `jarvis presentation share ${join(dataDir, n)} --slug ${n}   then delete ${join(dataDir, n)}`).join("   ;   "));
 }

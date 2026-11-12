@@ -202,19 +202,19 @@ route("POST", "/api/link", async (req, _u, _p, ctx) => {
 });
 
 // ---- M8: presentations ----
-import { discoverDeckViewer, launchUrl, listPresentations, readPresentation } from "./core/presentations.ts";
+import { deckInSlidecraft, discoverSlidecraft, listPresentations, readPresentation } from "./core/presentations.ts";
 
 route("GET", "/api/presentations", async (_r, _u, _p, ctx) => {
-  const viewer = await discoverDeckViewer(ctx.dataDir);
+  const slidecraft = await discoverSlidecraft(ctx.dataDir);
   const indexed = new Set(withDb(ctx.dataDir, (db) => (db.query("SELECT id FROM documents WHERE source = 'presentation'").all() as { id: string }[]).map((r) => r.id)));
-  return json(listPresentations(ctx.dataDir).map((p) => ({ id: p.id, slug: p.slug, title: p.title, author: p.author, created_at: p.created_at, updated_at: p.updated_at, tags: p.frontmatter.tags, indexed: indexed.has(p.id), viewer: { status: viewer.status, launchUrl: launchUrl(viewer, p.slug) } })));
+  return json(listPresentations(ctx.dataDir).map((p) => ({ id: p.id, slug: p.slug, title: p.title, author: p.author, created_at: p.created_at, updated_at: p.updated_at, tags: p.frontmatter.tags, indexed: indexed.has(p.id), slidecraft: deckInSlidecraft(slidecraft, p.slug) })));
 });
 route("GET", "/api/presentation/:id", async (_r, _u, p, ctx) => {
   const pres = readPresentation(ctx.dataDir, p.id);
   if (!pres) return error("not found", 404);
-  const viewer = await discoverDeckViewer(ctx.dataDir);
+  const slidecraft = await discoverSlidecraft(ctx.dataDir);
   const indexed = !!withDb(ctx.dataDir, (db) => db.query("SELECT 1 FROM documents WHERE id = ?").get(pres.id));
-  return json({ id: pres.id, slug: pres.slug, title: pres.title, author: pres.author, created_at: pres.created_at, updated_at: pres.updated_at, indexed, viewer: { status: viewer.status, launchUrl: launchUrl(viewer, pres.slug) }, frontmatter: pres.frontmatter, body: pres.body, filePath: pres.filePath });
+  return json({ id: pres.id, slug: pres.slug, title: pres.title, author: pres.author, created_at: pres.created_at, updated_at: pres.updated_at, indexed, slidecraft: deckInSlidecraft(slidecraft, pres.slug), frontmatter: pres.frontmatter, body: pres.body, filePath: pres.filePath });
 });
 
 // ---- M9: chat ("Discuss") over Copilot ACP ----

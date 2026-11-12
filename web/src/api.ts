@@ -13,7 +13,7 @@ export interface Comment { id: string; status: string; author?: string; comment:
 export interface SyncResult { remote: boolean; committed: number; committedEnriched: number; pulled: boolean; pushed: boolean; conflicted: string[]; reindexed?: { docsIndexed: number; chunksEmbedded: number }; collisions: { source_url: string; ids: string[] }[]; notes: string[]; failures: SyncStepFailure[]; }
 /** A model step a sync ran that failed for `failed` units (items for enrich, batches for refine). */
 export interface SyncStepFailure { step: string; failed: number; reason: string; doctor: boolean; }
-export interface PresentationSummary { id: string; slug: string; title: string; author: string; created_at: string; updated_at?: string; indexed: boolean; viewer: { status: string; launchUrl?: string }; }
+export interface PresentationSummary { id: string; slug: string; title: string; author: string; created_at: string; updated_at?: string; indexed: boolean; slidecraft: { status: "ready" | "not-running" | "no-vault" | "no-include"; launchUrl?: string }; }
 
 export interface InitiativeRef { id: string; title: string; }
 export interface InitiativeProgress { done: number; total: number; owner: string; status: "open" | "closed"; closed_at?: string; goal?: string; updated_at?: string; }

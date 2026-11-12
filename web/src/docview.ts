@@ -7,6 +7,7 @@ import type { Ctx } from "./pages/common.ts";
 import type { DocRef } from "./tabs.ts";
 import { kindLabel, speakerTurns } from "./transcript.ts";
 import { entryLine, fmtDate, h } from "./ui.ts";
+import { presentControl } from "./presentations.ts";
 import { initiativeLabel, progress, tagPills } from "./pages/common.ts";
 import { onInitiativeProgress } from "./initiativeBus.ts";
 import { renderMarkdown } from "../../src/briefings/markdown.ts";
@@ -151,8 +152,8 @@ async function presentationPage(id: string, ctx: DocCtx): Promise<Page> {
     else if (k === "Escape" && stage.classList.contains("jv-presenting")) { e.preventDefault(); e.stopPropagation(); leave(); }
   });
   const present = h("button", { onClick: () => { stage.classList.add("jv-presenting"); stage.tabIndex = -1; stage.focus(); } }, "Present");
-  const viewer = p.viewer.status === "ready" && p.viewer.launchUrl ? h("a", { href: p.viewer.launchUrl, target: ctx.inApp?.() ? "_self" : "_blank", rel: "noopener" }, h("button", { class: "primary" }, "Present in deck viewer")) : null;
-  const head = header("Presentation", p.title, [present, viewer, h("button", { onClick: () => ctx.askAbout({ type: "item", ids: [p.slug] }, p.title) }, "Ask about this")]);
+  const slidecraft = presentControl(p.slidecraft, ctx.inApp?.() ?? false);
+  const head = header("Presentation", p.title, [present, slidecraft, h("button", { onClick: () => ctx.askAbout({ type: "item", ids: [p.slug] }, p.title) }, "Ask about this")]);
   draw();
   return { el: h("div", {}, head.el, h("div", { class: "jv-dbody" }, h("div", { class: "muted small jv-meta" }, `${p.slug} · added ${fmtDate(p.created_at)} by ${p.author}`), stage)), title: p.title, kind: "Presentation" };
 }

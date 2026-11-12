@@ -41,6 +41,9 @@ cd <content-repo>
 copilot            # or: claude, or your agent of choice
 ```
 
+To present decks, run [Slidecraft](https://github.com/rmstdope/slidecraft) and add the content repo
+as one of its vaults (`jarvis doctor` says whether that is done, and how).
+
 Optionally start the local service so the web UI and the browser extension work too:
 
 ```

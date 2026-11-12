@@ -4,7 +4,7 @@ import { boot, button, go, q, qa, text } from "./webBoot.ts";
 
 let env: WebEnv;
 afterEach(() => env.restore());
-const P = { id: "p1", slug: "q3-kickoff", title: "Q3 kickoff", author: "mia", created_at: "2026-02-03T00:00:00Z", indexed: true, viewer: { status: "ready", launchUrl: "http://deck/x" }, frontmatter: {}, body: "# Slide one", filePath: "x" };
+const P = { id: "p1", slug: "q3-kickoff", title: "Q3 kickoff", author: "mia", created_at: "2026-02-03T00:00:00Z", indexed: true, slidecraft: { status: "ready", launchUrl: "http://deck/x" }, frontmatter: {}, body: "# Slide one", filePath: "x" };
 
 describe("Presentations", () => {
   test("cards with a status pill; the page; none yet; not available", async () => {

@@ -10,6 +10,8 @@ import { setRouterForTests } from "../src/providers/index.ts";
 
 // Keep every test hermetic: no live provider detection unless a test opts in.
 setRouterForTests(null);
+// …and no live Slidecraft (a developer's running one would leak in): a port nothing listens on.
+process.env.JARVIS_SLIDECRAFT_URL = "http://127.0.0.1:1";
 
 /** Every index database under `dir` (one per data dir, at any depth: clones, home, content). */
 function indexDbsUnder(dir: string): string[] {

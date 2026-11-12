@@ -99,13 +99,13 @@ describe("briefing tab", () => {
 });
 
 describe("presentation tab", () => {
-  const pres = (body: string, viewer: unknown = { status: "not-running" }) => env.routes.set("GET /api/presentation/p1", () => ({ json: { id: "i", slug: "p1", title: "Deck", author: "mia", created_at: "2026-01-01", indexed: true, viewer, frontmatter: {}, body, filePath: "x" } }));
+  const pres = (body: string, slidecraft: unknown = { status: "not-running" }) => env.routes.set("GET /api/presentation/p1", () => ({ json: { id: "i", slug: "p1", title: "Deck", author: "mia", created_at: "2026-01-01", indexed: true, slidecraft, frontmatter: {}, body, filePath: "x" } }));
   test("splitSlides splits on --- or on ## headings", () => {
     expect(splitSlides("<Presentation>\n# A\n---\n# B\n</Presentation>")).toEqual(["# A", "# B"]);
     expect(splitSlides("<Presentation>\n\n## S1\n\nx\n\n## S2\n\ny\n\n</Presentation>")).toEqual(["## S1\n\nx", "## S2\n\ny"]);
     expect(splitSlides("<Presentation></Presentation>")).toEqual([]);
   });
-  test("one slide at a time with ‹ › and i / n; Present only; no deck viewer button", async () => {
+  test("one slide at a time with ‹ › and i / n; Present only; no Slidecraft button", async () => {
     pres("<Presentation>\n# A\n---\n# B\n</Presentation>");
     const el = await open({ type: "presentation", id: "p1" });
     expect(txt(el, ".jv-dkind")).toEqual(["Presentation"]);
@@ -117,10 +117,10 @@ describe("presentation tab", () => {
     expect(el.querySelector(".jv-slide h1")!.textContent).toBe("B");
     expect(el.querySelector('[title="Next slide"]')!.hasAttribute("disabled")).toBe(true);
   });
-  test("Present fills the screen; Esc leaves; the deck viewer button shows only when running", async () => {
+  test("Present fills the screen; Esc leaves; the Slidecraft button shows only when ready", async () => {
     pres("<Presentation>\n# A\n</Presentation>", { status: "ready", launchUrl: "http://deck/x" });
     const el = await open({ type: "presentation", id: "p1" });
-    expect(txt(el, ".jv-dhead button")).toEqual(["Present", "Present in deck viewer", "Ask about this"]);
+    expect(txt(el, ".jv-dhead button")).toEqual(["Present", "Present in Slidecraft", "Ask about this"]);
     [...el.querySelectorAll("button")].find((b) => b.textContent === "Present")!.click();
     expect(el.querySelector(".jv-stage")!.classList.contains("jv-presenting")).toBe(true);
     el.querySelector(".jv-stage")!.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));

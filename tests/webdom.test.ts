@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { Window } from "happy-dom";
 import { h, append, clear, toast, modal, entryLine, highlightSnippet } from "../web/src/ui.ts";
+import { presentControl } from "../web/src/presentations.ts";
 
 const win = new Window();
 const saved: Record<string, unknown> = {};
@@ -73,5 +74,18 @@ describe("web ui helpers under happy-dom", () => {
     expect(entryLine("note", "mia", "2026-02-03")).toBe("note · mia · 2026-02-03");
     expect(entryLine("note", undefined, "2026-02-03")).toBe("note · 2026-02-03");
     expect(highlightSnippet("a [b] <i> & c")).toBe("a <mark>b</mark> &lt;i> &amp; c");
+  });
+});
+
+describe("presenting a deck", () => {
+  test("Present in Slidecraft when ready; otherwise nothing, never a dead link", () => {
+    const ready = presentControl({ status: "ready", launchUrl: "http://localhost:6110/v/team/presentations/q3" }, false)!;
+    expect(ready.getAttribute("href")).toBe("http://localhost:6110/v/team/presentations/q3");
+    expect(ready.getAttribute("target")).toBe("_blank");
+    expect(ready.textContent).toBe("Present in Slidecraft");
+    // Inside the macOS app the deck opens in the same window.
+    expect(presentControl({ status: "ready", launchUrl: "http://x/v/t/presentations/q3" }, true)!.getAttribute("target")).toBe("_self");
+    for (const status of ["not-running", "no-vault", "no-include"] as const) expect(presentControl({ status }, false)).toBeNull();
+    expect(presentControl({ status: "ready" }, false)).toBeNull();
   });
 });

@@ -210,34 +210,92 @@ export function indexPresentations(db: Database, dataDir: string, result: Reinde
 }
 registerProjectionHook(indexPresentations);
 
-// ---- deck-viewer discovery ----
-export type DeckViewerStatus = { status: "ready"; base: string; sourceId: string } | { status: "not-running" } | { status: "content-not-mounted"; base: string };
+// ---- Slidecraft discovery ----
 /**
- * Optional deck-viewer integration. Any local app that serves the content repo's presentations can be
- * used: set JARVIS_DECK_VIEWER_URL to its base URL. It must answer `GET /api/health` with JSON
- * whose `app` field equals JARVIS_DECK_VIEWER_APP (default "deck-viewer") and `GET /api/contents`
- * with `{sources:[{id, path}]}` listing the mounted directories.
+ * What Slidecraft says about the content repo. `ready`: Slidecraft runs and one of its vaults is the
+ * repo (whether a given deck is listed there is `deckInSlidecraft`'s question, since it depends on the
+ * vault's include globs); `no-vault`: Slidecraft runs, but no vault is the repo.
  */
-export const DECK_VIEWER_CANDIDATES = () => [process.env.JARVIS_DECK_VIEWER_URL].filter((x): x is string => !!x);
-export const DECK_VIEWER_APP = () => process.env.JARVIS_DECK_VIEWER_APP ?? "deck-viewer";
+export type SlidecraftStatus =
+  | { status: "ready"; base: string; vault: string; include: string[]; readOnly: boolean; configFile?: string }
+  | { status: "not-running" }
+  | { status: "no-vault"; base: string };
 
-export async function discoverDeckViewer(dataDir: string, fetchImpl: typeof fetch = fetch): Promise<DeckViewerStatus> {
-  let real: string;
-  try { real = realpathSync(dataDir); } catch { real = resolve(dataDir); }
-  for (const base of DECK_VIEWER_CANDIDATES()) {
-    try {
-      const h = await fetchImpl(`${base}/api/health`, { signal: AbortSignal.timeout(PROBE_TIMEOUT_MS) });
-      if (!h.ok) continue;
-      const hj = (await h.json()) as { app?: string };
-      if (hj.app !== DECK_VIEWER_APP()) continue;
-      const c = await fetchImpl(`${base}/api/contents`, { signal: AbortSignal.timeout(PROBE_TIMEOUT_MS) });
-      const cj = c.ok ? ((await c.json()) as { sources?: { id: string; path: string }[] }) : { sources: [] };
-      const hit = (cj.sources ?? []).find((s) => { try { return realpathSync(s.path) === real; } catch { return resolve(s.path) === real; } });
-      return hit ? { status: "ready", base, sourceId: hit.id } : { status: "content-not-mounted", base };
-    } catch {}
+/** Whether one deck can be presented: `no-include` when the repo's vault does not list it. */
+export type DeckInSlidecraft = { status: "ready"; launchUrl: string } | { status: "not-running" | "no-vault" | "no-include" };
+
+/** The include glob a Slidecraft vault needs for the content repo's decks to be listed in it. */
+export const SLIDECRAFT_DECK_GLOB = "presentations/*/index.mdx";
+
+/**
+ * A vault include glob as Slidecraft reads it (its `globToRegex`): `**\/` is any number of leading
+ * directories, `**` anything, `*` anything within one segment, `?` one character, and every other
+ * character literal, braces and brackets included.
+ */
+export function slidecraftGlob(glob: string): RegExp {
+  let out = "";
+  for (let i = 0; i < glob.length; i++) {
+    const c = glob[i];
+    if (c === "*" && glob[i + 1] === "*" && glob[i + 2] === "/") { out += "(?:.*/)?"; i += 2; }
+    else if (c === "*" && glob[i + 1] === "*") { out += ".*"; i += 1; }
+    else if (c === "*") out += "[^/]*";
+    else if (c === "?") out += "[^/]";
+    else out += c.replace(/[.+^${}()|[\]\\]/g, "\\$&");
   }
-  return { status: "not-running" };
+  return new RegExp(`^${out}$`);
 }
-export function launchUrl(l: DeckViewerStatus, slug: string): string | undefined {
-  return l.status === "ready" ? `${l.base}/${slug}?source=${encodeURIComponent(l.sourceId)}&path=${encodeURIComponent(`presentations/${slug}`)}` : undefined;
+
+/**
+ * Where to look for Slidecraft: `JARVIS_SLIDECRAFT_URL` alone when it is set, otherwise the dev
+ * server (6100) and then the release binary or `bun start` (6110).
+ */
+export const SLIDECRAFT_CANDIDATES = (): string[] => {
+  const explicit = process.env.JARVIS_SLIDECRAFT_URL?.trim();
+  return explicit ? [explicit.replace(/\/+$/, "")] : ["http://localhost:6100", "http://localhost:6110"];
+};
+
+const realOr = (p: string): string => { try { return realpathSync(p); } catch { return resolve(p); } };
+
+type VaultInfo = { id?: unknown; path?: unknown; include?: unknown; readOnly?: unknown };
+
+/** Ask one base URL; undefined when nothing that calls itself Slidecraft answers there. */
+async function probeSlidecraft(base: string, real: string, fetchImpl: typeof fetch): Promise<SlidecraftStatus | undefined> {
+  try {
+    const h = await fetchImpl(`${base}/api/health`, { signal: AbortSignal.timeout(PROBE_TIMEOUT_MS) });
+    if (!h.ok || ((await h.json()) as { app?: string }).app !== "slidecraft") return undefined;
+  } catch { return undefined; }
+  // Slidecraft answered: from here on, anything unusable means the repo was not found among its vaults.
+  let listed: { vaults?: unknown; configFile?: unknown } = {};
+  try {
+    const v = await fetchImpl(`${base}/api/vaults`, { signal: AbortSignal.timeout(PROBE_TIMEOUT_MS) });
+    if (v.ok) listed = (await v.json()) as typeof listed;
+  } catch {}
+  const vaults = (Array.isArray(listed.vaults) ? listed.vaults : []) as VaultInfo[];
+  const hit = vaults.find((x) => typeof x.id === "string" && typeof x.path === "string" && realOr(x.path) === real);
+  if (!hit) return { status: "no-vault", base };
+  const include = Array.isArray(hit.include) ? hit.include.filter((g): g is string => typeof g === "string") : [];
+  return { status: "ready", base, vault: hit.id as string, include, readOnly: hit.readOnly === true, ...(typeof listed.configFile === "string" ? { configFile: listed.configFile } : {}) };
+}
+
+/**
+ * Find a running Slidecraft and the vault that is the content repo. Slidecraft answers
+ * `GET /api/health` with `app: "slidecraft"` and `GET /api/vaults` with
+ * `{vaults:[{id, path, include, readOnly}], configFile}`; the vault is the one whose real path is the
+ * repo's. Candidates are probed together, and the first in `SLIDECRAFT_CANDIDATES` order that answers
+ * wins, so an absent Slidecraft costs one wait, not two.
+ */
+export async function discoverSlidecraft(dataDir: string, fetchImpl: typeof fetch = fetch): Promise<SlidecraftStatus> {
+  const real = realOr(dataDir);
+  const answers = await Promise.all(SLIDECRAFT_CANDIDATES().map((base) => probeSlidecraft(base, real, fetchImpl)));
+  return answers.find((a) => a !== undefined) ?? { status: "not-running" };
+}
+
+/** Whether the repo's vault lists this deck, matching its include globs the way Slidecraft does. */
+export const vaultListsDeck = (include: string[], slug: string): boolean => include.some((g) => slidecraftGlob(g).test(`presentations/${slug}/index.mdx`));
+
+/** One deck's Slidecraft status, with the page that presents it: `<base>/v/<vault>/presentations/<slug>`. */
+export function deckInSlidecraft(s: SlidecraftStatus, slug: string): DeckInSlidecraft {
+  if (s.status !== "ready") return { status: s.status };
+  if (!vaultListsDeck(s.include, slug)) return { status: "no-include" };
+  return { status: "ready", launchUrl: `${s.base}/v/${encodeURIComponent(s.vault)}/presentations/${encodeURIComponent(slug)}` };
 }
