@@ -34,7 +34,7 @@ function splitSentences(p: string): string[] {
   return out;
 }
 
-/** Deterministic paragraph packing with overlap carry. See spec §7.3. */
+/** Deterministic paragraph packing with overlap carry. */
 export function chunkText(body: string): string[] {
   const paragraphs = body.split(/\n\s*\n/).map((p) => p.trim()).filter(Boolean);
   const chunks: string[] = [];

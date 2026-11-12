@@ -157,7 +157,7 @@ export function startServer(ctx: ServerContext, port: number, webDist?: string) 
   return server;
 }
 
-// ---- M4: briefings ----
+// ---- briefings ----
 import "./briefings/index.ts";
 import { addComment, listBriefings, readBriefing, readComments } from "./briefings/store.ts";
 import { renderBriefingHtml } from "./briefings/render.ts";
@@ -177,7 +177,7 @@ route("POST", "/api/briefing/:id/comments", async (req, _u, p, ctx) => {
   return json(addComment(ctx.dataDir, p.id, { comment: text, author: resolveAuthor(b.author), selectedText: b.selectedText, contextText: b.contextText, anchor: b.anchor as never }));
 });
 
-// ---- M7: tasks + manual links (the routes the extension expects) ----
+// ---- tasks + manual links (the routes the extension expects) ----
 import { addTask, listTasks, showTask, setTaskStatus, suggestLinks } from "./core/tasks.ts";
 import { link as linkItems, LINK_RELATIONS } from "./core/links.ts";
 import type { Relation } from "./core/constants.ts";
@@ -201,7 +201,7 @@ route("POST", "/api/link", async (req, _u, _p, ctx) => {
   return json({ links: linkItems(ctx.dataDir, b.src, Array.isArray(b.dst) ? b.dst : [b.dst], { relation: b.relation, author: b.author }) });
 });
 
-// ---- M8: presentations ----
+// ---- presentations ----
 import { deckInSlidecraft, discoverSlidecraft, listPresentations, readPresentation } from "./core/presentations.ts";
 
 route("GET", "/api/presentations", async (_r, _u, _p, ctx) => {
@@ -217,7 +217,7 @@ route("GET", "/api/presentation/:id", async (_r, _u, p, ctx) => {
   return json({ id: pres.id, slug: pres.slug, title: pres.title, author: pres.author, created_at: pres.created_at, updated_at: pres.updated_at, indexed, slidecraft: deckInSlidecraft(slidecraft, pres.slug), frontmatter: pres.frontmatter, body: pres.body, filePath: pres.filePath });
 });
 
-// ---- M9: chat ("Discuss") over Copilot ACP ----
+// ---- chat over Copilot ACP ----
 import "./chat/routes.ts";
 
 // ---- initiatives in the web UI ----

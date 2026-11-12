@@ -89,7 +89,7 @@ export async function main(argv: string[]): Promise<number> {
 }
 
 
-// ---- M2: service, sync, process, dedup ----
+// ---- service, sync, process, dedup ----
 import { join as _join } from "node:path";
 import { existsSync as _exists } from "node:fs";
 import { resolvePort } from "./core/config.ts";
@@ -148,7 +148,7 @@ register("dedup", "dedup  (source_url collision scan; exit 1 on collisions)", as
 });
 
 
-// ---- M2.5: capture producers ----
+// ---- capture producers ----
 import { pdfToPayload } from "./producers/pdf.ts";
 import { youtubeToPayload } from "./producers/youtube.ts";
 import { meetingToPayload } from "./producers/meeting.ts";
@@ -169,7 +169,7 @@ register("meeting", "meeting <file> [--title --lang --author]", async ({ dataDir
   printIngest(await ingest(dir, payload));
 });
 
-// ---- M3: router, enrich, edges, refine, cleanup, entities, ask, models ----
+// ---- router, enrich, edges, refine, cleanup, entities, ask, models ----
 import "./core/passes.ts";
 import { getRouter } from "./providers/index.ts";
 import { unresolvedKinds } from "./providers/router.ts";
@@ -270,7 +270,7 @@ register("config", "config show | preset [name --show] | redetect [--write] | se
   console.log(`updated ${configPath()}`);
 });
 
-// ---- M4: briefings ----
+// ---- briefings ----
 import "./briefings/index.ts";
 import { approveBriefing, addComment as addBriefingComment, createBriefing, listBriefings, readBriefing, readComments } from "./briefings/store.ts";
 import { listComponents } from "./briefings/components.ts";
@@ -342,7 +342,7 @@ function resolveAuthorFlag(flags: Record<string, string | boolean>): string {
 }
 import { resolveAuthor as resolveAuthorCore } from "./core/config.ts";
 
-// ---- M6: onboarding ----
+// ---- onboarding ----
 import { init } from "./core/init.ts";
 import { doctor, formatDoctor } from "./core/doctor.ts";
 
@@ -355,7 +355,7 @@ register("doctor", "doctor [--json --core-only --port]", async ({ flags }) => {
   if (!r.summary.healthy) process.exitCode = 1;
 });
 
-// ---- M7: tasks + manual links ----
+// ---- tasks + manual links ----
 import { addTask, listTasks, showTask, setTaskStatus, suggestLinks, type TaskItem } from "./core/tasks.ts";
 import { addInitiative, closeInitiative, editInitiative, initiativeSuggestions, listInitiatives, moveTask, reopenInitiative, showInitiative } from "./core/initiatives.ts";
 import { ANSI, PLAIN, formatInitiativeList, formatInitiativeShow, lastTaskNotice, memberLinkLine, suggestionLines, taskListLine, type Style } from "./core/initiativeView.ts";
@@ -496,7 +496,7 @@ register("link", `link <src> <dst[,dst]> [--relation ${LINK_RELATIONS.join("|")}
   }
 });
 
-// ---- M8: presentations, inbox, meeting summaries ----
+// ---- presentations, inbox, meeting summaries ----
 import { promotePresentation, sharePresentation } from "./core/presentations.ts";
 import { scanInbox } from "./core/inbox.ts";
 import { draftMeetingSummary } from "./core/meetingSummary.ts";
@@ -526,7 +526,7 @@ register("summarize", "summarize <docId> [--commit]", async ({ dataDir, position
   await reindex(dataDir(), { embed: false });
 });
 
-// ---- M10: agent instructions ----
+// ---- agent instructions ----
 register("skill", "skill  (print the agent instructions; `jarvis skill > AGENTS.md`)", async () => {
   const { readFileSync: rf } = await import("node:fs");
   const codeRepo = _join(import.meta.dir, "..");

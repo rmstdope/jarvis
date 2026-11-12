@@ -3,7 +3,7 @@ import { importClosure, listTests, planFromChanges } from "../scripts/ci-plan.ts
 
 describe("ci planner", () => {
   test("docs-only changes run nothing; agent instructions are not docs-only", () => {
-    const p = planFromChanges(["docs/ARCHITECTURE.md", "IMPLEMENTATION-PLAN.md"]);
+    const p = planFromChanges(["docs/ARCHITECTURE.md", "docs/retrospectives/README.md"]);
     expect(p.docsOnly).toBe(true);
     expect(p.tests).toEqual([]);
     expect(planFromChanges(["docs/AGENT-INSTRUCTIONS.md"]).tests).toContain("tests/extension.test.ts");
