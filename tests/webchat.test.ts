@@ -970,6 +970,8 @@ describe("@ path suggestions", () => {
     document.body.innerHTML = "";
     await at();
     expect(panel()).toBeNull();
+  });
+});
 
 describe("same-titled items: the question with buttons (jv-bt4)", () => {
   const opt = (id: string, detail: string, tail: string, chip = detail) => ({ id, title: "Weekly sync", detail, tail, chip });
