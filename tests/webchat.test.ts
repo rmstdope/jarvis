@@ -530,12 +530,16 @@ describe("the agent acts: the change card (jv-oya.4)", () => {
       ch({ kind: "draft.briefing", items: [{ id: "B1", title: "F", kind: "briefing" }], draft: { kind: "briefing", sections: ["One", "Two"], sources: 3 } }),
       ch({ kind: "draft.presentation", items: [{ id: "deck", title: "G", kind: "presentation" }], draft: { kind: "presentation", sections: ["S1"], sources: 0, slides: 4 } }),
       ch({ kind: "initiative.create", items: [{ id: "I1", title: "H", kind: "initiative" }] }),
+      ch({ kind: "initiative.title", items: [{ id: "I1", title: "H2", kind: "initiative" }], detail: { from: "H", to: "H2" } }),
+      ch({ kind: "initiative.owner", items: [{ id: "I1", title: "H2", kind: "initiative" }], detail: { from: "Sam", to: "you" } }),
+      ch({ kind: "initiative.goal", items: [{ id: "I1", title: "H2", kind: "initiative" }] }),
     ]);
-    expect(card().querySelector("h4")!.textContent).toBe("I made 12 changes");
+    expect(card().querySelector("h4")!.textContent).toBe("I made 15 changes");
     expect(rows().map((r) => r!.replace(/Undo$/, ""))).toEqual([
       "✓Captured note A", "✓Captured link B", "✓Captured file C", "✓Captured meeting D", "✓Marked task E done", "✓Reopened task E",
       "✓Changed task E: due 20 Nov 2026 → 3 Jan 2025".replace("20 Nov 2026", "20 Nov"), "✓Changed task E: owner Sam → you", "✓Linked E to A · relates to",
-      "✓Drafted briefing F", "✓Drafted presentation G", "✓Created initiative H"]);
+      "✓Drafted briefing F", "✓Drafted presentation G", "✓Created initiative H",
+      "✓Changed initiative H2: title H → H2", "✓Changed initiative H2: owner Sam → you", "✓Changed initiative H2: goal changed"]);
     const drafts = qa(".jv-draft");
     expect(drafts[0].textContent).toBe("BRIEFING · DRAFT · 2 sections · 3 sourcesFOne · TwoOpen draft");
     expect(drafts[1].querySelector(".jv-draft-k")!.textContent).toBe("PRESENTATION · DRAFT · 4 slides · 0 sources");

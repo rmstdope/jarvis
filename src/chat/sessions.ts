@@ -50,7 +50,7 @@ const sample = (p: unknown): unknown => {
 };
 export const ACTION_REFERENCE = TOOLS.map((t) => `${t.name} ${JSON.stringify(Object.fromEntries(Object.entries(t.properties).map(([k, p]) => [t.required.includes(k) ? k : `${k}?`, sample(p)])))} — ${t.description}`).join("\n");
 /** The rules every conversation starts with. */
-export const CHAT_RULES = `You can act on the knowledge base by writing action blocks in your answer: capture notes, links and attached files; create and update tasks; create initiatives and file tasks under them; link items; draft briefings and presentations. A block is a fenced code block whose info string is jarvis-action, holding one JSON object {"tool": …, "args": {…}, "as": "name"} (as is optional):
+export const CHAT_RULES = `You can act on the knowledge base by writing action blocks in your answer: capture notes, links and attached files; create and update tasks; create and edit initiatives and file tasks under them; link items; draft briefings and presentations. A block is a fenced code block whose info string is jarvis-action, holding one JSON object {"tool": …, "args": {…}, "as": "name"} (as is optional):
 
 \`\`\`jarvis-action
 {"tool": "jarvis_create_task", "args": {"title": "Ring the vendor", "due": "2026-11-13"}, "as": "t1"}
