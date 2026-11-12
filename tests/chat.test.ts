@@ -409,6 +409,7 @@ describe("the agent acts (jv-oya.4)", () => {
     expect(first.filter((e) => e.type === "change")).toHaveLength(2); // the follow-up's own block did not run
     expect(first.filter((e) => e.type === "message").map((e) => e.text).join("")).not.toContain("jarvis-action");
     expect(first.filter((e) => e.type === "message").map((e) => e.text).join("")).toContain("Done.\n\nSorry.");
+    expect(first.at(-1)!.type).toBe("done"); // nothing after done (jv-de8)
     const id = first.find((e) => e.type === "change").change.items[0].id;
     const second = await ndjson(await call("POST", `/api/chat/sessions/${sid}/messages`, { message: "now mark that done" }));
     const said = second.filter((e) => e.type === "message").map((e) => e.text).join("");

@@ -313,6 +313,7 @@ export class ChatService {
       }
     };
     /** Send after every action queued so far has reported its change. */
+    // Progress events (status, usage, source) bypass the chain on purpose: they only feed the steps list.
     const emit = (e: ChatEvent) => { chain = chain.then(() => push(e)); };
     const finishText = () => {
       route(actions.end());
@@ -353,6 +354,7 @@ export class ChatService {
           push({ type: "message", text: "\n\n" });
           await agent.prompt(s.acpSessionId, `Some of your actions failed:\n${failed.map((f) => `- ${f}`).join("\n")}\nTell the user plainly, in one or two sentences, what did not work and why. Do not write action blocks.`).catch(() => null);
           finishText();
+          await chain; // the follow-up's last text goes out before done
         }
         push({ type: "done", stopReason: r?.stopReason }); finished = true; }, async (e: Error) => { finishText(); await chain; push({ type: "error", error: e.message }); finished = true; });
       while (!finished || queue.length) {
