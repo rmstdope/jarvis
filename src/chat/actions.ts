@@ -10,7 +10,7 @@ import { resolveAuthor } from "../core/config.ts";
 import { LINK_RELATIONS, link } from "../core/links.ts";
 import { withDb } from "../core/db.ts";
 import { readDocFile } from "../core/docs.ts";
-import { requireInitiative } from "../core/initiativeRef.ts";
+import { InitiativeRefError, requireInitiative } from "../core/initiativeRef.ts";
 import { readSidecar, type EdgeLine } from "../core/sidecar.ts";
 import { ingest, type CapturePayload } from "../core/ingest.ts";
 import { addInitiative, editInitiative, moveTask } from "../core/initiatives.ts";
@@ -303,7 +303,8 @@ export async function runTool(log: ChangeLog, turn: string, tool: string, args: 
       const key = a.options.map((o) => `"${o.title}${o.tail}" = [${o.id}]`).join("; ");
       return { change, more: [], asked: true, question: `${kind} are called "${a.title}", ${when}.`, text: `Not done yet: ${kind} are called "${a.title}", ${when}. The user sees a button for each and will answer with its words, which stand for these ids (never repeat an id to the user): ${key}. Act on the one they choose.` };
     }
-    const error = (e as Error).message.replace(/\.$/, "");
+    // A chat user cannot run a jarvis command, so a failure that names one is worded without it (jv-ltq).
+    const error = (e instanceof InitiativeRefError ? e.plain : (e as Error).message).replace(/\.$/, "");
     const subject = (tool === "jarvis_edit_initiative" ? str(args, "initiative") : str(args, "title")) ?? str(args, "task") ?? str(args, "src") ?? str(args, "attachment");
     const title = subject && /^[0-9A-Z]{26}$/.test(subject) ? titleOf(ctx.dataDir, subject) : subject;
     const change = log.record({ turn, kind: KIND_OF_TOOL[tool], ok: false, items: title ? [{ id: subject ?? "", title, kind: "doc" }] : [], error, verb: VERBS[tool] }, []);
