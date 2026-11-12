@@ -12,6 +12,8 @@ export interface Comment { id: string; status: string; author?: string; comment:
 export interface SyncResult { remote: boolean; committed: number; committedEnriched: number; pulled: boolean; pushed: boolean; conflicted: string[]; reindexed?: { docsIndexed: number; chunksEmbedded: number }; collisions: { source_url: string; ids: string[] }[]; notes: string[]; }
 export interface PresentationSummary { id: string; slug: string; title: string; author: string; created_at: string; updated_at?: string; indexed: boolean; slidecraft: { status: "ready" | "not-running" | "no-vault" | "no-include"; launchUrl?: string }; }
 
+export interface TaskRow { id: string; title: string; status: "open" | "done"; owner: string; due?: string; }
+
 export class ApiError extends Error {
   constructor(message: string, public status: number) { super(message); }
 }
@@ -35,6 +37,11 @@ export const api = {
   browse: (o: Record<string, string | number | undefined>) => req<BrowseResult>("GET", `/api/browse${qs(o)}`),
   item: (id: string) => req<{ item: Item; edges: ItemEdge[] }>("GET", `/api/item/${encodeURIComponent(id)}`),
   capture: (title: string, body: string) => req<{ id: string; status: string }>("POST", "/api/capture", { source: "paste", title, body }),
+  me: () => req<{ name?: string }>("GET", "/api/me"),
+  chatStatus: () => req<{ available: boolean }>("GET", "/api/chat/status"),
+  tasks: (owner?: string) => req<{ tasks: TaskRow[] }>("GET", `/api/tasks${qs({ status: "open", owner })}`),
+  taskDone: (id: string) => req<unknown>("POST", `/api/task/${encodeURIComponent(id)}/done`, {}),
+  taskReopen: (id: string) => req<unknown>("POST", `/api/task/${encodeURIComponent(id)}/reopen`, {}),
   sync: () => req<SyncResult>("POST", "/api/sync"),
   briefings: () => req<BriefingSummary[]>("GET", "/api/briefings"),
   briefing: (id: string) => req<BriefingDetail>("GET", `/api/briefing/${encodeURIComponent(id)}?html=1`),

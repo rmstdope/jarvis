@@ -1,9 +1,11 @@
 import { api, ApiError, type ItemSummary, type SearchHit } from "./api.ts";
-import { append, clear, fmtDate, h, itemHref, metaLine, modal, parseRoute, sinceIso, toast, type Child } from "./ui.ts";
+import { append, clear, fmtDate, h, itemHref, metaLine, modal, parseRoute, sinceIso, toast } from "./ui.ts";
 import { renderMarkdown } from "../../src/briefings/markdown.ts";
 import { renderBriefingHtml } from "../../src/briefings/render.ts";
 import type { Node as BriefingNode } from "../../src/briefings/parser.ts";
-import { openDiscuss } from "./discuss.ts";
+import { createChat, type Chat } from "./chat.ts";
+import { applyTheme, getPref, getTheme, KEY_LAST_SYNC, KEY_SYNC_SKIP, setPref } from "./prefs.ts";
+import { createShell, type Shell } from "./shell.ts";
 import { presentControl } from "./presentations.ts";
 
 declare global {
@@ -12,59 +14,38 @@ declare global {
 const inApp = () => window.__JARVIS_APP__ === true;
 
 // ---- chrome ----
-const app = document.getElementById("app")!;
-const main = h("main");
-const nav = h("nav");
-const history: string[] = [];
-let histIdx = -1;
-let navigating = false;
-const back = h("button", { title: "Back", onClick: () => go(-1) }, "←");
-const fwd = h("button", { title: "Forward", onClick: () => go(1) }, "→");
-function go(delta: number) {
-  const i = histIdx + delta;
-  if (i < 0 || i >= history.length) return;
-  histIdx = i;
-  navigating = true;
-  location.hash = history[i];
-}
-const syncBtn = h("button", { onClick: () => confirmSync() }, "Sync");
-const discussBtn = h("button", { onClick: () => openDiscuss({ type: "jarvis", ids: [] }) }, "Discuss");
-app.append(
-  h("header", { class: "top" }, h("span", { class: "brand" }, "J.A.R.V.I.S."), h("span", { class: "hist" }, back, fwd), nav, h("span", { class: "spacer" }), discussBtn, syncBtn),
-  main,
-);
-const NAV = [["browse", "Browse"], ["capture", "Capture"], ["briefings", "Briefings"], ["presentations", "Presentations"]];
-function renderNav(active: string) {
-  clear(nav);
-  for (const [r, label] of NAV) nav.appendChild(h("a", { href: `#/${r}`, class: (active === r || (r === "briefings" && active === "briefing") || (r === "presentations" && active === "presentation") || (r === "browse" && (active === "item" || active === "search"))) ? "active" : "" }, label));
-}
+let page: HTMLElement;
+let main: HTMLElement; // where the current page draws
+let shell: Shell;
+let chat: Chat;
 
 async function confirmSync() {
-  const skip = safeGet("sb.sync.noconfirm") === "1";
-  if (skip) return runSync();
+  if (getPref(KEY_SYNC_SKIP) === "1") return runSync();
   const cb = h("input", { type: "checkbox" });
   modal("Sync with the team?", h("div", {}, h("p", {}, "This commits your captures, pulls teammates' changes, runs enrichment and pushes."), h("label", { class: "row small" }, cb, " Do not show again")), [
     { label: "Cancel", onClick: () => {} },
-    { label: "Sync", primary: true, onClick: () => { if (cb.checked) safeSet("sb.sync.noconfirm", "1"); runSync(); } },
-  ]);
+    { label: "Sync", primary: true, onClick: () => { if (cb.checked) setPref(KEY_SYNC_SKIP, "1"); void runSync(); } },
+  ], "Sync");
+}
+function lastSyncState() {
+  const at = Number(getPref(KEY_LAST_SYNC));
+  return at > 0 ? { kind: "ok" as const, at } : { kind: "never" as const };
 }
 async function runSync() {
-  syncBtn.setAttribute("disabled", "true");
-  syncBtn.textContent = "Syncing…";
+  shell.setSync({ kind: "syncing" });
+  let failed = false;
   try {
     const r = await api.sync();
-    if (r.conflicted.length) toast(`Sync stopped: resolve ${r.conflicted.length} merge conflict(s).`, "error", 8000);
-    else toast(`Synced: ${r.committed} captured, ${r.committedEnriched} enriched, ${r.pulled ? "pulled" : "no pull"}, ${r.pushed ? "pushed" : "not pushed"}${r.collisions.length ? `, ${r.collisions.length} collision(s)` : ""}`);
-    if (parseRoute(location.hash).name === "browse") render();
+    if (r.conflicted.length) { failed = true; toast(`Sync stopped: resolve ${r.conflicted.length} merge conflict(s).`, "error", 8000); }
+    else { setPref(KEY_LAST_SYNC, String(Date.now())); toast(`Synced: ${r.committed} captured, ${r.committedEnriched} enriched, ${r.pulled ? "pulled" : "no pull"}, ${r.pushed ? "pushed" : "not pushed"}${r.collisions.length ? `, ${r.collisions.length} collision(s)` : ""}`); }
+    if (parseRoute(location.hash).name === "browse") void render();
   } catch (e) {
-    toast(e instanceof ApiError && e.status === 409 ? "A sync is already running." : `Sync failed: ${(e as Error).message}`, "error", 6000);
+    if (e instanceof ApiError && e.status === 409) toast("A sync is already running.", "error", 6000);
+    else { failed = true; toast(`Sync failed: ${(e as Error).message}`, "error", 6000); }
   } finally {
-    syncBtn.removeAttribute("disabled");
-    syncBtn.textContent = "Sync";
+    shell.setSync(failed ? { kind: "failed" } : lastSyncState());
   }
 }
-function safeGet(k: string): string | null { try { return localStorage.getItem(k); } catch { return null; } }
-function safeSet(k: string, v: string): void { try { localStorage.setItem(k, v); } catch {} }
 
 // ---- views ----
 function card(i: ItemSummary): HTMLElement {
@@ -132,7 +113,7 @@ async function viewItem(id: string) {
     item.source_url ? h("p", { class: "small" }, h("a", { href: safeHref(item.source_url), target: "_blank", rel: "noopener" }, item.source_url)) : null,
     item.tags?.length ? h("p", {}, ...item.tags.map((t) => h("span", { class: "tag" }, t))) : null,
     item.summary ? h("p", { class: "card" }, item.summary) : null,
-    h("div", { class: "row", style: "margin:8px 0" }, h("button", { onClick: () => openDiscuss({ type: "item", ids: [item.id] }) }, "Discuss this item")),
+    h("div", { class: "row", style: "margin:8px 0" }, h("button", { onClick: () => chat.askAbout({ type: "item", ids: [item.id] }, item.title) }, "Ask about this")),
     h("div", { class: "body-md", html: renderMarkdown(item.body) }),
     h("h3", {}, `Links (${edges.length})`),
     h("ul", { class: "edges" }, ...edges.map((e) => h("li", {}, h("span", { class: "pill" }, e.relation), " ", e.direction === "out" ? "→" : "←", " ", h("a", { href: `#/item/${e.otherId}` }, e.otherTitle ?? e.otherId), h("span", { class: "muted small" }, ` (${e.createdBy}${e.weight != null ? `, ${e.weight.toFixed(2)}` : ""})`)))),
@@ -170,7 +151,7 @@ async function viewBriefing(id: string) {
   };
   drawComments(comments);
   append(main, [
-    h("div", { class: "row" }, h("h1", { style: "flex:1;margin:0" }, b.title), b.status ? h("span", { class: `pill ${b.status === "approved" ? "green" : "orange"}` }, b.status) : null, h("button", { onClick: () => openDiscuss({ type: "briefing", ids: [id] }) }, "Discuss")),
+    h("div", { class: "row" }, h("h1", { style: "flex:1;margin:0" }, b.title), b.status ? h("span", { class: `pill ${b.status === "approved" ? "green" : "orange"}` }, b.status) : null, h("button", { onClick: () => chat.askAbout({ type: "briefing", ids: [id] }, b.title) }, "Ask about this")),
     b.subtitle ? h("p", { class: "muted" }, b.subtitle) : null,
     h("div", { class: "brief-layout" }, toc, h("article", { class: "brief", html }), rail),
   ]);
@@ -194,10 +175,20 @@ async function viewPresentation(id: string) {
 // ---- router ----
 async function render() {
   const r = parseRoute(location.hash);
-  renderNav(r.name);
+  shell.setActive(r.name);
+  if (r.name === "chat") {
+    page.hidden = true;
+    chat.show();
+    shell.setChatDot(false);
+    return;
+  }
+  chat.hide();
+  page.hidden = false;
+  shell.setChatDot(chat.hasConversation());
   clear(main);
   try {
     switch (r.name) {
+      case "tasks": browseState.q = ""; browseState.source = "task"; browseState.addedOffset = browseState.updatedOffset = 0; await viewBrowse(); break;
       case "browse": case "search": await viewBrowse(); break;
       case "capture": viewCapture(); break;
       case "briefings": await viewBriefings(); break;
@@ -205,22 +196,35 @@ async function render() {
       case "presentations": await viewPresentations(); break;
       case "presentation": if (r.id) await viewPresentation(r.id); break;
       case "item": if (r.id) await viewItem(r.id); break;
-      default: main.append(h("p", {}, "Not found. ", h("a", { href: "#/browse" }, "Browse")));
+      default: main.append(h("p", {}, "Not found. ", h("a", { href: "#/chat" }, "Back to chat")));
     }
   } catch (e) {
     main.append(h("p", { class: "muted" }, e instanceof ApiError && e.status === 404 ? "Not found." : `Error: ${(e as Error).message}`));
   }
 }
-window.addEventListener("hashchange", () => {
-  if (!navigating) {
-    history.splice(histIdx + 1);
-    history.push(location.hash);
-    histIdx = history.length - 1;
-  }
-  navigating = false;
-  render();
-});
-history.push(location.hash || "#/browse");
-histIdx = 0;
-render();
+const typing = (t: EventTarget | null) => t instanceof HTMLElement && (["INPUT", "TEXTAREA", "SELECT"].includes(t.tagName) || t.isContentEditable);
+function onKey(e: KeyboardEvent) {
+  const mod = e.metaKey || e.ctrlKey;
+  const k = e.key.toLowerCase();
+  if (mod && e.shiftKey && k === "o") { e.preventDefault(); chat.newChat(); }
+  else if (mod && e.shiftKey && k === "s") { e.preventDefault(); shell.toggleFold(); }
+  else if (e.key === "Escape") { if (shell.menuOpen()) shell.closeMenu(); else if (chat.isAnswering()) chat.stop(); }
+  else if (e.key === "/" && !mod && !typing(e.target)) { e.preventDefault(); if (parseRoute(location.hash).name !== "chat") location.hash = "#/chat"; chat.focusInput(); }
+}
+
+/** Build the app into `root` and start routing. */
+export function mountApp(root: HTMLElement): void {
+  applyTheme(getTheme());
+  shell = createShell({ onNewChat: () => chat.newChat(), onSync: () => void confirmSync() });
+  chat = createChat({ navigate: (hash) => { if (location.hash === hash) void render(); else location.hash = hash; }, onChange: () => shell.setChatDot(chat.hasConversation() && parseRoute(location.hash).name !== "chat") });
+  page = h("div", { class: "jv-page" });
+  main = page;
+  shell.main.append(chat.el, page);
+  shell.setSync(lastSyncState());
+  root.append(shell.el);
+  window.addEventListener("hashchange", () => void render());
+  document.addEventListener("keydown", onKey);
+  void render();
+}
+if (typeof document !== "undefined" && document.getElementById("app")) mountApp(document.getElementById("app")!);
 export { render, parseRoute };

@@ -18,6 +18,19 @@ afterEach(() => {
 });
 
 describe("http api", () => {
+  test("/api/me returns the configured author and nothing when none is configured", async () => {
+    const saved = { a: process.env.JARVIS_AUTHOR, h: process.env.JARVIS_HOME };
+    try {
+      process.env.JARVIS_HOME = t.dir; // no config.toml here: nothing configured
+      delete process.env.JARVIS_AUTHOR;
+      expect(await (await call("GET", "/api/me")).json()).toEqual({});
+      process.env.JARVIS_AUTHOR = "Mia";
+      expect(await (await call("GET", "/api/me")).json()).toEqual({ name: "Mia" });
+    } finally {
+      for (const [k, v] of [["JARVIS_AUTHOR", saved.a], ["JARVIS_HOME", saved.h]] as const) { if (v === undefined) delete process.env[k]; else process.env[k] = v; }
+    }
+  });
+
   test("health, capture (page-shaped), item-by-source, item, browse, recent, search", async () => {
     let r = await call("GET", "/api/health");
     expect(await r.json()).toEqual({ ok: true, docs: 0 });

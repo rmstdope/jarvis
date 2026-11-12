@@ -1,3 +1,4 @@
+import { loadConfig } from "./core/config.ts";
 import { existsSync, statSync } from "node:fs";
 import { join, normalize } from "node:path";
 import { addFilter, readFilters } from "./core/filters.ts";
@@ -16,6 +17,12 @@ import { route, json, error, body, HttpError, listRoutes, matchRoute, type Route
 export { route, json, error, body, HttpError, listRoutes, type RouteHandler, type ServerContext };
 
 route("GET", "/api/health", (_r, _u, _p, ctx) => json({ ok: true, docs: withDb(ctx.dataDir, (db) => (db.query("SELECT count(*) c FROM documents").get() as { c: number }).c) }));
+
+/** The configured name for the greeting: `JARVIS_AUTHOR` or config `author`, never the OS user. */
+route("GET", "/api/me", () => {
+  const name = process.env.JARVIS_AUTHOR || loadConfig().author;
+  return json(name ? { name } : {});
+});
 
 route("POST", "/api/capture", async (req, _u, _p, ctx) => {
   const b = await body<Record<string, unknown>>(req);

@@ -70,6 +70,7 @@ function dataDeps(test: string, closure: Set<string>, root: string): ((changed: 
   const deps: ((c: string) => boolean)[] = [];
   const src = readFileSync(join(root, test), "utf8");
   if (closure.has("src/core/presets.ts")) deps.push((c) => c.startsWith("docs/examples/models/"));
+  if (closure.has("src/cli.ts")) deps.push((c) => c === "docs/AGENT-INSTRUCTIONS.md"); // printed by `jarvis skill`
   if (closure.has("scripts/build-web.ts")) deps.push((c) => c.startsWith("web/"));
   if (closure.has("scripts/build-extension.ts")) deps.push((c) => c.startsWith("extension/"));
   if (/fixtures/.test(src)) deps.push((c) => c.startsWith("tests/fixtures/"));
