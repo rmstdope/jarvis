@@ -257,7 +257,7 @@ html, body { height:100%; } #app { height:100%; }
 .jv-iread .jv-ihead, .jv-iread .jv-iboxes { max-width:760px; }
 .jv-iline { display:flex; align-items:center; flex-wrap:wrap; gap:6px 12px; padding:12px 24px 0; font-family:var(--sans); } .jv-phone .jv-iline { padding:10px 14px 0; }
 .jv-iread .jv-dtitle { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; min-width:0; flex:0 1 auto; }
-.jv-phone .jv-iread .jv-dtitle { flex-basis:100%; white-space:normal; }
+.jv-phone .jv-iread .jv-dtitle { flex-basis:100%; }
 .jv-iread .jv-dhead button { flex:none; }
 .jv-igrow { flex:1; }
 
