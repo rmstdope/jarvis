@@ -87,6 +87,7 @@ html, body { height:100%; } #app { height:100%; }
 .jv-steps-toggle { border:0; background:none; color:var(--muted); padding:0; font-size:13px; margin-bottom:6px; }
 .jv-chips { display:flex; gap:6px; flex-wrap:wrap; margin-top:6px; }
 .jv-chip { font-size:12px; border:1px solid var(--border); border-radius:999px; padding:2px 9px; background:var(--panel); color:var(--muted); max-width:240px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.jv-chip-d { white-space:normal; max-width:100%; }
 .jv-failed { border:1px solid color-mix(in srgb, var(--error) 40%, transparent); background:color-mix(in srgb, var(--error) 8%, transparent); border-radius:10px; padding:8px 12px; font-size:14px; }
 .jv-noanswer { border:1px solid color-mix(in srgb, var(--muted) 40%, transparent); background:color-mix(in srgb, var(--muted) 8%, transparent); border-radius:10px; padding:8px 12px; font-size:14px; }
 .jv-retry { margin-left:10px; padding:2px 10px; }

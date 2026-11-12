@@ -280,7 +280,7 @@ export function createChat(opts: { navigate: (hash: string) => void; onChange?: 
       if (empty) parts.push(h("div", { class: "jv-noanswer" }, "I finished without writing an answer.", h("button", { class: "jv-retry", onClick: () => retry(m) }, "Try again")));
       if (m.status === "stopped") parts.push(h("div", { class: "jv-stopped muted small" }, "Stopped."));
       if (m.status !== "streaming") for (const c of m.changes ?? []) if (c.ask) parts.push(drawPicks(m, c));
-      if (m.sources?.length) parts.push(h("div", { class: "jv-chips" }, ...m.sources.map((s) => h("a", { class: "jv-chip", href: `#/${docRefFor(s.source ?? "note", s.docId).type}/${encodeURIComponent(s.docId)}`, title: s.title }, s.detail ? `${s.title} · ${s.detail}` : s.title))));
+      if (m.sources?.length) parts.push(h("div", { class: "jv-chips" }, ...m.sources.map((s) => h("a", { class: s.detail ? "jv-chip jv-chip-d" : "jv-chip", href: `#/${docRefFor(s.source ?? "note", s.docId).type}/${encodeURIComponent(s.docId)}`, title: s.detail ? `${s.title} · ${s.detail}` : s.title }, s.detail ? `${s.title} · ${s.detail}` : s.title))));
     }
     for (const c of m.cards ?? []) {
       const ref: DocRef = { type: c.type, id: c.id };
