@@ -141,7 +141,9 @@ describe("change log (jv-oya.4)", () => {
     const empty = await runAny("jarvis_edit_initiative", { initiative: id, goal: " " });
     expect(empty.change).toMatchObject({ ok: false, error: "nothing to change" });
     const missing = await runAny("jarvis_edit_initiative", { initiative: "nope", goal: "x" });
-    expect(missing.change).toMatchObject({ ok: false });
+    expect(missing.change).toMatchObject({ ok: false, items: [{ title: "nope" }] });
+    const renamed = await runAny("jarvis_edit_initiative", { initiative: "nope", title: "Brand new name" });
+    expect(renamed.change).toMatchObject({ ok: false, items: [{ title: "nope" }] });
   });
   test("draft briefing and draft presentation carry a preview and undo", async () => {
     const b = (await run("jarvis_draft_briefing", { title: "Status", body: "## Where we are\n\nok\n\n## Risks\n\nnone\n", sources: ["a", "b"] })).change;

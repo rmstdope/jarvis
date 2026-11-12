@@ -291,7 +291,7 @@ export async function runTool(log: ChangeLog, turn: string, tool: string, args: 
     return { change, more, text: `Done: ${[done, ...(done.also ?? [])].map(said).join("; ")}` };
   } catch (e) {
     const error = (e as Error).message.replace(/\.$/, "");
-    const subject = str(args, "title") ?? str(args, "task") ?? str(args, "src") ?? str(args, "attachment");
+    const subject = (tool === "jarvis_edit_initiative" ? str(args, "initiative") : str(args, "title")) ?? str(args, "task") ?? str(args, "src") ?? str(args, "attachment");
     const title = subject && /^[0-9A-Z]{26}$/.test(subject) ? titleOf(ctx.dataDir, subject) : subject;
     const change = log.record({ turn, kind: KIND_OF_TOOL[tool], ok: false, items: title ? [{ id: subject ?? "", title, kind: "doc" }] : [], error, verb: VERBS[tool] }, []);
     return { change, more: [], text: `Failed: could not ${VERBS[tool]} — ${error}.` };
