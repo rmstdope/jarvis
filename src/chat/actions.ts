@@ -54,6 +54,13 @@ const kindOfDoc = (dataDir: string, id: string): ChangeItem["kind"] => {
 const item = (dataDir: string, id: string): ChangeItem => ({ id, title: titleOf(dataDir, id), kind: kindOfDoc(dataDir, id) });
 /** Kind words a person may put after an item's name when saying it ("the Weekly sync meeting"). */
 const KIND_WORDS = "note|meeting|task|initiative|briefing|presentation|deck|doc|document|item|page|article|video|file|transcript";
+/** The kind words that name one of the four sources a person asks for by kind; the rest ("doc", "page", "briefing", "deck"...) narrow nothing. */
+const SOURCE_OF_KIND_WORD: Record<string, string> = { note: "note", meeting: "meeting", task: "task", initiative: "initiative" };
+/** The source a reference's trailing kind word names, if it has one ("Weekly sync meeting" is a "meeting"). */
+const sourceOfTrailingKind = (ref: string): string | undefined => {
+  const word = new RegExp(`\\s+(${KIND_WORDS})$`, "i").exec(ref.trim())?.[1];
+  return word ? SOURCE_OF_KIND_WORD[word.toLowerCase()] : undefined;
+};
 /** The forms of a reference to try in turn: as given, without a trailing kind word, then also without a leading "the" ("The roadmap" stays findable as "the roadmap doc"). */
 const titleForms = (ref: string): string[] => {
   const asGiven = ref.trim();
@@ -66,15 +73,22 @@ const titleForms = (ref: string): string[] => {
  * item of `source` (any source when omitted) whose title matches it, ignoring the case of ASCII
  * letters (SQLite NOCASE). A title is tried as given first, then as a person says it with "the" and
  * a kind word around it ("the Weekly sync meeting" finds "Weekly sync"), so a title that itself ends
- * in a kind word still wins. Several matches are refused, listing each id so the agent can choose. The agent sees
+ * in a kind word still wins. The kind word also picks the one item of that kind when several share the title (jv-ldo). Several matches are refused, listing each id so the agent can choose. The agent sees
  * ids only for what retrieval put in its context, so it names everything else by title (jv-zyp).
  * No match leaves the reference as it is, for the action to report as not found.
  */
 const resolveRef = (dataDir: string, ref: string, source?: string): string => {
   if (readDocFile(dataDir, ref)) return ref;
   for (const title of titleForms(ref)) {
-    const found = withDb(dataDir, (db) =>
-      db.query<{ id: string; title: string; created_at: string }, [string, string | null]>("SELECT id, title, created_at FROM documents WHERE title = ?1 COLLATE NOCASE AND (?2 IS NULL OR source = ?2) ORDER BY created_at DESC").all(title, source ?? null));
+    let found = withDb(dataDir, (db) =>
+      db.query<{ id: string; title: string; created_at: string; source: string }, [string, string | null]>("SELECT id, title, created_at, source FROM documents WHERE title = ?1 COLLATE NOCASE AND (?2 IS NULL OR source = ?2) ORDER BY created_at DESC").all(title, source ?? null));
+    // The kind word the user said picks among items sharing the title, when it leaves exactly one (jv-ldo).
+    // Not when the matching title itself ends in the kind word ("Standup meeting"): there the word is part of the name.
+    const said = title !== ref.trim() && !sourceOfTrailingKind(title) ? sourceOfTrailingKind(ref) : undefined;
+    if (found.length > 1 && said) {
+      const narrowed = found.filter((f) => f.source === said);
+      if (narrowed.length === 1) found = narrowed;
+    }
     if (found.length > 1) throw new Error(`more than one item is called "${title}": ${found.map((f) => `${f.title} [${f.id}] from ${f.created_at.slice(0, 10)}`).join(", ")}; pass one of these ids, or ask the user which`);
     if (found[0]) return found[0].id;
   }

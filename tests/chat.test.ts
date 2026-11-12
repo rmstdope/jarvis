@@ -446,6 +446,41 @@ describe("the agent acts (jv-oya.4)", () => {
     expect(changes[2].items[0].id).toBe(standup.id); // the title as given wins over the one without its kind word
     expect(changes[3].items[0].id).toBe(roadmap.id); // "the" is kept while only the kind word is dropped
   });
+  test("the kind word the user says picks the item when a meeting and a task share a title (jv-ldo)", async () => {
+    const meeting = await ingest(t.dir, { source: "meeting", title: "Weekly sync", body: "agenda", author: "me" });
+    const task = await addTask(t.dir, { title: "Weekly sync", author: "me" });
+    const drift = await ingest(t.dir, { source: "note", title: "Zoom drift", body: "clock drift seen", author: "me" });
+    const sid = await open("conv-ldo1");
+    const evs = await ndjson(await call("POST", `/api/chat/sessions/${sid}/messages`, { message: 'ACT jarvis_link {"src":"the Weekly sync meeting","dst":"Zoom drift"} ACT jarvis_link {"src":"Weekly sync task","dst":"Zoom drift"}' }));
+    const changes = evs.filter((e) => e.type === "change").map((e) => e.change);
+    expect(changes.map((c) => [c.kind, c.ok, c.error])).toEqual([["link", true, undefined], ["link", true, undefined]]);
+    expect(changes[0].items.map((i: { id: string }) => i.id)).toEqual([meeting.id, drift.id]);
+    expect(changes[1].items.map((i: { id: string }) => i.id)).toEqual([task.id, drift.id]);
+  });
+  test("a kind word matching neither or both of the items sharing a title still refuses with the ids (jv-ldo)", async () => {
+    const m1 = await ingest(t.dir, { source: "meeting", title: "Weekly sync", body: "agenda one", author: "me" });
+    const m2 = await ingest(t.dir, { source: "meeting", title: "Weekly sync", body: "agenda two", author: "me" });
+    const task = await addTask(t.dir, { title: "Weekly sync", author: "me" });
+    await ingest(t.dir, { source: "note", title: "Zoom drift", body: "clock drift seen", author: "me" });
+    const sid = await open("conv-ldo2");
+    const evs = await ndjson(await call("POST", `/api/chat/sessions/${sid}/messages`, { message: 'ACT jarvis_link {"src":"Weekly sync meeting","dst":"Zoom drift"} ACT jarvis_link {"src":"Weekly sync note","dst":"Zoom drift"}' }));
+    const changes = evs.filter((e) => e.type === "change").map((e) => e.change);
+    for (const c of changes) {
+      expect(c.ok).toBe(false);
+      for (const id of [m1.id, m2.id, task.id]) expect(c.error).toContain(`[${id}]`);
+    }
+    expect(changes.length).toBe(2);
+  });
+  test("a kind word that is part of the shared title does not pick an item (jv-ldo)", async () => {
+    const m = await ingest(t.dir, { source: "meeting", title: "Standup meeting", body: "agenda", author: "me" });
+    const task = await addTask(t.dir, { title: "Standup meeting", author: "me" });
+    await ingest(t.dir, { source: "note", title: "Zoom drift", body: "clock drift seen", author: "me" });
+    const sid = await open("conv-ldo3");
+    const evs = await ndjson(await call("POST", `/api/chat/sessions/${sid}/messages`, { message: 'ACT jarvis_link {"src":"the Standup meeting","dst":"Zoom drift"}' }));
+    const c = evs.find((e) => e.type === "change").change;
+    expect(c.ok).toBe(false);
+    for (const id of [m.id, task.id]) expect(c.error).toContain(`[${id}]`);
+  });
   test("a title two tasks share is refused rather than guessed (jv-zyp)", async () => {
     const a = await addTask(t.dir, { title: "Review", author: "me" });
     const b = await addTask(t.dir, { title: "review", author: "me" });
