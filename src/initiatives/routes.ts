@@ -1,7 +1,7 @@
 import { route, json, error, body, type ServerContext } from "../http.ts";
 import { withDb } from "../core/db.ts";
 import { readDocFile } from "../core/docs.ts";
-import { closeInitiative, initiativeSuggestions, listInitiatives, reopenInitiative, showInitiative } from "../core/initiatives.ts";
+import { closeInitiative, editInitiative, initiativeSuggestions, listInitiatives, reopenInitiative, showInitiative } from "../core/initiatives.ts";
 import { getRouter } from "../providers/index.ts";
 
 /** The core's "no initiative …" and "… is a task" errors are a missing page, not a server fault. */
@@ -43,3 +43,12 @@ route("POST", "/api/initiative/:id/close", (req, _u, p, ctx) => guard(async () =
   }
 }));
 route("POST", "/api/initiative/:id/reopen", (req, _u, p, ctx) => guard(async () => json(await reopenInitiative(ctx.dataDir, p.id, (await body<{ author?: string }>(req)).author))));
+route("POST", "/api/initiative/:id/edit", (req, _u, p, ctx) => guard(async () => {
+  const b = await body<{ title?: string; goal?: string; owner?: string; author?: string }>(req);
+  try {
+    return json(await editInitiative(ctx.dataDir, p.id, { title: b.title, goal: b.goal, owner: b.owner, author: b.author }));
+  } catch (e) {
+    if (/^(an initiative needs|An initiative needs|usage:)/.test((e as Error).message)) return error((e as Error).message, 400);
+    throw e;
+  }
+}));

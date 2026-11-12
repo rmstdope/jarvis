@@ -5,6 +5,7 @@ import { UNDO_MS } from "../tasks.ts";
 import { emitInitiativeProgress } from "../initiativeBus.ts";
 import type { DocCtx, DocPage } from "../docview.ts";
 import { progress, statusPill } from "./common.ts";
+import { openEditor, type Editor, type EditField } from "./initiativeEdit.ts";
 
 /** How long a ticked row shows "Done · Undo"; tests shorten it. */
 export const timing = { undoMs: UNDO_MS };
@@ -25,6 +26,8 @@ export async function initiativePage(id: string, ctx: DocCtx): Promise<DocPage> 
   const counts = () => ({ done: d.tasks.filter((t) => t.status === "done").length, total: d.tasks.length });
   /** Made once: the redraws (suggestions arrive late) must not lose the focus the tab opened with. */
   const heading = h("h1", { class: "jv-dtitle", "data-doc-title": "", tabindex: "-1", title: d.initiative.title }, d.initiative.title);
+  let editing: { field: EditField; editor: Editor } | null = null;
+  let ownerNames: Promise<string[]> | undefined;
   const announce = () => emitInitiativeProgress(id, counts());
 
   /** What to focus after a redraw that keeps the cursor where it was (suggestions arrive on their own). */
@@ -32,6 +35,7 @@ export async function initiativePage(id: string, ctx: DocCtx): Promise<DocPage> 
     const a = document.activeElement as HTMLElement | null;
     if (!a || !host.contains(a)) return undefined;
     if (a === heading) return "title";
+    if (a.getAttribute("data-edit")) return `edit:${a.getAttribute("data-edit")}`;
     return a.getAttribute("data-act") ?? (a.getAttribute("data-sug") ? `sug:${a.getAttribute("data-sug")}` : a.getAttribute("data-task") ? `task:${a.getAttribute("data-task")}` : undefined);
   }
   function draw(focus: string | undefined = focusKey()): void {
@@ -68,15 +72,20 @@ export async function initiativePage(id: string, ctx: DocCtx): Promise<DocPage> 
     const ask = h("button", { onClick: () => ctx.askAbout({ type: "initiative", ids: [id] }, i.title) }, "Ask about this");
     const toggle = h("button", { "data-act": closed ? "reopen" : "close", onClick: () => void (closed ? reopen() : close()) }, closed ? "Reopen" : "Close initiative");
     const kind = h("span", { class: "jv-dkind" }, "Initiative");
-    const meta = closed ? entryLine("Initiative", i.owner, `closed ${fmtDate(i.closed_at)} by ${i.closed_by ?? "unknown"}`) : entryLine("Initiative", i.owner, `started ${fmtDate(i.created_at)}`, i.updated_at ? `updated ${fmtDate(i.updated_at)}` : null);
+    const tail = closed ? `closed ${fmtDate(i.closed_at)} by ${i.closed_by ?? "unknown"}` : entryLine(`started ${fmtDate(i.created_at)}`, i.updated_at ? `updated ${fmtDate(i.updated_at)}` : null);
+    const ownerPiece = editing?.field === "owner" ? editing.editor.el : readPiece("owner", "span", "jv-owner", i.owner);
+    const meta = h("div", { class: "muted small jv-meta" }, "Initiative · ", ownerPiece, ` · ${tail}`);
+    const titlePiece = editing?.field === "title" ? editing.editor.el : readPiece("title", "h2", "jv-title", i.title);
+    const goalPiece = editing?.field === "goal" ? editing.editor.el : readPiece("goal", "div", "jv-goal", i.goal);
+    const refocusEditor = !!editing && editing.editor.el.contains(document.activeElement);
     host.replaceChildren(
       h("div", { class: "jv-dhead" }, kind, heading, statusPill(closed ? "closed" : "open", "n"), h("span", { class: "jv-igrow" }), toggle, ask),
       h("div", { class: "jv-dbody" },
         h("header", { class: "jv-ihead" },
-          h("h2", { class: "jv-title" }, i.title),
-          h("div", { class: "muted small jv-meta" }, meta),
+          titlePiece,
+          meta,
           progress(done, total),
-          h("div", { class: "jv-goal" }, i.goal),
+          goalPiece,
           closed ? h("div", { class: "jv-closednote muted small" }, `Closed ${fmtDate(i.closed_at)} by ${i.closed_by ?? "unknown"}.`) : null,
           allDone ? h("div", { class: "jv-allnote" }, "✓ All tasks are done. It stays open until someone closes it, since more tasks may come.") : null),
         h("div", { class: "jv-iboxes" },
@@ -84,12 +93,54 @@ export async function initiativePage(id: string, ctx: DocCtx): Promise<DocPage> 
           ibox(`Through its tasks · ${d.through.total}`, null, ...(d.through.items.length ? folded("through", d.through.items.map((x) => tiedRow(x, true))) : [empty("Nothing is tied to it through its tasks yet.")])),
           ibox(`Linked directly · ${d.direct.total}`, null, ...(d.direct.items.length ? folded("direct", d.direct.items.map((x) => tiedRow(x, false))) : [empty("Nothing is linked to it directly yet.")])),
           ibox(suggest.state === "loading" ? "Suggested" : `Suggested · ${sugRows.length}`, "— not part of it until you accept", ...suggestBody))));
-    if (focus === "title") heading.focus();
+    if (refocusEditor) editing!.editor.focus();
+    else if (focus?.startsWith("edit:")) (host.querySelector(`[data-edit="${focus.slice(5)}"]`) as HTMLElement | null)?.focus();
+    else if (focus === "title") heading.focus();
     else if (focus === "reopen" || focus === "close") (host.querySelector(`[data-act="${focus}"]`) as HTMLElement | null)?.focus();
     else if (focus?.startsWith("showall:")) (host.querySelector(`[data-act="${focus}"]`) as HTMLElement | null)?.focus();
     else if (focus?.startsWith("sug:")) (host.querySelector(`[data-sug="${focus.slice(4)}"]`) as HTMLElement | null)?.focus();
     else if (focus === "suggested") ([...host.querySelectorAll("h4")].find((x) => x.textContent!.startsWith("Suggested")) as HTMLElement | undefined)?.focus();
     else if (focus?.startsWith("task:")) (host.querySelector(`[data-task="${focus.slice(5)}"]`) as HTMLElement | null)?.focus();
+  }
+
+  /** Title, owner or goal as text that opens its editor on click, Enter or Space; the pencil and tooltip come from the styles and the title attribute. */
+  function readPiece<K extends "h2" | "span" | "div">(field: EditField, tag: K, cls: string, text: string): HTMLElementTagNameMap[K] {
+    return h(tag, { class: `${cls} jv-editable`, "data-edit": field, tabindex: "0", role: "button", title: `Edit ${field}`,
+      onClick: () => void startEdit(field),
+      onKeydown: (e: Event) => { const k = (e as KeyboardEvent).key; if (k === "Enter" || k === " ") { e.preventDefault(); void startEdit(field); } } }, text);
+  }
+  /** Names that already own an initiative or a task, read the first time an owner is edited. */
+  function namesOnce(): Promise<string[]> {
+    ownerNames ??= Promise.all([api.initiatives("all"), api.allTasks()]).then(([ini, tasks]) =>
+      [...new Set([...ini.initiatives.map((x) => x.owner), ...tasks.tasks.map((x) => x.owner)].filter(Boolean))].sort((a, b) => a.localeCompare(b)), () => []);
+    return ownerNames;
+  }
+  async function saveField(field: EditField, value: string): Promise<void> {
+    await api.editInitiative(id, { [field]: value });
+    d.initiative = { ...d.initiative, [field]: value, updated_at: new Date().toISOString() };
+    if (field === "title") {
+      heading.textContent = value;
+      heading.title = value;
+      ctx.loaded(value, "Initiative");
+    }
+  }
+  /** Open the editor for `field`; one at a time, so an open one is saved first (and stays if it cannot be). */
+  async function startEdit(field: EditField): Promise<void> {
+    if (editing?.field === field) return;
+    if (editing && !(await editing.editor.commit())) return;
+    if (editing) return;
+    const editor = openEditor({
+      field, value: d.initiative[field], save: (v) => saveField(field, v), names: field === "owner" ? namesOnce : undefined,
+      done: () => {
+        const a = document.activeElement;
+        const mine = !a || a === document.body || editor.el.contains(a);
+        editing = null;
+        draw(mine ? `edit:${field}` : undefined);
+      },
+    });
+    editing = { field, editor };
+    draw();
+    editor.focus();
   }
 
   async function setTask(t: InitiativeTask, to: "open" | "done"): Promise<boolean> {

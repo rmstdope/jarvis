@@ -92,4 +92,20 @@ describe("which initiative a task or card belongs to", () => {
     expect(item.initiative).toEqual({ id: a.id, title: "Alpha", done: 1, total: 2 });
     expect((await (await call("GET", `/api/item/${solo.id}`)).json()).initiative).toBeUndefined();
   });
+
+  test("POST edit: writes title, goal and owner to the file; 400 for an empty one; 404 for unknown or a task", async () => {
+    const a = await addInitiative(t.dir, { title: "Alpha", goal: "goal A", author: "anna" });
+    const task = await addTask(t.dir, { title: "one", initiative: a.id });
+    const r = await call("POST", `/api/initiative/${a.id}/edit`, { title: " Beta ", goal: "new goal", owner: "bo" });
+    expect(r.status).toBe(200);
+    expect(await r.json()).toMatchObject({ title: "Beta" });
+    const f = readDocFile(t.dir, a.id)!;
+    expect([f.frontmatter.title, f.body.trim(), f.frontmatter.initiative!.owner]).toEqual(["Beta", "new goal", "bo"]);
+    const before = f.frontmatter.updated_at;
+    await call("POST", `/api/initiative/${a.id}/edit`, { title: "Beta" });
+    expect(readDocFile(t.dir, a.id)!.frontmatter.updated_at).toBe(before); // identical text changes nothing
+    for (const bad of [{ title: "" }, { goal: " " }, { owner: "" }, {}]) expect((await call("POST", `/api/initiative/${a.id}/edit`, bad)).status).toBe(400);
+    expect((await call("POST", "/api/initiative/NOPE/edit", { title: "x" })).status).toBe(404);
+    expect((await call("POST", `/api/initiative/${task.id}/edit`, { title: "x" })).status).toBe(404);
+  });
 });

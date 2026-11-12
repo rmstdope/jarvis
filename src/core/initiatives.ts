@@ -93,6 +93,7 @@ export async function editInitiative(dataDir: string, id: string, opts: { title?
   if (opts.title === undefined && opts.goal === undefined && opts.owner === undefined) throw new Error("usage: jarvis initiative edit <id> [--title] [--goal] [--owner]");
   if (opts.goal !== undefined && !opts.goal.trim()) throw new Error(MISSING_GOAL);
   if (opts.title !== undefined && !opts.title.trim()) throw new Error("an initiative needs a title");
+  if (opts.owner !== undefined && !opts.owner.trim()) throw new Error("an initiative needs an owner");
   const { doc, block } = requireInitiative(dataDir, id);
   const changes: string[] = [];
   let bodyChanged = false;
@@ -100,9 +101,9 @@ export async function editInitiative(dataDir: string, id: string, opts: { title?
     doc.frontmatter.title = opts.title.trim();
     changes.push("title changed");
   }
-  if (opts.owner !== undefined && opts.owner !== block.owner) {
-    changes.push(`owner ${block.owner} → ${opts.owner}`);
-    block.owner = opts.owner;
+  if (opts.owner !== undefined && opts.owner.trim() !== block.owner) {
+    changes.push(`owner ${block.owner} → ${opts.owner.trim()}`);
+    block.owner = opts.owner.trim();
   }
   if (opts.goal !== undefined && opts.goal.trim() !== doc.body.trim()) {
     doc.body = opts.goal.trim();
