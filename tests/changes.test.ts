@@ -5,7 +5,8 @@ import { ChangeLog, UndoConflict, type Change } from "../src/chat/changes.ts";
 import { runTool } from "../src/chat/actions.ts";
 import { readDocFile } from "../src/core/docs.ts";
 import { reindex } from "../src/core/reindex.ts";
-import { listTasks } from "../src/core/tasks.ts";
+import { addTask, listTasks } from "../src/core/tasks.ts";
+import { addInitiative, closeInitiative } from "../src/core/initiatives.ts";
 import { clearEmbedder, tmpDataDir, useFakeEmbedder } from "./helpers.ts";
 
 let t: ReturnType<typeof tmpDataDir>;
@@ -218,5 +219,43 @@ describe("change log (jv-oya.4)", () => {
     writeFileSync(p, readFileSync(p, "utf8").replace(/^---\n/, "---\nsummary: enriched\n"));
     await log.undo(c.id);
     expect(existsSync(p)).toBe(false);
+  });
+});
+
+describe("a failed row never tells a web chat user to run a jarvis command (jv-ltq)", () => {
+  const noCommand = (c: Change, text: string) => {
+    expect(c.ok).toBe(false);
+    expect(c.error).not.toContain("jarvis ");
+    expect(text).not.toContain("jarvis ");
+  };
+  test("a missing initiative reads 'no initiative by that name'", async () => {
+    const { change, text } = await run("jarvis_edit_initiative", { initiative: "Budget 2028", goal: "spent" });
+    noCommand(change, text);
+    expect(change.items[0].title).toBe("Budget 2028");
+    expect(change.error).toBe("no initiative by that name");
+  });
+  test("a task named as an initiative, and a closed initiative, name no command either", async () => {
+    const task = await addTask(t.dir, { title: "Ring the vendor", author: "me" });
+    const as = await run("jarvis_edit_initiative", { initiative: task.id, goal: "x" });
+    noCommand(as.change, as.text);
+    expect(as.change.error).toBe("that is a task, not an initiative");
+    const ini = await addInitiative(t.dir, { title: "Move billing", goal: "moved", author: "me" });
+    await closeInitiative(t.dir, ini.id);
+    const late = await run("jarvis_create_task", { title: "Late", initiative: ini.id });
+    noCommand(late.change, late.text);
+    expect(late.change.error).toBe("Move billing is closed; reopen it first");
+    const moved = await run("jarvis_move_task", { task: task.id, initiative: ini.id });
+    noCommand(moved.change, moved.text);
+    expect(moved.change.error).toBe("Move billing is closed; reopen it first");
+  });
+  test("a task's row names the initiative it could not find, since the row names the task", async () => {
+    const task = await addTask(t.dir, { title: "Ring the vendor", author: "me" });
+    const made = await run("jarvis_create_task", { title: "Late", initiative: "Budget 2028" });
+    noCommand(made.change, made.text);
+    expect(made.change.error).toBe("no initiative called Budget 2028");
+    const moved = await run("jarvis_move_task", { task: task.id, initiative: "Budget 2028" });
+    expect(moved.change.error).toBe("no initiative called Budget 2028");
+    const intoTask = await run("jarvis_move_task", { task: "Ring the vendor", initiative: task.id });
+    expect(intoTask.change.error).toBe(`${task.id} is a task, not an initiative`);
   });
 });
