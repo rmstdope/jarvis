@@ -51,7 +51,7 @@ function asEffort(e: unknown, where: string): ReasoningEffort | undefined {
   return e as ReasoningEffort;
 }
 
-/** Parse models.toml. Entries missing provider/id are dropped silently. */
+/** Parse models.toml. Entries missing provider/id are dropped; `jarvis doctor` names misspelt ones ({@link ignoredModelsEntries}). */
 export function parseModelsToml(text: string): { preference: ProviderName[]; models: ModelEntry[] } {
   const t = Bun.TOML.parse(text) as { preference?: unknown; model?: Record<string, unknown>[] };
   const preference = Array.isArray(t.preference) ? (t.preference.filter((p) => PROVIDER_NAMES.includes(p as ProviderName)) as ProviderName[]) : DEFAULT_PREFERENCE;
@@ -77,6 +77,28 @@ export function parseModelsToml(text: string): { preference: ProviderName[]; mod
     models.push(entry);
   }
   return { preference: preference.length ? preference : DEFAULT_PREFERENCE, models };
+}
+
+/**
+ * Two misspellings {@link parseModelsToml} skips, each named as a person would find it in the file:
+ * a `models` table or key (the parser reads `[[model]]`) and every `[[model]]` whose provider is not one of
+ * {@link PROVIDER_NAMES}. Empty when neither occurs; malformed TOML is the parser's to report.
+ */
+export function ignoredModelsEntries(text: string): string[] {
+  let t: { models?: unknown; model?: unknown };
+  try {
+    t = Bun.TOML.parse(text) as typeof t;
+  } catch {
+    return [];
+  }
+  const ignored: string[] = [];
+  if (t.models !== undefined) ignored.push(Array.isArray(t.models) ? "the [[models]] table" : "the models key");
+  for (const m of Array.isArray(t.model) ? (t.model as Record<string, unknown>[]) : []) {
+    if (m && typeof m.provider === "string" && !PROVIDER_NAMES.includes(m.provider as ProviderName)) {
+      ignored.push(`the [[model]] with provider "${m.provider}"${typeof m.id === "string" ? ` (${m.id})` : ""}`);
+    }
+  }
+  return ignored;
 }
 
 function tomlInline(v: unknown): string {

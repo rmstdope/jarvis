@@ -100,6 +100,21 @@ describe("doctor", () => {
     expect(n2.whisper.status).toBe("warn");
     expect(r2.summary.healthy).toBe(true);
   });
+  test("models-config warns about a [[models]] table and an unknown provider the parser ignores", async () => {
+    const mp = join(home, "models.toml");
+    writeFileSync(mp, 'preference = ["local"]\n\n[[models]]\nprovider = "local"\nid = "qwen3:8b"\n\n[[model]]\nprovider = "ollama"\nid = "gemma4:26b"\n\n[[model]]\nprovider = "local"\nid = "qwen3:14b"\n');
+    const check = (await doctor({ coreOnly: true })).checks.find((c) => c.name === "models-config")!;
+    expect(check.status).toBe("warn");
+    expect(check.detail).toContain(mp);
+    expect(check.detail).toContain("[[models]]");
+    expect(check.detail).toContain('provider "ollama" (gemma4:26b)');
+    expect(check.detail).not.toContain("qwen3:14b");
+    expect(check.fix).toContain("[[model]]");
+    expect(check.fix).toContain("local, copilot or openai-compat");
+    // A file the parser reads in full stays ok.
+    writeFileSync(mp, '[[model]]\nprovider = "local"\nid = "qwen3:14b"\n');
+    expect((await doctor({ coreOnly: true })).checks.find((c) => c.name === "models-config")).toMatchObject({ status: "ok", detail: mp });
+  });
   test("doctor says whether decks can be presented in Slidecraft, with the exact fix", async () => {
     const data = join(t.dir, "content");
     await init({ yes: true, data, author: "tester", preset: "cpu-only-minimal", embedding: "ollama", log: () => {} });
