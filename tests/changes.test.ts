@@ -246,5 +246,16 @@ describe("a failed row never tells a web chat user to run a jarvis command (jv-l
     expect(late.change.error).toBe("Move billing is closed; reopen it first");
     const moved = await run("jarvis_move_task", { task: task.id, initiative: ini.id });
     noCommand(moved.change, moved.text);
+    expect(moved.change.error).toBe("Move billing is closed; reopen it first");
+  });
+  test("a task's row names the initiative it could not find, since the row names the task", async () => {
+    const task = await addTask(t.dir, { title: "Ring the vendor", author: "me" });
+    const made = await run("jarvis_create_task", { title: "Late", initiative: "Budget 2028" });
+    noCommand(made.change, made.text);
+    expect(made.change.error).toBe("no initiative called Budget 2028");
+    const moved = await run("jarvis_move_task", { task: task.id, initiative: "Budget 2028" });
+    expect(moved.change.error).toBe("no initiative called Budget 2028");
+    const intoTask = await run("jarvis_move_task", { task: "Ring the vendor", initiative: task.id });
+    expect(intoTask.change.error).toBe(`${task.id} is a task, not an initiative`);
   });
 });
