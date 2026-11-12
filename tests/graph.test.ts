@@ -209,17 +209,33 @@ describe("entities dedup", () => {
 });
 
 describe("ask", () => {
-  test("grounded answer with citations; canned answer without context; error without model", async () => {
+  test("grounded answer with citations; canned answer without context", async () => {
     const r0 = await ask(t.dir, noRouter, "anything?");
     expect(r0).toEqual({ answer: NO_CONTEXT_ANSWER, model: "none", citations: [] });
     const a = await ingest(t.dir, { source: "note", title: "Zoom", body: "Firmware 11.8 fixes zoom drift.", author: "me" });
-    await expect(ask(t.dir, noRouter, "zoom drift?")).rejects.toThrow(/synthesis/);
     let seen = "";
     const r = await ask(t.dir, fakeRouter((p) => { seen = p; return `Fixed in 11.8 [${a.id}]`; }), "what fixes zoom drift?");
     expect(r.model).toBe("fake:model");
     expect(r.citations[0].docId).toBe(a.id);
     expect(seen).toContain(`[${a.id}] Zoom`);
     expect(seen).toContain("Question: what fixes zoom drift?");
+    expect(r.skipped).toBeUndefined();
+  });
+
+  test("no chat model skips synthesis: the matching items and a fix line naming the models file in use (jv-leu)", async () => {
+    const a = await ingest(t.dir, { source: "note", title: "Zoom", body: "Firmware 11.8 fixes zoom drift.", author: "me" });
+    const prev = process.env.JARVIS_MODELS;
+    process.env.JARVIS_MODELS = join(t.dir, "elsewhere", "models.toml");
+    try {
+      const r = await ask(t.dir, noRouter, "zoom drift?");
+      expect(r.model).toBe("none");
+      expect(r.citations.map((c) => c.docId)).toEqual([a.id]);
+      expect(r.skipped).toContain(join(t.dir, "elsewhere", "models.toml"));
+      expect(r.skipped).not.toContain("~/.jarvis");
+    } finally {
+      if (prev === undefined) delete process.env.JARVIS_MODELS;
+      else process.env.JARVIS_MODELS = prev;
+    }
   });
 });
 
