@@ -42,7 +42,7 @@ export interface ActionContext {
   attachments: Record<string, string>;
   /** The items whose ids the agent saw in this turn's context; an id it picks among several of one kind sharing a title is refused once (jv-6c1). */
   seen?: { docId: string; title: string; source: string }[];
-  /** Titles ("source:title", lower case) the user was asked about in an earlier turn of this conversation: the agent's pick among them stands. */
+  /** Titles ("source:title", lower case) the user was asked about in an earlier turn of this chat session: the agent's pick among them stands for the rest of the session. */
   asked?: ReadonlySet<string>;
   /** Where a refusal records the title it asked about, for `asked` from the next turn on. */
   asking?: Set<string>;
@@ -103,8 +103,11 @@ const resolveRef = (dataDir: string, ref: string, source?: string): string => {
 /**
  * The id the agent passed, unless it picked it from several items of one kind in its context that
  * share a title, and the user has not been asked which yet: retrieval put them all in front of it,
- * so its choice would be a guess the title path refuses (jv-6c1). Refused once per title per
- * conversation, naming each item; after that the agent's pick, made with the user's answer, stands.
+ * so its choice would be a guess the title path refuses (jv-6c1). Refused once per title per chat
+ * session, naming each item, even when the user's words already told them apart (the navigator's
+ * call: one extra question beats guessing at their words); after that every pick among them stands
+ * for the rest of the session, a later vague request or a newly retrieved namesake included.
+ * "Kind" is the item's source, as in `resolveRef`.
  */
 const pickFromContext = (dataDir: string, ref: string, ctx: ActionContext): string => {
   const picked = ctx.seen?.find((s) => s.docId === ref);

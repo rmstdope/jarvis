@@ -524,6 +524,19 @@ describe("the agent acts (jv-oya.4)", () => {
     for (const id of [m1.id, m2.id]) expect(changes[1].error).toContain(`[${id}]`);
     for (const id of [t1.id, t2.id]) expect(changes[2].error).toContain(`[${id}]`);
   });
+  test("a new task linked to a meeting picked among namesakes in context is not created at all (jv-6c1)", async () => {
+    const m1 = await ingest(t.dir, { source: "meeting", title: "Weekly sync", body: "agenda one", author: "me" });
+    await ingest(t.dir, { source: "meeting", title: "Weekly sync", body: "agenda two", author: "me" });
+    const sid = await open("conv-6c1e");
+    const evs = await ndjson(await call("POST", `/api/chat/sessions/${sid}/messages`, { message: `make a task to book the room, linked to the Weekly sync meeting ACT jarvis_create_task {"title":"Book the room","link":["${m1.id}"]}` }));
+    const changes = evs.filter((e) => e.type === "change").map((e) => e.change);
+    expect(changes.map((c) => [c.kind, c.ok])).toEqual([["task.create", false]]);
+    expect(changes[0].error).toContain("ask the user which");
+    const { readdirSync } = await import("node:fs");
+    const titles = readdirSync(join(t.dir, "docs")).map((f) => readDocFile(t.dir, f.replace(/\.md$/, ""))?.frontmatter.title);
+    expect(titles).toContain("Weekly sync"); // the listing reads the docs
+    expect(titles).not.toContain("Book the room");
+  });
   test("an id the agent passes stands when no other item of its kind in context shares its title (jv-6c1)", async () => {
     const meeting = await ingest(t.dir, { source: "meeting", title: "Weekly sync", body: "agenda", author: "me" });
     await addTask(t.dir, { title: "Weekly sync", author: "me" });
