@@ -49,7 +49,7 @@ export function fileProblem(f: { name: string; size: number }): string | null {
   return f.size > MAX_FILE_BYTES ? `${f.name} — larger than 25 MB` : null;
 }
 interface Pending { file: File; problem: string | null }
-interface Msg { role: "user" | "assistant"; text: string; files?: { name: string; size: number }[]; changes?: WebChange[]; steps?: Step[]; sources?: { docId: string; title: string; source?: string }[]; status?: "streaming" | "done" | "stopped" | "failed"; question?: string; cards?: { type: DocRef["type"]; id: string; title: string; kind: string }[] }
+interface Msg { role: "user" | "assistant"; text: string; files?: { name: string; size: number }[]; changes?: WebChange[]; /** Length of `text` when the first change arrived: the card sits there. Absent on replies saved before it existed (card first). */ changesAt?: number; steps?: Step[]; sources?: { docId: string; title: string; source?: string }[]; status?: "streaming" | "done" | "stopped" | "failed"; question?: string; cards?: { type: DocRef["type"]; id: string; title: string; kind: string }[] }
 interface Conv { conversationId?: string; sessionId?: string; scope: Scope; attached?: { id: string; title: string }; messages: Msg[] }
 
 /** "Good morning" before noon, "Good afternoon" until 18:00, "Good evening" after; with the name when known. */
@@ -169,10 +169,14 @@ export function createChat(opts: { navigate: (hash: string) => void; onChange?: 
       parts.push(h("button", { class: "jv-steps-toggle", "aria-expanded": String(open), onClick: () => { if (flippedSteps.has(m)) flippedSteps.delete(m); else flippedSteps.add(m); render(); } }, `${open ? "▾" : "▸"} ${steps.length} ${steps.length === 1 ? "step" : "steps"}`));
       if (open) parts.push(list());
     }
+    const at = m.changes?.length ? Math.min(m.changesAt ?? 0, m.text.length) : 0;
+    const before = m.text.slice(0, at), after = m.text.slice(at);
+    const say = (t: string) => (t.trim() ? h("div", { class: "jv-answer", html: renderMarkdown(t) }) : null);
+    if (m.status !== "failed") parts.push(say(before));
     parts.push(drawCard(m.changes ?? [], String(conv.messages.indexOf(m)), { onUndo: (c) => void undoOne(m, c), onUndoAll: () => void undoEverything(m) }, { me: name, now: now() }));
     if (m.status === "failed") parts.push(h("div", { class: "jv-failed" }, "Something went wrong and I couldn't answer.", h("button", { class: "jv-retry", onClick: () => retry(m) }, "Try again")));
     else {
-      if (m.text) parts.push(h("div", { class: "jv-answer", html: renderMarkdown(m.text) }));
+      if (m.text) parts.push(say(after));
       else if (m.status === "streaming" && !steps.length) parts.push(h("div", { class: "jv-answer muted" }, "…"));
       if (empty) parts.push(h("div", { class: "jv-noanswer" }, "I finished without writing an answer.", h("button", { class: "jv-retry", onClick: () => retry(m) }, "Try again")));
       if (m.status === "stopped") parts.push(h("div", { class: "jv-stopped muted small" }, "Stopped."));
@@ -250,7 +254,7 @@ export function createChat(opts: { navigate: (hash: string) => void; onChange?: 
       if (!r.ok || !r.body) throw new Error("chat failed");
       const decode = ndjsonDecoder((e) => {
         if (e.type === "message") a.text += e.text;
-        else if (e.type === "change") { a.changes!.push(e.change); if (e.change.kind.startsWith("task.")) void tasks.load(name); }
+        else if (e.type === "change") { a.changesAt ??= a.text.length; a.changes!.push(e.change); if (e.change.kind.startsWith("task.")) void tasks.load(name); }
         else if (e.type === "status") {
           const last = a.steps!.at(-1);
           if (last?.text === e.text) return;
