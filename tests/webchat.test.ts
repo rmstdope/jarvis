@@ -4,7 +4,7 @@ import { createChat, ndjsonDecoder, type Chat } from "../web/src/chat.ts";
 
 let env: WebEnv;
 const tasks = (n: number) => Array.from({ length: n }, (_, i) => ({ id: `T${i + 1}`, title: `Task ${i + 1}`, status: "open", owner: "mia" }));
-interface Setup { name?: string; available?: boolean; tasks?: unknown[]; hour?: number; answer?: Handler; undoMs?: number }
+interface Setup { name?: string; available?: boolean; tasks?: unknown[]; hour?: number; answer?: Handler; undoMs?: number; slowMs?: number }
 let nav: string[];
 async function setup(o: Setup = {}): Promise<Chat> {
   env.routes.set("GET /api/me", () => ({ json: o.name === undefined ? {} : { name: o.name } }));
@@ -16,7 +16,7 @@ async function setup(o: Setup = {}): Promise<Chat> {
   env.routes.set("POST /api/chat/sessions/S1/messages", o.answer ?? (() => ({ stream: async (push) => { push({ type: "status", text: "Searching your knowledge for “x”…" }); push({ type: "status", text: "Reading 3 items" }); push({ type: "source", docId: "D1", title: "Doc one", source: "note" }); push({ type: "message", text: "Hello **there**" }); push({ type: "done" }); } })));
   env.routes.set("POST /api/task/T1/done", () => ({ json: {} }));
   env.routes.set("POST /api/task/T1/reopen", () => ({ json: {} }));
-  const chat = createChat({ navigate: (hash) => nav.push(hash), now: () => new Date(2026, 0, 5, o.hour ?? 14, 0, 0), undoMs: o.undoMs ?? 30 });
+  const chat = createChat({ navigate: (hash) => nav.push(hash), now: () => new Date(2026, 0, 5, o.hour ?? 14, 0, 0), undoMs: o.undoMs ?? 30, slowMs: o.slowMs });
   document.body.append(chat.el);
   chat.show();
   await chat.ready;
@@ -698,5 +698,204 @@ describe("attaching files (jv-oya.4)", () => {
     expect((q(".jv-clip") as HTMLButtonElement).disabled).toBe(true);
     drop([file("a.md")]);
     expect(document.querySelector(".jv-file")).toBeNull();
+  });
+});
+
+describe("@ path suggestions", () => {
+  type E = { name: string; dir: boolean };
+  const d = (name: string): E => ({ name, dir: true }), f = (name: string): E => ({ name, dir: false });
+  const TREE: Record<string, E[]> = {
+    "": [d(".git"), d("notes"), d("Zeta"), f("Apple.md"), f("readme.md")],
+    "notes/": [d("oncall"), f("on-call handover checklist.md"), f("plan.md")],
+    "notes/oncall/": [],
+    "~/": [d("Downloads")],
+    "/Users/sam/": [f("a.txt")],
+    "many/": Array.from({ length: 312 }, (_, i) => f(`file${String(i).padStart(3, "0")}.md`)),
+  };
+  const lookups: string[] = [];
+  async function at(opts: Setup & { slow?: number } = {}): Promise<Chat> {
+    lookups.length = 0;
+    env.routes.set("GET /api/chat/paths", async (_b, req) => {
+      const dir = new URL(req.path, "http://x").searchParams.get("dir") ?? "";
+      lookups.push(dir);
+      if (opts.slow) await new Promise((r) => setTimeout(r, opts.slow));
+      return dir in TREE ? { json: { entries: TREE[dir] } } : { status: 404, json: { error: "no" } };
+    });
+    return setup(opts);
+  }
+  /** Type `text` with the caret at its end, as the browser would. */
+  async function typed(text: string): Promise<void> {
+    input().value = text;
+    input().setSelectionRange(text.length, text.length);
+    input().dispatchEvent(new env.win.Event("input", { bubbles: true }) as unknown as Event);
+    await env.tick(20);
+  }
+  const rows = () => qa(".jv-at-row");
+  const names = () => rows().map((r) => r.textContent);
+  const panel = () => { const p = document.querySelector(".jv-at") as HTMLElement | null; return p && !p.hidden ? p : null; };
+
+  test("a bare @ lists the top of the team content: folders first, A-Z, dot names hidden, header and count", async () => {
+    await at();
+    await typed("@");
+    expect(lookups).toEqual([""]);
+    expect(q(".jv-at-dir").textContent).toBe("Team content");
+    expect(q(".jv-at-n").textContent).toBe("4");
+    expect(names()).toEqual(["📁notes/", "📁Zeta/", "📄Apple.md", "📄readme.md"]);
+    expect(rows()[0].classList.contains("jv-on")).toBe(true);
+    expect(q(".jv-at-hint").textContent).toBe("↑↓ to move · Enter or Tab to choose · Esc to close");
+    expect(panel()!.parentElement!.parentElement).toBe(q(".jv-composer-wrap"));
+    expect(panel()!.nextElementSibling).toBe(q(".jv-composer"));
+  });
+  test("an @ inside a word opens nothing", async () => {
+    await at();
+    await typed("mail sam@team.io");
+    expect(panel()).toBeNull();
+    expect(lookups).toEqual([]);
+  });
+  test("typing narrows by prefix ignoring case, with the typed letters bold; a typed dot shows dot names", async () => {
+    await at();
+    await typed("@NO");
+    expect(names()).toEqual(["📁notes/"]);
+    expect(q(".jv-at-row b").textContent).toBe("no");
+    await typed("@.");
+    expect(names()).toEqual(["📁.git/"]);
+  });
+  test("a folder is entered with Enter, Tab or a click, stays open and shows the folder's entries", async () => {
+    await at();
+    await typed("@no");
+    key(input(), "Enter");
+    await env.tick(20);
+    expect(input().value).toBe("@notes/");
+    expect(lookups).toEqual(["", "notes/"]);
+    expect(q(".jv-at-dir").textContent).toBe("notes/");
+    expect(names()).toEqual(["📁oncall/", "📄on-call handover checklist.md", "📄plan.md"]);
+    key(input(), "Tab");
+    await env.tick(20);
+    expect(input().value).toBe("@notes/oncall/");
+    expect(q(".jv-at-row").textContent).toBe("Empty folder");
+    await typed("@notes/");
+    rows()[0].dispatchEvent(new env.win.MouseEvent("mousedown", { bubbles: true, cancelable: true }) as unknown as Event);
+    rows()[0].click();
+    await env.tick(20);
+    expect(input().value).toBe("@notes/oncall/");
+  });
+  test("a file inserts its path with escaped spaces and a trailing space, and closes; the rest of the text is untouched", async () => {
+    await at();
+    await typed("see @notes/on-");
+    expect(names()).toEqual(["📄on-call handover checklist.md"]);
+    key(input(), "Enter");
+    await env.tick(20);
+    expect(input().value).toBe("see @notes/on-call\\ handover\\ checklist.md ");
+    expect(panel()).toBeNull();
+    expect(nav).toEqual([]);
+    expect(env.calls.some((c) => c.path.includes("/messages"))).toBe(false);
+  });
+  test("↑/↓ move the highlight (and stop at the ends), Esc closes and leaves the text", async () => {
+    await at();
+    await typed("@");
+    key(input(), "ArrowDown"); key(input(), "ArrowDown");
+    expect(rows().findIndex((r) => r.classList.contains("jv-on"))).toBe(2);
+    for (let i = 0; i < 9; i++) key(input(), "ArrowDown");
+    expect(rows().findIndex((r) => r.classList.contains("jv-on"))).toBe(3);
+    key(input(), "ArrowUp");
+    expect(rows().findIndex((r) => r.classList.contains("jv-on"))).toBe(2);
+    key(input(), "Escape");
+    expect(panel()).toBeNull();
+    expect(input().value).toBe("@");
+    expect(document.activeElement).toBe(input());
+  });
+  test("while the list is open Enter never sends; with it closed Enter sends the @path as plain text", async () => {
+    await at();
+    await typed("@no");
+    key(input(), "Enter");
+    await env.tick(20);
+    expect(env.calls.some((c) => c.path.includes("/messages"))).toBe(false);
+    key(input(), "Escape");
+    input().value = "look at @notes/plan.md";
+    key(input(), "Enter");
+    await env.tick(60);
+    expect(q(".jv-user").textContent).toBe("look at @notes/plan.md");
+    expect(env.calls.find((c) => c.path.endsWith("/messages"))!.body).toEqual({ message: "look at @notes/plan.md" });
+  });
+  test("a space, a click outside, closes it; moving the caret back into the path opens it again", async () => {
+    await at();
+    await typed("@notes/");
+    expect(panel()).not.toBeNull();
+    await typed("@notes/ ");
+    expect(panel()).toBeNull();
+    await typed("@notes/");
+    document.body.dispatchEvent(new env.win.MouseEvent("mousedown", { bubbles: true }) as unknown as Event);
+    expect(panel()).toBeNull();
+    expect(input().value).toBe("@notes/");
+    input().setSelectionRange(3, 3);
+    input().dispatchEvent(new env.win.KeyboardEvent("keyup", { key: "ArrowLeft", bubbles: true }) as unknown as Event);
+    await env.tick(20);
+    expect(panel()).not.toBeNull();
+    expect(q(".jv-at-dir").textContent).toBe("Team content");
+    expect(names()).toEqual(["📁notes/"]);
+  });
+  test("/ and ~/ paths list from the top of the computer and the home folder", async () => {
+    await at();
+    await typed("@/Users/sam/");
+    expect(q(".jv-at-dir").textContent).toBe("/Users/sam/");
+    expect(names()).toEqual(["📄a.txt"]);
+    await typed("@~/");
+    expect(lookups.at(-1)).toBe("~/");
+    expect(q(".jv-at-dir").textContent).toBe("~/");
+    key(input(), "Enter");
+    await env.tick(20);
+    expect(input().value).toBe("@~/Downloads/");
+  });
+  test("nothing matches, empty folder and a folder that can't be opened are single rows; the text stays sendable", async () => {
+    await at();
+    await typed("@zzz");
+    expect(names()).toEqual(["No matches"]);
+    expect(q(".jv-at-row").classList.contains("jv-at-dim")).toBe(true);
+    expect(q(".jv-at-n")).toBeNull();
+    await typed("@notes/oncall/");
+    expect(names()).toEqual(["Empty folder"]);
+    await typed("@nope/");
+    expect(names()).toEqual(["Can't open this folder"]);
+    expect(q(".jv-at-row").classList.contains("jv-bad")).toBe(true);
+    key(input(), "Enter");
+    await env.tick(60);
+    expect(q(".jv-user").textContent).toBe("@nope/");
+  });
+  test("a slow folder shows Looking… only after a moment", async () => {
+    await at({ slow: 120, slowMs: 40 });
+    await typed("@");
+    expect(panel()).toBeNull(); // fast enough lookups never flicker: nothing before the threshold
+    await env.tick(80);
+    expect(names()).toEqual(["Looking…"]);
+    await env.tick(200);
+    expect(names()[0]).toBe("📁notes/");
+  });
+  test("a big folder shows the count and every row (the list scrolls), long names are cut in the middle", async () => {
+    await at();
+    await typed("@many/");
+    expect(q(".jv-at-n").textContent).toBe("312");
+    expect(rows().length).toBe(312);
+    document.body.innerHTML = "";
+    TREE["long/"] = [f("2026-03-14 quarterly planning meeting with the whole team.md")];
+    await at();
+    await typed("@long/");
+    const row = q(".jv-at-row .jv-at-name");
+    expect(row.textContent).toContain("…");
+    expect(row.textContent!.endsWith("team.md")).toBe(true);
+    expect(row.title).toBe("2026-03-14 quarterly planning meeting with the whole team.md");
+  });
+  test("no agent: the box is disabled and @ does nothing", async () => {
+    await at({ available: false });
+    expect(input().disabled).toBe(true);
+    await typed("@");
+    expect(panel()).toBeNull();
+    expect(lookups).toEqual([]);
+  });
+  test("nothing persists: a fresh chat starts with no panel", async () => {
+    await at();
+    await typed("@");
+    document.body.innerHTML = "";
+    await at();
+    expect(panel()).toBeNull();
   });
 });
