@@ -10,9 +10,10 @@ import { resolveAuthor } from "../core/config.ts";
 import { LINK_RELATIONS, link } from "../core/links.ts";
 import { withDb } from "../core/db.ts";
 import { readDocFile } from "../core/docs.ts";
+import { requireInitiative } from "../core/initiativeRef.ts";
 import { readSidecar, type EdgeLine } from "../core/sidecar.ts";
 import { ingest, type CapturePayload } from "../core/ingest.ts";
-import { addInitiative, moveTask } from "../core/initiatives.ts";
+import { addInitiative, editInitiative, moveTask } from "../core/initiatives.ts";
 import { SLUG_RE, sharePresentation } from "../core/presentations.ts";
 import { addTask, setTaskStatus, updateTask } from "../core/tasks.ts";
 import type { Relation } from "../core/constants.ts";
@@ -30,6 +31,7 @@ export const TOOLS: { name: string; description: string; properties: Record<stri
   { name: "jarvis_set_task_status", description: "Mark a task done or reopen it.", properties: { task: { type: "string" }, status: { enum: ["done", "open"] } }, required: ["task", "status"] },
   { name: "jarvis_move_task", description: "Put a task in an initiative, or take it out (omit initiative).", properties: { task: { type: "string" }, initiative: { type: "string" } }, required: ["task"] },
   { name: "jarvis_create_initiative", description: "Create an initiative: long-running work made of several tasks. A goal (what done looks like) is required.", properties: { title: { type: "string" }, goal: { type: "string" }, owner: { type: "string" } }, required: ["title", "goal"] },
+  { name: "jarvis_edit_initiative", description: "Change an existing initiative's title, goal (what done looks like) and/or owner.", properties: { initiative: { type: "string" }, title: { type: "string" }, goal: { type: "string" }, owner: { type: "string" } }, required: ["initiative"] },
   { name: "jarvis_link", description: `Link two items. relation is one of ${LINK_RELATIONS.join(", ")}.`, properties: { src: { type: "string" }, dst: { type: "string" }, relation: { type: "string" } }, required: ["src", "dst"] },
   { name: "jarvis_draft_briefing", description: "Draft a briefing (MDX body; never published or approved). sources = ids of the items it draws on.", properties: { title: { type: "string" }, body: { type: "string" }, sources: { type: "array", items: { type: "string" } } }, required: ["title"] },
   { name: "jarvis_draft_presentation", description: "Draft a presentation as an MDX deck containing <Presentation> (never published). sources = ids it draws on.", properties: { title: { type: "string" }, mdx: { type: "string" }, sources: { type: "array", items: { type: "string" } } }, required: ["title", "mdx"] },
@@ -127,12 +129,12 @@ const slugify = (s: string): string => s.toLowerCase().normalize("NFKD").replace
 /** Verb after "Couldn't" for a failed row. */
 const VERBS: Record<string, string> = {
   jarvis_capture_note: "capture note", jarvis_capture_link: "capture link", jarvis_capture_file: "capture file", jarvis_create_task: "create task",
-  jarvis_update_task: "change task", jarvis_set_task_status: "update task", jarvis_move_task: "move task", jarvis_create_initiative: "create initiative",
+  jarvis_update_task: "change task", jarvis_set_task_status: "update task", jarvis_move_task: "move task", jarvis_create_initiative: "create initiative", jarvis_edit_initiative: "change initiative",
   jarvis_link: "link", jarvis_draft_briefing: "draft briefing", jarvis_draft_presentation: "draft presentation",
 };
 const KIND_OF_TOOL: Record<string, ChangeKind> = {
   jarvis_capture_note: "capture.note", jarvis_capture_link: "capture.link", jarvis_capture_file: "capture.file", jarvis_create_task: "task.create",
-  jarvis_update_task: "task.due", jarvis_set_task_status: "task.done", jarvis_move_task: "task.move", jarvis_create_initiative: "initiative.create",
+  jarvis_update_task: "task.due", jarvis_set_task_status: "task.done", jarvis_move_task: "task.move", jarvis_create_initiative: "initiative.create", jarvis_edit_initiative: "initiative.title",
   jarvis_link: "link", jarvis_draft_briefing: "draft.briefing", jarvis_draft_presentation: "draft.presentation",
 };
 
@@ -217,6 +219,25 @@ async function perform(tool: string, a: Record<string, unknown>, ctx: ActionCont
       const value = await addInitiative(d, { title: need(a, "title"), goal: need(a, "goal"), owner: str(a, "owner"), author });
       return { kind: "initiative.create", items: [item(d, value.id)], ops: docOp(d, value.id) };
     }
+    case "jarvis_edit_initiative": {
+      const id = refOf(ctx, need(a, "initiative"), "initiative");
+      const read = () => { const { doc, block } = requireInitiative(d, id); return { title: doc.frontmatter.title, goal: doc.body.trim(), owner: block.owner }; };
+      const before = read();
+      const edit = { title: str(a, "title"), goal: str(a, "goal"), owner: str(a, "owner") };
+      if (Object.values(edit).every((v) => v === undefined)) throw new Error("nothing to change");
+      await editInitiative(d, id, { ...edit, author });
+      const after = read();
+      const rows: Done[] = (["title", "goal", "owner"] as const)
+        .filter((field) => before[field] !== after[field])
+        .map((field) => ({
+          kind: `initiative.${field}` as ChangeKind,
+          items: [item(d, id)],
+          detail: field === "goal" ? undefined : { from: field === "owner" ? you(before.owner, author) : before.title, to: field === "owner" ? you(after.owner, author) : after.title },
+          ops: [{ op: "initiative", id, field, before: before[field], after: after[field] }],
+        }));
+      if (!rows.length) throw new Error("nothing to change");
+      return { ...rows[0], also: rows.slice(1) };
+    }
     case "jarvis_link": {
       const src = refOf(ctx, need(a, "src")), dst = refOf(ctx, need(a, "dst"));
       const relation = (str(a, "relation") ?? "related") as Relation;
@@ -270,7 +291,7 @@ export async function runTool(log: ChangeLog, turn: string, tool: string, args: 
     return { change, more, text: `Done: ${[done, ...(done.also ?? [])].map(said).join("; ")}` };
   } catch (e) {
     const error = (e as Error).message.replace(/\.$/, "");
-    const subject = str(args, "title") ?? str(args, "task") ?? str(args, "src") ?? str(args, "attachment");
+    const subject = (tool === "jarvis_edit_initiative" ? str(args, "initiative") : str(args, "title")) ?? str(args, "task") ?? str(args, "src") ?? str(args, "attachment");
     const title = subject && /^[0-9A-Z]{26}$/.test(subject) ? titleOf(ctx.dataDir, subject) : subject;
     const change = log.record({ turn, kind: KIND_OF_TOOL[tool], ok: false, items: title ? [{ id: subject ?? "", title, kind: "doc" }] : [], error, verb: VERBS[tool] }, []);
     return { change, more: [], text: `Failed: could not ${VERBS[tool]} — ${error}.` };

@@ -53,6 +53,9 @@ export function sentence(c: WebChange, opts: { me?: string; now?: Date; plain?: 
   switch (c.kind) {
     case "task.create": return ["Created task ", t(0)];
     case "initiative.create": return ["Created initiative ", t(0)];
+    case "initiative.title": return ["Changed initiative ", t(0), `: title ${who(d.from)} → ${who(d.to)}`];
+    case "initiative.owner": return ["Changed initiative ", t(0), `: owner ${who(d.from)} → ${who(d.to)}`];
+    case "initiative.goal": return ["Changed initiative ", t(0), ": goal changed"];
     case "task.done": return ["Marked task ", t(0), " done"];
     case "task.reopen": return ["Reopened task ", t(0)];
     case "task.due": return ["Changed task ", t(0), `: due ${shortDate(d.from, opts.now)} → ${shortDate(d.to, opts.now)}`];

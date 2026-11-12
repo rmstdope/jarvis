@@ -10,6 +10,8 @@ import type { TaskBlock } from "../core/frontmatter.ts";
 import { openDb } from "../core/db.ts";
 import { readDocFile } from "../core/docs.ts";
 import { unlink } from "../core/links.ts";
+import { requireInitiative } from "../core/initiativeRef.ts";
+import { editInitiative } from "../core/initiatives.ts";
 import { reindex } from "../core/reindex.ts";
 import { readSidecar } from "../core/sidecar.ts";
 import { restoreTaskBlock } from "../core/tasks.ts";
@@ -19,7 +21,7 @@ import type { Relation } from "../core/constants.ts";
 export type ChangeKind =
   | "capture.note" | "capture.link" | "capture.file" | "capture.meeting"
   | "task.create" | "task.done" | "task.reopen" | "task.due" | "task.owner" | "task.move"
-  | "initiative.create" | "link" | "draft.briefing" | "draft.presentation";
+  | "initiative.create" | "initiative.title" | "initiative.goal" | "initiative.owner" | "link" | "draft.briefing" | "draft.presentation";
 
 /** An item a change row names; `kind` decides where its title links to. */
 export interface ChangeItem { id: string; title: string; kind: "doc" | "task" | "initiative" | "briefing" | "presentation" }
@@ -47,6 +49,7 @@ export interface Change {
 export type Op =
   | { op: "created"; files: string[]; docs: { id: string; fp: string }[]; raw: Record<string, string> }
   | { op: "task"; id: string; before: TaskBlock; after: TaskBlock }
+  | { op: "initiative"; id: string; field: "title" | "goal" | "owner"; before: string; after: string }
   | { op: "edge"; src: string; dst: string; relation: Relation };
 interface Stored extends Change { ops: Op[] }
 
@@ -61,6 +64,15 @@ export class UndoConflict extends Error {
 function fingerprint(dataDir: string, id: string): string | null {
   const d = readDocFile(dataDir, id);
   return d ? sha256(JSON.stringify([d.frontmatter.title, d.body, d.frontmatter.task ?? null, d.frontmatter.initiative ?? null])) : null;
+}
+/** The current value of one editable field of an initiative, or null when it is gone. */
+function initiativeField(dataDir: string, id: string, field: "title" | "goal" | "owner"): string | null {
+  try {
+    const { doc, block } = requireInitiative(dataDir, id);
+    return field === "title" ? doc.frontmatter.title : field === "goal" ? doc.body.trim() : block.owner;
+  } catch {
+    return null;
+  }
 }
 const rawHash = (dataDir: string, rel: string): string | null => (existsSync(join(dataDir, rel)) ? sha256(readFileSync(join(dataDir, rel))) : null);
 const sameJson = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
@@ -162,11 +174,16 @@ export class ChangeLog {
       return true;
     }
     if (op.op === "task") return sameJson(readDocFile(d, op.id)?.frontmatter.task, op.after);
+    if (op.op === "initiative") return initiativeField(d, op.id, op.field) === op.after;
     return readSidecar(d, op.src).some((l) => l.kind === "edge" && l.dst === op.dst && l.relation === op.relation && l.created_by === "manual");
   }
   private async revert(op: Op): Promise<void> {
     const d = this.dataDir;
     if (op.op === "task") return restoreTaskBlock(d, op.id, op.before);
+    if (op.op === "initiative") {
+      await editInitiative(d, op.id, { [op.field]: op.before });
+      return;
+    }
     if (op.op === "edge") {
       unlink(d, op.src, op.dst, op.relation);
       return;

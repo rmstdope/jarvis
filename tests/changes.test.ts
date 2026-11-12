@@ -114,6 +114,37 @@ describe("change log (jv-oya.4)", () => {
     await log.undo(mv.id);
     expect(readDocFile(t.dir, other.items[0].id)!.frontmatter.task!.initiative).toBeUndefined();
   });
+  test("editing an initiative's title, goal and owner is one row per field and each undoes (jv-smd.1)", async () => {
+    const ini = (await run("jarvis_create_initiative", { title: "Rollout", goal: "old goal", owner: "me" })).change;
+    const id = ini.items[0].id;
+    const r = await runAny("jarvis_edit_initiative", { initiative: "Rollout", title: "Rollout 2", goal: "new goal", owner: "sam" });
+    const rows = [r.change!, ...r.more];
+    expect(rows.map((c) => [c.kind, c.ok, c.undoable])).toEqual([["initiative.title", true, true], ["initiative.goal", true, true], ["initiative.owner", true, true]]);
+    expect(rows[0]).toMatchObject({ detail: { from: "Rollout", to: "Rollout 2" }, items: [{ id, kind: "initiative" }] });
+    expect(rows[2]).toMatchObject({ detail: { from: "me", to: "sam" } });
+    const doc = readDocFile(t.dir, id)!;
+    expect([doc.frontmatter.title, doc.body.trim(), doc.frontmatter.initiative!.owner]).toEqual(["Rollout 2", "new goal", "sam"]);
+    await log.undo(rows[1].id);
+    expect(readDocFile(t.dir, id)!.body.trim()).toBe("old goal");
+    await log.undo(rows[0].id); await log.undo(rows[2].id);
+    const back = readDocFile(t.dir, id)!;
+    expect([back.frontmatter.title, back.body.trim(), back.frontmatter.initiative!.owner]).toEqual(["Rollout", "old goal", "me"]);
+  });
+  test("undoing an initiative edit is refused once the field changed again; nothing to change fails as a row", async () => {
+    const id = (await run("jarvis_create_initiative", { title: "Rollout", goal: "g", owner: "me" })).change.items[0].id;
+    const edit = (await run("jarvis_edit_initiative", { initiative: id, goal: "g2" })).change;
+    await run("jarvis_edit_initiative", { initiative: id, goal: "g3" });
+    await expect(log.undo(edit.id)).rejects.toBeInstanceOf(UndoConflict);
+    expect(readDocFile(t.dir, id)!.body.trim()).toBe("g3");
+    const same = await runAny("jarvis_edit_initiative", { initiative: id, goal: "g3" });
+    expect(same.change).toMatchObject({ ok: false, undoable: false, verb: "change initiative", error: "nothing to change" });
+    const empty = await runAny("jarvis_edit_initiative", { initiative: id, goal: " " });
+    expect(empty.change).toMatchObject({ ok: false, error: "nothing to change" });
+    const missing = await runAny("jarvis_edit_initiative", { initiative: "nope", goal: "x" });
+    expect(missing.change).toMatchObject({ ok: false, items: [{ title: "nope" }] });
+    const renamed = await runAny("jarvis_edit_initiative", { initiative: "nope", title: "Brand new name" });
+    expect(renamed.change).toMatchObject({ ok: false, items: [{ title: "nope" }] });
+  });
   test("draft briefing and draft presentation carry a preview and undo", async () => {
     const b = (await run("jarvis_draft_briefing", { title: "Status", body: "## Where we are\n\nok\n\n## Risks\n\nnone\n", sources: ["a", "b"] })).change;
     expect(b).toMatchObject({ kind: "draft.briefing", draft: { kind: "briefing", sections: ["Where we are", "Risks"], sources: 2 } });
