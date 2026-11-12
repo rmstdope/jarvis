@@ -80,9 +80,9 @@ export function parseModelsToml(text: string): { preference: ProviderName[]; mod
 }
 
 /**
- * What {@link parseModelsToml} skips for a misspelling, each named as a person would find it in the file:
- * a `[[models]]` table (the parser reads `[[model]]`) and every `[[model]]` whose provider is not one of
- * {@link PROVIDER_NAMES}. Empty when the file is read in full; malformed TOML is the parser's to report.
+ * Two misspellings {@link parseModelsToml} skips, each named as a person would find it in the file:
+ * a `models` table or key (the parser reads `[[model]]`) and every `[[model]]` whose provider is not one of
+ * {@link PROVIDER_NAMES}. Empty when neither occurs; malformed TOML is the parser's to report.
  */
 export function ignoredModelsEntries(text: string): string[] {
   let t: { models?: unknown; model?: unknown };
@@ -92,7 +92,7 @@ export function ignoredModelsEntries(text: string): string[] {
     return [];
   }
   const ignored: string[] = [];
-  if (t.models !== undefined) ignored.push("the [[models]] table");
+  if (t.models !== undefined) ignored.push(Array.isArray(t.models) ? "the [[models]] table" : "the models key");
   for (const m of Array.isArray(t.model) ? (t.model as Record<string, unknown>[]) : []) {
     if (m && typeof m.provider === "string" && !PROVIDER_NAMES.includes(m.provider as ProviderName)) {
       ignored.push(`the [[model]] with provider "${m.provider}"${typeof m.id === "string" ? ` (${m.id})` : ""}`);
