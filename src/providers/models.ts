@@ -61,8 +61,9 @@ function keyState(v: unknown): "ok" | "missing" | "bad" {
 }
 
 /**
- * Parse models.toml. Entries whose provider/id is missing, empty or not a string, and a single `[model]` table, are dropped; `jarvis doctor`
- * names them and misspelt ones ({@link ignoredModelsEntries}). Throws on malformed TOML ({@link modelsTomlError}).
+ * Parse models.toml. Entries whose provider/id is missing, empty or not a string, and a single `[model]` table,
+ * are dropped; `jarvis doctor` names them and misspelt ones ({@link ignoredModelsEntries}). Throws on malformed
+ * TOML ({@link modelsTomlError}).
  */
 export function parseModelsToml(text: string): { preference: ProviderName[]; models: ModelEntry[] } {
   const t = Bun.TOML.parse(text) as { preference?: unknown; model?: Record<string, unknown>[] };
@@ -106,8 +107,7 @@ export function modelsTomlError(text: string): string | null {
  * a `models` table or key and a single `[model]` table (the parser reads `[[model]]`), every `[[model]]`
  * whose provider is not one of {@link PROVIDER_NAMES}, and every `[[model]]` whose provider or id is missing, or
  * present but empty or not a string, each said as such (named by the key it does have, or by its 1-based position
- * when it has neither). Empty when none occurs; malformed
- * TOML is {@link modelsTomlError}'s to report.
+ * when it has neither). Empty when none occurs; malformed TOML is {@link modelsTomlError}'s to report.
  */
 export function ignoredModelsEntries(text: string): string[] {
   let t: { models?: unknown; model?: unknown };
@@ -127,7 +127,13 @@ export function ignoredModelsEntries(text: string): string[] {
     const wrong = (key: string, state: "missing" | "bad"): string => (state === "missing" ? `missing ${key}` : `whose ${key} is empty or not a string`);
     if (provider !== "ok" && id !== "ok") {
       const both =
-        provider === id ? (provider === "missing" ? "missing provider and id" : "whose provider and id are empty or not strings") : `${wrong("provider", provider)} and ${wrong("id", id)}`;
+        provider === id
+          ? provider === "missing"
+            ? "missing provider and id"
+            : "whose provider and id are empty or not strings"
+          : provider === "missing"
+            ? "missing provider, with an id that is empty or not a string"
+            : "missing id, with a provider that is empty or not a string";
       ignored.push(`the [[model]] #${i + 1} ${both}`);
     } else if (provider !== "ok") ignored.push(`the [[model]] with id "${m.id}" ${wrong("provider", provider)}`);
     else if (!PROVIDER_NAMES.includes(m.provider as ProviderName)) ignored.push(`the [[model]] with provider "${m.provider}"${id === "ok" ? ` (${m.id})` : ` ${wrong("id", id)}`}`);

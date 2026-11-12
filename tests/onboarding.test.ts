@@ -129,7 +129,7 @@ describe("doctor", () => {
   });
   test("models-config names a [[model]] whose provider or id is empty or not a string, not as missing (jv-cdi)", async () => {
     const mp = join(home, "models.toml");
-    writeFileSync(mp, '[[model]]\nprovider = 1\nid = "gemma4:26b"\n\n[[model]]\nprovider = ""\nid = "qwen3:8b"\n\n[[model]]\nprovider = "local"\nid = ""\n\n[[model]]\nprovider = "copilot"\nid = 7\n\n[[model]]\nprovider = 1\nid = ""\n\n[[model]]\nid = 2\n\n[[model]]\nprovider = "local"\nid = "qwen3:14b"\n');
+    writeFileSync(mp, '[[model]]\nprovider = 1\nid = "gemma4:26b"\n\n[[model]]\nprovider = ""\nid = "qwen3:8b"\n\n[[model]]\nprovider = "local"\nid = ""\n\n[[model]]\nprovider = "copilot"\nid = 7\n\n[[model]]\nprovider = 1\nid = ""\n\n[[model]]\nid = 2\n\n[[model]]\nprovider = ""\n\n[[model]]\nprovider = "bogus"\nid = ""\n\n[[model]]\nprovider = "local"\nid = "qwen3:14b"\n');
     const check = (await doctor({ coreOnly: true })).checks.find((c) => c.name === "models-config")!;
     expect(check.status).toBe("warn");
     expect(check.detail).toContain('the [[model]] with id "gemma4:26b" whose provider is empty or not a string');
@@ -137,7 +137,9 @@ describe("doctor", () => {
     expect(check.detail).toContain('the [[model]] with provider "local" whose id is empty or not a string');
     expect(check.detail).toContain('the [[model]] with provider "copilot" whose id is empty or not a string');
     expect(check.detail).toContain("the [[model]] #5 whose provider and id are empty or not strings");
-    expect(check.detail).toContain("the [[model]] #6 missing provider and whose id is empty or not a string");
+    expect(check.detail).toContain("the [[model]] #6 missing provider, with an id that is empty or not a string");
+    expect(check.detail).toContain("the [[model]] #7 missing id, with a provider that is empty or not a string");
+    expect(check.detail).toContain('the [[model]] with provider "bogus" whose id is empty or not a string');
     expect(check.detail).not.toContain('provider ""');
     expect(check.detail).not.toContain("qwen3:14b");
   });
