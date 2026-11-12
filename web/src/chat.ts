@@ -6,6 +6,7 @@ import { docRefFor, tabKey, type DocRef } from "./tabs.ts";
 import { kindLabel } from "./transcript.ts";
 import { drawCard, keptCount, type WebChange } from "./changes.ts";
 import { h, modal, toast } from "./ui.ts";
+import { escapePath, findMention, headerFor, middleCut, narrow, splitPath, type DirEntry } from "./atpath.ts";
 import { renderMarkdown } from "../../src/briefings/markdown.ts";
 
 export interface Scope { type: "jarvis" | "item" | "briefing" | "initiative"; ids: string[]; }
@@ -76,7 +77,7 @@ export interface Chat {
 }
 
 /** Build the chat view. `navigate` changes the hash; `onChange` fires when the conversation changes. */
-export function createChat(opts: { navigate: (hash: string) => void; onChange?: () => void; openQuietly?: (ref: DocRef, title: string, kind: string) => void; showDoc?: (ref: DocRef, title: string, kind: string) => void; shownKey?: () => string | null; now?: () => Date; undoMs?: number }): Chat {
+export function createChat(opts: { navigate: (hash: string) => void; onChange?: () => void; openQuietly?: (ref: DocRef, title: string, kind: string) => void; showDoc?: (ref: DocRef, title: string, kind: string) => void; shownKey?: () => string | null; now?: () => Date; undoMs?: number; slowMs?: number }): Chat {
   const now = opts.now ?? (() => new Date());
   const newId = (): string => `c${Date.now().toString(36)}${Math.random().toString(36).slice(2, 10)}`;
   let conv = restore();
@@ -125,8 +126,106 @@ export function createChat(opts: { navigate: (hash: string) => void; onChange?: 
   }
   input.addEventListener("keydown", (e) => {
     const k = e as KeyboardEvent;
+    if (mentionKey(k)) return;
     if (k.key === "Enter" && !k.shiftKey && !k.isComposing) { k.preventDefault(); void send(input.value); }
   });
+
+  // ---- @ path suggestions ----
+  const slowMs = opts.slowMs ?? 150;
+  const AT_NAME_MAX = 36;
+  const atPanel = h("div", { class: "jv-at", role: "listbox", hidden: "" });
+  const atAnchor = h("div", { class: "jv-at-anchor" });
+  composer.replaceWith(atAnchor);
+  atAnchor.append(atPanel, composer);
+  type Listing = { entries: DirEntry[] } | "error";
+  const listings = new Map<string, Listing>();
+  let atDir: string | null = null, atPrefix = "", atShown: Listing | "loading" | null = null, atHi = 0, atOpen = false, atDismissed = false, atReq = 0;
+  let atSlow: ReturnType<typeof setTimeout> | undefined;
+  const atRows = (): DirEntry[] => (atShown && atShown !== "loading" && atShown !== "error" ? narrow(atShown.entries, atPrefix) : []);
+  function atClose(dismiss: boolean): void {
+    atDismissed = dismiss; atOpen = false; atDir = null; atShown = null; atReq++; clearTimeout(atSlow);
+    listings.clear(); atPanel.hidden = true; atPanel.replaceChildren(); input.removeAttribute("aria-expanded");
+  }
+  /** Look at the caret: open, narrow or close the suggestions for the @path it is in. */
+  function atEvaluate(): void {
+    const m = available === false || atDismissed ? null : findMention(input.value, input.selectionStart ?? input.value.length);
+    if (!m) { if (atOpen || atDir !== null) atClose(atDismissed); return; }
+    const { dir, prefix } = splitPath(m.raw);
+    if (dir === atDir && prefix === atPrefix) return;
+    const dirChanged = dir !== atDir;
+    atPrefix = prefix; atHi = 0;
+    if (!dirChanged) { if (atShown !== "loading") atDraw(); return; }
+    atDir = dir;
+    const have = listings.get(dir);
+    if (have) { atShown = have; atDraw(); return; }
+    const mine = ++atReq;
+    clearTimeout(atSlow);
+    atShown = "loading"; // the previous folder's rows can no longer be chosen; the panel says so only after slowMs
+    atSlow = setTimeout(() => { if (mine === atReq) atDraw(); }, slowMs);
+    api.chatPaths(dir).then((r) => r, () => "error" as const).then((r) => {
+      if (mine !== atReq) return;
+      clearTimeout(atSlow);
+      const l: Listing = r === "error" ? "error" : { entries: r.entries };
+      listings.set(dir, l); atShown = l; atDraw();
+    });
+  }
+  function atDraw(): void {
+    if (atShown === null) return;
+    atOpen = true; atPanel.hidden = false; input.setAttribute("aria-expanded", "true");
+    const rows = atRows();
+    const single = (text: string, cls: string) => [h("div", { class: `jv-at-row ${cls}`, role: "option" }, text)];
+    const body = atShown === "loading" ? single("Looking…", "jv-at-dim") : atShown === "error" ? single("Can't open this folder", "jv-bad")
+      : rows.length ? rows.map((e, i) => {
+        const full = e.name + (e.dir ? "/" : ""), shown = middleCut(full, AT_NAME_MAX), n = atPrefix.length;
+        const cutAt = shown === full ? -1 : shown.indexOf("…"), m = cutAt >= 0 ? Math.min(n, cutAt) : n;
+        const bold = m > 0 && shown.slice(0, m).toLowerCase() === atPrefix.slice(0, m).toLowerCase();
+        const row = h("div", { class: `jv-at-row${i === atHi ? " jv-on" : ""}`, role: "option", "aria-selected": String(i === atHi), onMousedown: (ev: Event) => ev.preventDefault(), onClick: () => { atHi = i; atChoose(); } },
+          h("span", { class: "jv-at-i" }, e.dir ? "📁" : "📄"), h("span", { class: "jv-at-name", title: full }, bold ? h("b", {}, shown.slice(0, m)) : null, bold ? shown.slice(m) : shown));
+        return row;
+      }) : single(atShown.entries.length === 0 ? "Empty folder" : "No matches", "jv-at-dim");
+    atPanel.replaceChildren(
+      h("div", { class: "jv-at-h" }, h("span", { class: "jv-at-dir" }, headerFor(atDir ?? "")), rows.length ? h("span", { class: "jv-at-n" }, String(rows.length)) : null),
+      h("div", { class: "jv-at-list" }, ...body),
+      h("div", { class: "jv-at-hint" }, "↑↓ to move · Enter or Tab to choose · Esc to close"));
+    (atPanel.querySelector(".jv-on") as HTMLElement | null)?.scrollIntoView?.({ block: "nearest" });
+  }
+  /** Put the highlighted entry into the message: a folder continues into it, a file ends the mention. */
+  function atChoose(): void {
+    const e = atRows()[atHi], m = findMention(input.value, input.selectionStart ?? input.value.length);
+    if (!e || !m) return;
+    const rawDir = m.raw.slice(0, m.raw.lastIndexOf("/") + 1);
+    const text = input.value, spaceAfter = e.dir ? false : /\s/.test(text[m.end] ?? "");
+    const insert = rawDir + escapePath(e.name) + (e.dir ? "/" : spaceAfter ? "" : " ");
+    input.value = text.slice(0, m.start + 1) + insert + text.slice(m.end);
+    const caret = m.start + 1 + insert.length + (spaceAfter ? 1 : 0);
+    input.setSelectionRange(caret, caret);
+    input.focus();
+    atDir = null; atPrefix = "";
+    if (e.dir) atEvaluate(); else atClose(false);
+  }
+  /** Keys the open suggestion list owns; true when handled (so Enter never sends). */
+  function mentionKey(k: KeyboardEvent): boolean {
+    if (!atOpen || k.isComposing) return false;
+    const rows = atRows();
+    if (k.key === "Escape") { k.preventDefault(); k.stopPropagation(); atClose(true); return true; }
+    if (k.key === "ArrowDown" || k.key === "ArrowUp") {
+      k.preventDefault();
+      if (rows.length) { atHi = Math.max(0, Math.min(rows.length - 1, atHi + (k.key === "ArrowDown" ? 1 : -1))); atDraw(); }
+      return true;
+    }
+    if (k.key === "Enter" || k.key === "Tab") {
+      if (k.key === "Enter" && k.shiftKey) return false;
+      if (!rows.length && k.key === "Tab") return false; // nothing to choose: Tab moves on as usual
+      k.preventDefault(); // Enter never sends while the list is open
+      if (rows.length) atChoose();
+      return true;
+    }
+    return false;
+  }
+  input.addEventListener("input", () => { atDismissed = false; atEvaluate(); });
+  input.addEventListener("click", () => { atDismissed = false; atEvaluate(); });
+  input.addEventListener("keyup", (e) => { if (["ArrowLeft", "ArrowRight", "Home", "End", "ArrowUp", "ArrowDown"].includes((e as KeyboardEvent).key)) { atDismissed = false; atEvaluate(); } });
+  document.addEventListener("mousedown", (e) => { if (atOpen && !atPanel.contains(e.target as Node) && e.target !== input) atClose(true); });
 
   function restore(): Conv {
     try {

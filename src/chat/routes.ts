@@ -1,6 +1,7 @@
 import { route, json, error, body, HttpError, type ServerContext } from "../http.ts";
 import { ChatService, ChatError, type ChatFile, type ChatScope } from "./sessions.ts";
 import { UndoConflict } from "./changes.ts";
+import { listDir } from "./paths.ts";
 
 const services = new Map<string, ChatService>();
 export function chatService(ctx: ServerContext): ChatService {
@@ -87,3 +88,9 @@ route("POST", "/api/chat/conversations/:cid/changes/:changeId/undo", (_r, _u, p,
     throw e;
   }
 }));
+
+/** The entries of one folder, for the web chat box's `@` completion; 404 when it cannot be opened. */
+route("GET", "/api/chat/paths", (_r, url, _p, ctx) => {
+  const r = listDir(ctx.dataDir, url.searchParams.get("dir") ?? "");
+  return r.ok ? json({ entries: r.entries }) : error("can't open this folder", 404);
+});

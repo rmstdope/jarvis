@@ -93,6 +93,17 @@ html, body { height:100%; } #app { height:100%; }
 .jv-composer-wrap { max-width:720px; width:100%; margin:0 auto; padding:0 24px 22px; }
 .jv-composer { border:1px solid var(--border); background:var(--panel); border-radius:16px; padding:12px 14px; box-shadow:var(--composer-shadow); }
 .jv-input { width:100%; border:0; outline:0; background:none; color:var(--text); resize:none; min-height:44px; max-height:200px; field-sizing:content; padding:0; }
+.jv-at-anchor { position:relative; }
+.jv-at { position:absolute; left:0; right:0; bottom:calc(100% + 6px); z-index:5; background:var(--panel); border:1px solid var(--border); border-radius:12px; box-shadow:var(--composer-shadow); padding:4px; font-size:14px; }
+.jv-at[hidden] { display:none; }
+.jv-at-h { display:flex; justify-content:space-between; gap:12px; padding:5px 9px 3px; font-size:11px; text-transform:uppercase; letter-spacing:.07em; color:var(--muted); }
+.jv-at-dir { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; min-width:0; }
+.jv-at-list { max-height:256px; overflow-y:auto; }
+.jv-at-row { display:flex; gap:9px; align-items:baseline; padding:5px 9px; border-radius:7px; min-height:32px; box-sizing:border-box; cursor:pointer; }
+.jv-at-row.jv-on { background:var(--accent-soft); }
+.jv-at-row.jv-at-dim { color:var(--muted); cursor:default; } .jv-at-row.jv-bad { color:var(--error); cursor:default; }
+.jv-at-i { width:16px; flex:none; text-align:center; } .jv-at-name { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; min-width:0; } .jv-at-name b { font-weight:700; }
+.jv-at-hint { border-top:1px solid var(--border); margin-top:3px; padding:5px 9px 3px; font-size:12px; color:var(--muted); }
 .jv-composer.jv-off { opacity:.55; }
 .jv-bar { display:flex; align-items:center; gap:8px; font-size:12px; color:var(--muted); }
 .jv-send, .jv-stop { margin-left:auto; width:32px; height:32px; border-radius:50%; padding:0; font-weight:700; }

@@ -50,6 +50,8 @@ export const api = {
   item: (id: string) => req<{ item: Item; edges: ItemEdge[]; initiative?: InitiativeRef & { done: number; total: number } }>("GET", `/api/item/${encodeURIComponent(id)}`),
   capture: (title: string, body: string) => req<{ id: string; status: string }>("POST", "/api/capture", { source: "paste", title, body }),
   me: () => req<{ name?: string }>("GET", "/api/me"),
+  /** The entries of one folder for the chat box's @ completion ("" is the team content; rejects with 404 when it can't be opened). */
+  chatPaths: (dir: string) => req<{ entries: { name: string; dir: boolean }[] }>("GET", `/api/chat/paths${qs({ dir })}`),
   chatStatus: () => req<{ available: boolean }>("GET", "/api/chat/status"),
   chatChanges: (cid: string) => req<{ changes: WebChange[] }>("GET", `/api/chat/conversations/${encodeURIComponent(cid)}/changes`),
   undoChange: (cid: string, id: string) => req<{ change: WebChange; changes?: WebChange[] }>("POST", `/api/chat/conversations/${encodeURIComponent(cid)}/changes/${encodeURIComponent(id)}/undo`, {}),
