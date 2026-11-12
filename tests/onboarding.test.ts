@@ -171,6 +171,30 @@ describe("doctor", () => {
       setRouterForTests(null);
     }
   });
+  test("a models.toml doctor cannot load reports models-available and models-tasks as skipped, not left out (jv-ddc)", async () => {
+    const mp = join(home, "models.toml");
+    try {
+      // Unparseable TOML, and an entry the router rejects: getRouter() fails on both.
+      for (const text of [
+        '[[models]\nprovider = "local"\n',
+        '[[model]]\nprovider = "copilot"\nid = "x"\nreasoningEffort = "huge"\n',
+      ]) {
+        writeFileSync(mp, text);
+        setRouterForTests(undefined);
+        const r = await doctor({ coreOnly: true, which: (b) => `/bin/${b}` });
+        for (const name of ["models-available", "models-tasks"]) {
+          const check = r.checks.find((c) => c.name === name);
+          expect(check).toMatchObject({ status: "warn", detail: "skipped: models.toml could not be loaded", fix: `fix ${mp} as the models-config line says` });
+        }
+      }
+    } finally {
+      setRouterForTests(null);
+    }
+    // No router at all (pinned off) is not a load failure: nothing is reported as skipped.
+    writeFileSync(mp, '[[models]\nprovider = "local"\n');
+    const pinned = await doctor({ coreOnly: true, which: (b) => `/bin/${b}` });
+    expect(pinned.checks.filter((c) => c.detail.startsWith("skipped:"))).toEqual([]);
+  });
   test("doctor says whether decks can be presented in Slidecraft, with the exact fix", async () => {
     const data = join(t.dir, "content");
     await init({ yes: true, data, author: "tester", preset: "cpu-only-minimal", embedding: "ollama", log: () => {} });
