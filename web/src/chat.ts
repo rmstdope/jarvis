@@ -4,13 +4,13 @@ import { getPref, setPref } from "./prefs.ts";
 import { createTasks } from "./tasks.ts";
 import { docRefFor, tabKey, type DocRef } from "./tabs.ts";
 import { kindLabel } from "./transcript.ts";
-import { drawCard, keptCount, type WebChange } from "./changes.ts";
+import { drawCard, keptCount, type ChoiceOption, type WebChange } from "./changes.ts";
 import { h, modal, toast } from "./ui.ts";
 import { escapePath, findMention, headerFor, middleCut, narrow, splitPath, type DirEntry } from "./atpath.ts";
 import { renderMarkdown } from "../../src/briefings/markdown.ts";
 
 export interface Scope { type: "jarvis" | "item" | "briefing" | "initiative"; ids: string[]; }
-type ChatEvent = { type: "change"; change: WebChange } | { type: "open"; docId: string; title?: string; source?: string } | { type: "source"; docId?: string; title?: string; source?: string } | { type: "message"; text: string } | { type: "status"; text: string } | { type: "usage"; used: number; size: number } | { type: "done"; stopReason?: string } | { type: "error"; error: string };
+type ChatEvent = { type: "change"; change: WebChange } | { type: "open"; docId: string; title?: string; source?: string } | { type: "source"; docId?: string; title?: string; source?: string; detail?: string } | { type: "message"; text: string } | { type: "status"; text: string } | { type: "usage"; used: number; size: number } | { type: "done"; stopReason?: string } | { type: "error"; error: string };
 
 /** Split a byte stream into NDJSON objects; partial trailing lines carry over between chunks. */
 export function ndjsonDecoder(onEvent: (e: ChatEvent) => void): (chunk: string, final?: boolean) => void {
@@ -50,7 +50,7 @@ export function fileProblem(f: { name: string; size: number }): string | null {
   return f.size > MAX_FILE_BYTES ? `${f.name} — larger than 25 MB` : null;
 }
 interface Pending { file: File; problem: string | null }
-interface Msg { role: "user" | "assistant"; text: string; files?: { name: string; size: number }[]; changes?: WebChange[]; /** Length of `text` when the first change arrived: the card sits there. Absent on replies saved before it existed (card first). */ changesAt?: number; steps?: Step[]; sources?: { docId: string; title: string; source?: string }[]; status?: "streaming" | "done" | "stopped" | "failed"; question?: string; cards?: { type: DocRef["type"]; id: string; title: string; kind: string }[] }
+interface Msg { role: "user" | "assistant"; text: string; files?: { name: string; size: number }[]; changes?: WebChange[]; /** Length of `text` when the first change arrived: the card sits there. Absent on replies saved before it existed (card first). */ changesAt?: number; steps?: Step[]; sources?: { docId: string; title: string; source?: string; detail?: string }[]; chosen?: Record<string, string>; status?: "streaming" | "done" | "stopped" | "failed"; question?: string; cards?: { type: DocRef["type"]; id: string; title: string; kind: string }[] }
 interface Conv { conversationId?: string; sessionId?: string; scope: Scope; attached?: { id: string; title: string }; messages: Msg[] }
 
 /** "Good morning" before noon, "Good afternoon" until 18:00, "Good evening" after; with the name when known. */
@@ -272,14 +272,15 @@ export function createChat(opts: { navigate: (hash: string) => void; onChange?: 
     const before = m.text.slice(0, at), after = m.text.slice(at);
     const say = (t: string) => (t.trim() ? h("div", { class: "jv-answer", html: renderMarkdown(t) }) : null);
     if (m.status !== "failed") parts.push(say(before));
-    parts.push(drawCard(m.changes ?? [], String(conv.messages.indexOf(m)), { onUndo: (c) => void undoOne(m, c), onUndoAll: () => void undoEverything(m) }, { me: name, now: now() }));
+    parts.push(drawCard(m.changes ?? [], String(conv.messages.indexOf(m)), { onUndo: (c) => void undoOne(m, c), onUndoAll: () => void undoEverything(m) }, { me: name, now: now(), chosen: (c) => chosenOption(m, c) }));
     if (m.status === "failed") parts.push(h("div", { class: "jv-failed" }, "Something went wrong and I couldn't answer.", h("button", { class: "jv-retry", onClick: () => retry(m) }, "Try again")));
     else {
       if (m.text) parts.push(say(after));
       else if (m.status === "streaming" && !steps.length) parts.push(h("div", { class: "jv-answer muted" }, "…"));
       if (empty) parts.push(h("div", { class: "jv-noanswer" }, "I finished without writing an answer.", h("button", { class: "jv-retry", onClick: () => retry(m) }, "Try again")));
       if (m.status === "stopped") parts.push(h("div", { class: "jv-stopped muted small" }, "Stopped."));
-      if (m.sources?.length) parts.push(h("div", { class: "jv-chips" }, ...m.sources.map((s) => h("a", { class: "jv-chip", href: `#/${docRefFor(s.source ?? "note", s.docId).type}/${encodeURIComponent(s.docId)}`, title: s.title }, s.title))));
+      if (m.status !== "streaming") for (const c of m.changes ?? []) if (c.ask) parts.push(drawPicks(m, c));
+      if (m.sources?.length) parts.push(h("div", { class: "jv-chips" }, ...m.sources.map((s) => h("a", { class: "jv-chip", href: `#/${docRefFor(s.source ?? "note", s.docId).type}/${encodeURIComponent(s.docId)}`, title: s.title }, s.detail ? `${s.title} · ${s.detail}` : s.title))));
     }
     for (const c of m.cards ?? []) {
       const ref: DocRef = { type: c.type, id: c.id };
@@ -288,6 +289,23 @@ export function createChat(opts: { navigate: (hash: string) => void; onChange?: 
         h("span", { class: "jv-docard-b" }, h("span", { class: "jv-docard-t" }, c.title), h("span", { class: "jv-docard-s" }, `${c.kind} · opened in a tab`))));
     }
     return h("div", { class: "jv-msg jv-a" }, ...parts);
+  }
+  /** The option chosen for a waiting row: the button pressed, else an item a later change of the conversation touched. */
+  function chosenOption(m: Msg, c: WebChange): ChoiceOption | undefined {
+    const options = c.ask?.options ?? [];
+    const pressed = m.chosen?.[c.id];
+    if (pressed) return options.find((o) => o.id === pressed);
+    const later = conv.messages.slice(conv.messages.indexOf(m) + 1).flatMap((x) => x.changes ?? []).filter((x) => x.ok && !x.undone);
+    return options.find((o) => later.some((x) => x.items.some((i) => i.id === o.id)));
+  }
+  /** The buttons of one question: pressable only under the newest, finished answer and until one is pressed. */
+  function drawPicks(m: Msg, c: WebChange): HTMLElement {
+    const chosen = m.chosen?.[c.id];
+    const live = m.status === "done" && !chosen && !answering && conv.messages.at(-1) === m;
+    return h("div", { class: "jv-picks" }, ...c.ask!.options.map((o) => h("button", {
+      class: `jv-pick${chosen === o.id ? " jv-chosen" : ""}${live ? "" : " jv-pick-off"}`, disabled: live ? null : "",
+      onClick: () => { m.chosen = { ...m.chosen, [c.id]: o.id }; persist(); void send(`${o.title}${o.tail}`); input.focus(); },
+    }, h("b", {}, o.title), h("span", {}, o.detail))));
   }
   function drawComposer(): void {
     const off = available === false;
@@ -362,7 +380,7 @@ export function createChat(opts: { navigate: (hash: string) => void; onChange?: 
         } else if (e.type === "open") {
           const ref = docRefFor(e.source ?? "note", e.docId), title = e.title ?? e.docId, kind = kindLabel(e.source ?? "note");
           if (!(a.cards ??= []).some((c) => c.id === ref.id && c.type === ref.type)) { a.cards.push({ ...ref, title, kind }); opts.openQuietly?.(ref, title, kind); }
-        } else if (e.type === "source" && e.docId && !a.sources!.some((s) => s.docId === e.docId)) a.sources!.push({ docId: e.docId, title: e.title ?? e.docId, source: e.source });
+        } else if (e.type === "source" && e.docId && !a.sources!.some((s) => s.docId === e.docId)) a.sources!.push({ docId: e.docId, title: e.title ?? e.docId, source: e.source, detail: e.detail });
         else if (e.type === "error") a.status = "failed";
         persist(); render(); toBottom();
       });

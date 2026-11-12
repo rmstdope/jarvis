@@ -17,6 +17,7 @@ import { readSidecar } from "../core/sidecar.ts";
 import { restoreTaskBlock } from "../core/tasks.ts";
 import { sha256 } from "../core/util.ts";
 import type { Relation } from "../core/constants.ts";
+import type { ChangeAsk } from "./choice.ts";
 
 export type ChangeKind =
   | "capture.note" | "capture.link" | "capture.file" | "capture.meeting"
@@ -41,6 +42,8 @@ export interface Change {
   error?: string;
   /** For a failed row: the verb after "Couldn't" ("link", "create task"). */
   verb?: string;
+  /** For a row that waits: what the user is asked to choose between (jv-bt4). It is not a failure. */
+  ask?: ChangeAsk;
   undone: boolean;
   undoable: boolean;
 }

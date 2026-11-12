@@ -972,3 +972,115 @@ describe("@ path suggestions", () => {
     expect(panel()).toBeNull();
   });
 });
+
+describe("same-titled items: the question with buttons (jv-bt4)", () => {
+  const opt = (id: string, detail: string, tail: string, chip = detail) => ({ id, title: "Weekly sync", detail, tail, chip });
+  const OPTS = [opt("M2", "14:30", " at 14:30"), opt("M1", "09:00", " at 09:00")];
+  const askRow = (o: Record<string, unknown> = {}) => ({ id: "CA", turn: "T", ok: false, undone: false, undoable: false, items: [], kind: "link", verb: "link", ask: { tool: "jarvis_link", title: "Weekly sync", source: "meeting", sameDay: true, options: OPTS }, ...o });
+  const link = { id: "CL", turn: "T2", kind: "link", ok: true, undone: false, undoable: true, items: [{ id: "N1", title: "Vendor call notes", kind: "doc" }, { id: "M2", title: "Weekly sync", kind: "doc" }], detail: { relation: "related" } };
+  let n: number;
+  async function start(first: Record<string, unknown>[] = [askRow()], second?: (push: (e: unknown) => void) => void, sources: unknown[] = []) {
+    n = 0;
+    const chat = await setup({ name: "Mia", answer: () => ({ stream: async (push) => {
+      if (n++ === 0) { for (const s of sources) push(s); for (const c of first) push({ type: "change", change: c }); push({ type: "message", text: "Two meetings are called Weekly sync, both from today. Which one?" }); push({ type: "done" }); }
+      else if (second) second(push); else { push({ type: "message", text: "ok" }); push({ type: "done" }); }
+    } }) });
+    await ask("link the vendor call notes to the weekly sync");
+    return chat;
+  }
+  const picks = () => qa(".jv-pick");
+  const rowText = () => qa(".jv-crow").map((r) => r.textContent);
+
+  test("the row waits, the heading counts it apart, and a button per item shows the title and its detail, newest first", async () => {
+    await start();
+    expect(q(".jv-changes h4").textContent).toBe("I made 0 changes · 1 waiting for you");
+    expect(rowText()).toEqual(["?Not linked yet — two meetings are called Weekly sync. Waiting for your choice."]);
+    expect(q(".jv-cwait")).toBeTruthy();
+    expect(picks().map((b) => b.textContent)).toEqual(["Weekly sync14:30", "Weekly sync09:00"]);
+    expect(picks().every((b) => b.tagName === "BUTTON" && !(b as HTMLButtonElement).disabled)).toBe(true);
+    expect(q(".jv-answer").nextElementSibling).toBe(q(".jv-picks"));
+    expect(document.body.textContent).not.toContain("M2"); // never an id
+  });
+  test("pressing sends title plus detail as the user's message, highlights it, dims all, and the row becomes answered once the chat acts", async () => {
+    await start([askRow()], (push) => { push({ type: "change", change: link }); push({ type: "message", text: "Linked." }); push({ type: "done" }); });
+    picks()[0].click();
+    await env.tick(60);
+    expect(qa(".jv-user").at(-1)!.textContent).toBe("Weekly sync at 14:30");
+    expect(picks()[0].classList.contains("jv-chosen")).toBe(true);
+    expect(picks().every((b) => b.classList.contains("jv-pick-off"))).toBe(true);
+    expect(picks().every((b) => (b as HTMLButtonElement).disabled || b.classList.contains("jv-pick-off"))).toBe(true);
+    expect(qa(".jv-changes h4")[0].textContent).toBe("I made 0 changes · 1 answered");
+    expect(qa(".jv-crow")[0].textContent).toBe("↓Not linked here — you chose Weekly sync at 14:30 below.");
+    expect(qa(".jv-changes h4")[1].textContent).toBe("I made 1 change");
+    expect(document.activeElement).toBe(input());
+    expect((env.calls.filter((c) => c.path.endsWith("/messages")).at(-1)!.body as { message: string }).message).toBe("Weekly sync at 14:30");
+  });
+  test("typing something else dims the buttons for good and the row stays waiting", async () => {
+    await start();
+    await ask("actually, make a task instead");
+    expect(picks().every((b) => b.classList.contains("jv-pick-off"))).toBe(true);
+    expect(picks().some((b) => b.classList.contains("jv-chosen"))).toBe(false);
+    expect(q(".jv-changes h4").textContent).toBe("I made 0 changes · 1 waiting for you");
+    picks()[0].click();
+    await env.tick(30);
+    expect(qa(".jv-user").at(-1)!.textContent).toBe("actually, make a task instead"); // a dim button does nothing
+  });
+  test("a later change that touches one of the items settles the row, whoever picked it", async () => {
+    await start([askRow()], (push) => { push({ type: "change", change: link }); push({ type: "message", text: "Linked." }); push({ type: "done" }); });
+    await ask("the 14:30 one");
+    expect(qa(".jv-crow")[0].textContent).toBe("↓Not linked here — you chose Weekly sync at 14:30 below.");
+  });
+  test("an undone change does not settle the row", async () => {
+    await start([askRow()], (push) => { push({ type: "change", change: { ...link, undone: true } }); push({ type: "message", text: "Linked." }); push({ type: "done" }); });
+    await ask("the 14:30 one");
+    expect(qa(".jv-crow")[0].textContent).toContain("Waiting for your choice.");
+  });
+  test("other changes in the answer are listed as usual and counted apart", async () => {
+    await start([{ id: "CT", turn: "T", kind: "task.create", ok: true, undone: false, undoable: true, items: [{ id: "T9", title: "Ring the vendor", kind: "task" }] }, askRow()]);
+    expect(q(".jv-changes h4").textContent).toBe("I made 1 change · 1 waiting for you");
+    expect(rowText().map((r) => r!.replace(/Undo$/, ""))).toEqual(["✓Created task Ring the vendor", "?Not linked yet — two meetings are called Weekly sync. Waiting for your choice."]);
+  });
+  test("the words follow the action and the case: three tasks, not moved yet", async () => {
+    const a = { tool: "jarvis_move_task", title: "Review", source: "task", sameDay: false, options: [opt("T1", "from 12 Nov", " from 12 Nov"), opt("T2", "from 5 Nov", " from 5 Nov"), opt("T3", "from 1 Nov", " from 1 Nov")] };
+    await start([askRow({ ask: a })]);
+    expect(rowText()).toEqual(["?Not moved yet — three tasks are called Review. Waiting for your choice."]);
+    picks()[1].click();
+    await env.tick(60);
+    expect(qa(".jv-user").at(-1)!.textContent).toBe("Weekly sync from 5 Nov");
+  });
+  test("the buttons are disabled while an answer is being written, and absent until the answer is finished", async () => {
+    let release!: () => void;
+    const chat = await setup({ answer: () => ({ stream: async (push) => { push({ type: "change", change: askRow() }); push({ type: "message", text: "Which?" }); await new Promise<void>((r) => (release = r)); push({ type: "done" }); } }) });
+    void chat;
+    type("link"); (q(".jv-send") as HTMLElement).click(); await env.tick(30);
+    expect(picks()).toHaveLength(0);
+    release(); await env.tick(60);
+    expect(picks()).toHaveLength(2);
+  });
+  test("a failed answer after a press keeps the buttons dim and the message", async () => {
+    await start([askRow()], (push) => push({ type: "error", error: "boom" }));
+    picks()[1].click();
+    await env.tick(60);
+    expect(qa(".jv-user").at(-1)!.textContent).toBe("Weekly sync at 09:00");
+    expect(q(".jv-failed").textContent).toContain("Something went wrong and I couldn't answer.");
+    expect(picks().every((b) => b.classList.contains("jv-pick-off"))).toBe(true);
+    expect(picks()[1].classList.contains("jv-chosen")).toBe(true);
+  });
+  test("after a reload the buttons and the row show the same state", async () => {
+    await start();
+    picks()[0].click();
+    await env.tick(60);
+    document.body.innerHTML = "";
+    await setup({ name: "Mia" });
+    expect(picks().map((b) => b.classList.contains("jv-chosen"))).toEqual([true, false]);
+    expect(picks().every((b) => b.classList.contains("jv-pick-off"))).toBe(true);
+    expect(qa(".jv-crow")[0].textContent).toBe("↓Not linked here — you chose Weekly sync at 14:30 below.");
+  });
+  test("source links sharing a title carry the detail after a dot; a title nobody shares stays bare", async () => {
+    await start([], undefined, [
+      { type: "source", docId: "M2", title: "Weekly sync", source: "meeting", detail: "14:30" },
+      { type: "source", docId: "M1", title: "Weekly sync", source: "meeting", detail: "09:00" },
+      { type: "source", docId: "N1", title: "Vendor call notes", source: "note" }]);
+    expect(qa(".jv-chip").map((c) => c.textContent)).toEqual(["Weekly sync · 14:30", "Weekly sync · 09:00", "Vendor call notes"]);
+  });
+});
