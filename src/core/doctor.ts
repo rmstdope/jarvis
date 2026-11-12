@@ -1,4 +1,4 @@
-import { existsSync, mkdtempSync, readdirSync, realpathSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { posix } from "node:path";
@@ -9,7 +9,7 @@ import { CHAT_PROBE_TIMEOUT_MS, EMBEDDING_DIMS, PROBE_TIMEOUT_MS } from "./const
 import { ensureCustomSqlite } from "./db.ts";
 import { getEmbedder } from "./embed.ts";
 import { hasRemote, isWorkTree } from "./git.ts";
-import { modelsPath } from "../providers/models.ts";
+import { ignoredModelsEntries, modelsPath } from "../providers/models.ts";
 import { getRouter } from "../providers/index.ts";
 import { COPILOT_CLI_DEFAULT, readCopilotModelCatalog } from "../providers/copilot.ts";
 import { unresolvedKinds, type RouterEntry } from "../providers/router.ts";
@@ -161,7 +161,14 @@ export async function doctor(opts: DoctorOpts = {}): Promise<DoctorReport> {
   }
 
   const mp = modelsPath();
-  checks.push(existsSync(mp) ? ok("models-config", false, mp) : warn("models-config", `${mp} missing; models are detected live`, "jarvis config preset <name>   or   jarvis config redetect --write"));
+  const ignored = existsSync(mp) ? ignoredModelsEntries(readFileSync(mp, "utf8")) : [];
+  checks.push(
+    !existsSync(mp)
+      ? warn("models-config", `${mp} missing; models are detected live`, "jarvis config preset <name>   or   jarvis config redetect --write")
+      : ignored.length
+        ? warn("models-config", `${mp}: ignored ${ignored.join(", ")}`, `spell each table [[model]], with provider local, copilot or openai-compat, in ${mp}   or   jarvis config preset <name>`)
+        : ok("models-config", false, mp),
+  );
   const router = await getRouter();
   if (router) {
     // A named Copilot id outside the CLI's catalog is refused at run time (`--model … is not available`).
