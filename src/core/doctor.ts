@@ -9,7 +9,7 @@ import { CHAT_PROBE_TIMEOUT_MS, EMBEDDING_DIMS, PROBE_TIMEOUT_MS } from "./const
 import { ensureCustomSqlite } from "./db.ts";
 import { getEmbedder } from "./embed.ts";
 import { hasRemote, isWorkTree } from "./git.ts";
-import { ignoredModelsEntries, modelsPath, modelsTomlError } from "../providers/models.ts";
+import { ignoredModelsEntries, ModelsConfigError, modelsPath, modelsTomlError } from "../providers/models.ts";
 import { getRouter } from "../providers/index.ts";
 import { COPILOT_CLI_DEFAULT, readCopilotModelCatalog } from "../providers/copilot.ts";
 import { unresolvedKinds, type RouterEntry } from "../providers/router.ts";
@@ -167,7 +167,7 @@ export async function doctor(opts: DoctorOpts = {}): Promise<DoctorReport> {
   // A router that cannot load models.toml is reported in models-config, not a reason to stop the report.
   let routerError: string | null = null;
   const router = await getRouter().catch((e: unknown) => {
-    routerError = e instanceof Error ? e.message : String(e);
+    routerError = e instanceof ModelsConfigError ? e.reason : e instanceof Error ? e.message : String(e);
     return null;
   });
   checks.push(

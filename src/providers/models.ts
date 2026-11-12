@@ -194,9 +194,35 @@ export async function detectModels(opts: DetectOpts = {}): Promise<{ preference:
   return { preference: DEFAULT_PREFERENCE, models };
 }
 
+/**
+ * A models.toml that exists but cannot be loaded (malformed TOML, or an invalid value). Its message names the
+ * file and points at `jarvis doctor`, which names the broken entry; `reason` is the bare cause doctor shows.
+ */
+export class ModelsConfigError extends Error {
+  /** The parser's or validator's own message, without the path. */
+  readonly reason: string;
+  /** The models.toml that could not be loaded. */
+  readonly path: string;
+  constructor(path: string, reason: string) {
+    super(`${path} could not be loaded: ${reason}\nfix: run jarvis doctor, which names the broken entry and how to fix it`);
+    this.name = "ModelsConfigError";
+    this.path = path;
+    this.reason = reason;
+  }
+}
+
+/** The models config: models.toml when it exists (throws {@link ModelsConfigError} if it cannot be loaded), else live detection. */
 export async function loadModelsConfig(detect: DetectOpts = {}): Promise<ModelsConfig> {
   const p = modelsPath();
-  if (existsSync(p)) return { ...parseModelsToml(readFileSync(p, "utf8")), source: "file", path: p };
+  if (existsSync(p)) {
+    let parsed: ReturnType<typeof parseModelsToml>;
+    try {
+      parsed = parseModelsToml(readFileSync(p, "utf8"));
+    } catch (e) {
+      throw new ModelsConfigError(p, e instanceof Error ? e.message : String(e));
+    }
+    return { ...parsed, source: "file", path: p };
+  }
   return { ...(await detectModels(detect)), source: "detected" };
 }
 export function writeModelsConfig(cfg: { preference: ProviderName[]; models: ModelEntry[] }): string {

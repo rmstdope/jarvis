@@ -277,4 +277,22 @@ describe("cli end to end (subprocess)", () => {
     expect(a.out).toContain(`[${id}] Breathing`);
     expect(a.out).toContain(`fix: add or enable a [[model]] with quality = "high" in ${join(home, "models.toml")}`);
   });
+  test("ask with an unloadable models.toml names the file and points at jarvis doctor (jv-h6x)", () => {
+    const cases = {
+      "broken-toml.toml": '[[models]\nprovider = "local"\n',
+      "bad-effort.toml": '[[model]]\nprovider = "copilot"\nid = "gpt-5"\nreasoningEffort = "huge"\n',
+    };
+    for (const [name, text] of Object.entries(cases)) {
+      const mp = join(home, name);
+      writeFileSync(mp, text);
+      const p = Bun.spawnSync(["bun", "run", CLI, "ask", "zoom drift", "--data", data], {
+        stdout: "pipe", stderr: "pipe",
+        env: { ...process.env, JARVIS_HOME: home, JARVIS_MODELS: mp, JARVIS_EMBED_FAKE: "1" },
+      });
+      const out = new TextDecoder().decode(p.stdout) + new TextDecoder().decode(p.stderr);
+      expect(p.exitCode).toBe(1);
+      expect(out).toContain(`error: ${mp} could not be loaded: `);
+      expect(out).toContain("fix: run jarvis doctor, which names the broken entry and how to fix it");
+    }
+  });
 });
