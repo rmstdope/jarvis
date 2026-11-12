@@ -103,7 +103,7 @@ export interface EnrichOpts {
   dryRun?: boolean;
   db?: Database;
   author?: string;
-  /** Only docs authored by this identity (ownership-aware, §24.2.6). Default: all pending. */
+  /** Only docs authored by this identity (ownership-aware). Default: all pending. */
   onlyAuthor?: string;
 }
 

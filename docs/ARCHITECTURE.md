@@ -1,8 +1,7 @@
 # J.A.R.V.I.S. — architecture
 
 This document describes what J.A.R.V.I.S. is, how it is put together, and which technologies it is
-built on. It reflects the code in this repository as of the M10 milestone (see
-`IMPLEMENTATION-PLAN.md` for the milestone history and the decisions taken along the way).
+built on. The design decisions in §5 are binding unless a bead changes them on purpose.
 
 ## 1. High-level overview
 
@@ -33,7 +32,7 @@ The knowledge loop is **Capture → Understand → Use**:
 - **Understand**: enrich with summaries, tags and entity mentions; clean garbled transcripts against a
   shared glossary; build a knowledge graph of links (heuristic, vector-based, LLM-judged and manual).
 - **Use**: keyword, semantic and hybrid search; grounded question answering with citations; a chat
-  panel; tasks linked into the graph; and *briefings*, component-rendered documents (diagrams,
+  that can act on the knowledge base; tasks and the initiatives they belong to, linked into the graph; and *briefings*, component-rendered documents (diagrams,
   timelines, comparisons) that can be published to Confluence.
 
 The invariant that shapes everything is **authored is shared, derived is local**. Anything a human or
@@ -49,7 +48,7 @@ heuristic edges, pipeline markers) lives in the gitignored `.index/` directory a
    HTTP service ┤  src/server.ts + src/http.ts + src/chat/*    │      files: the content repo (git)
    web UI ──────┤  web/  (browser, same origin)                ├──►   +
    extension ───┤  extension/  (MV3, talks HTTP)               │      local index: .index/jarvis.db
-   macOS app ───┤  jarvis-app/  (WKWebView over the UI)  │
+   macOS app ───┤  jarvis-app/  (WKWebView over the UI)        │
                 └───────────────┬──────────────────────────────┘
                                 │
                 ┌───────────────▼──────────────────────────────┐
@@ -73,7 +72,7 @@ A machine does as much as its hardware and configuration allow:
 | Tier | Requires | Adds |
 |---|---|---|
 | Local builder (default) | an embedding server | capture, chunk, embed, semantic + keyword search, heuristic edges |
-| Tier 1 | a chat model via the router (local, Copilot, gateway) | summaries, tags, entity mentions, LLM-judged edges, transcript cleanup, synthesis, meeting summaries, chat |
+| Tier 1 | a chat model via the router (local, Copilot, OpenAI-compatible) | summaries, tags, entity mentions, LLM-judged edges, transcript cleanup, synthesis, meeting summaries, chat |
 | Consumer (published mode, partial) | a published snapshot | capture and keyword search only; never runs models |
 
 ## 2. Tech stack walkthrough
@@ -105,6 +104,7 @@ The content repo layout that these pieces read and write:
 ```
 <content-repo>/
   docs/<ulid>.md                 one captured doc per file: YAML frontmatter + verbatim body
+                                 (tasks and initiatives are docs too: `source: task` / `source: initiative`)
   edges/<doc-ulid>.jsonl         authored edges + rejections, one sidecar per source doc, append-only
   entities/<ulid>.json           entity registry, one file per entity
   briefings/<id>.brief.mdx       briefings, lessons, meeting summaries (+ <id>.comments.json)
@@ -285,7 +285,7 @@ presets carry a comment reminding you to use an id your entitlement offers.
 - `jarvis init` is a six-step wizard whose every default is answerable with `--yes`. `jarvis doctor`
   runs every environment check with an exact fix text and exits 1 on required failures; the convention
   is "never write 'check your environment' prose, add a doctor check".
-- Tests: `bun test` (124 tests, about 92 % line coverage) covers every pipeline pass, the parsers, the
+- Tests: `bun test` (`bun run test:coverage` for line coverage) covers every pipeline pass, the parsers, the
   HTTP routes, sync across two real git clones including a non-fast-forward push retry, the model
   router and every provider over mocked HTTP, the embedders, the inbox pipeline, the ACP client against
   a fake agent process, the web helpers under happy-dom, and the CLI end to end as a subprocess with
@@ -309,17 +309,19 @@ presets carry a comment reminding you to use an id your entitlement offers.
 src/cli.ts              command registry (thin)
 src/server.ts           Bun.serve routes for capture/search/browse/items/briefings/presentations/tasks/links/sync
 src/http.ts             route registry + JSON helpers (no import cycles)
-src/core/               all pipeline logic, config, git, search, tasks, links, doctor, init, inbox
+src/core/               all pipeline logic, config, git, search, tasks, initiatives, links, doctor, init, inbox
 src/providers/          provider facade, models.toml, router, process-wide getRouter()
 src/briefings/          parser, frontmatter, toc, markdown, diagrams, components, render, store, confluence
-src/chat/               ACP client, chat sessions, streaming routes
+src/chat/               ACP client, chat sessions, action blocks and executors, change log, streaming routes
 src/producers/          pdf, youtube, transcript, whisper, meeting
 web/                    web UI sources → web/dist via scripts/build-web.ts
 extension/              MV3 extension sources + static → extension/dist via scripts/build-extension.ts
-jarvis-app/       Swift launcher + bundle.sh
+jarvis-app/             Swift launcher + bundle.sh
 docs/examples/models/   shipped model presets
 docs/AGENT-INSTRUCTIONS.md   how agents should operate J.A.R.V.I.S. (`jarvis skill`)
-scripts/                build-web, build-extension, eval-model
+docs/ui/                agreed UI mockups, one per bead
+docs/retrospectives/    per-bead retrospectives (see its README)
+scripts/                build-web, build-extension, ci-plan, eval-model
 tests/                  bun test suites and fixtures (fake ACP agent, PDF, VTT)
 ```
 
@@ -331,3 +333,32 @@ tests/                  bun test suites and fixtures (fake ACP agent, PDF, VTT)
 - Windows and Linux sqlite-vec loading is exercised in CI but has not been validated on real machines.
 - The HTTP service has no authentication and binds to localhost only; the content repo is the trust
   boundary.
+
+## 5. Design decisions
+
+Decisions taken while building J.A.R.V.I.S. that are not obvious from the code. They are binding
+unless a bead changes them on purpose (and then this list changes with it).
+
+- `jarvis reindex` reaps deleted docs incrementally; `--full` resets edges and entities too.
+- The Ollama URL is configurable (`JARVIS_OLLAMA_URL`), not hardcoded.
+- `--limit` and the other integer flags are validated in the argument parser, not per command.
+- `processContent` has a pass registry (`registerProcessPass`) and reindex a projection registry
+  (`registerProjectionHook`), so new passes and projections plug in without touching `sync`.
+- The glossary uses the real TOML parser plus a line scan for the `# Misheard as:` comment convention.
+- Sidecar lines record the judging `model` id and are signed with the resolved capture identity,
+  never `$USER`. Entity stubs carry the doc author.
+- Edge producers run in priority order across all pending docs (backlink → auto → entity →
+  embedding), so a stronger derived edge is never pre-empted by a weaker one written for an earlier doc.
+- The router is created once per process (`getRouter`); tests pin it to a null router.
+- `src/briefings/` is DOM-free and shared by the server and the browser bundle, so core never imports
+  the web tree. `SvgDiagram` and raw HTML are sanitized with a small allowlist.
+- The web UI imports only `src/briefings/*`, never core, and is bundled by Bun: one toolchain, one lockfile.
+- `doctor` takes injectable probes (`which`, embed, …) so every check path is unit-tested. Never
+  write "check your environment" prose; add a doctor check with an exact fix line.
+- Doc frontmatter serialization keeps extra keys after the fixed order (presentations carry `provenance`).
+- The route registry lives in `src/http.ts` so feature route modules never import `src/server.ts`
+  (import cycles silently drop registrations).
+- The CLI entrypoint stays the last statement in `src/cli.ts` (top-level `await` stops later `register()` calls).
+- Model ids, the chat model included, are configuration, never code (§2.10).
+- The extension shares nothing with the server at build time; its `api.ts` mirrors the route contract.
+- The embedder is injectable (`setEmbedderForTests`) so the pipeline is tested without a server.

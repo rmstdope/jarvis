@@ -16,7 +16,7 @@ capture, search, ask, link, task and sync against a content repo with no model a
 model steps (enrich, edges, refine, ask, chat) improve that when one is, and that nothing a user
 wrote is ever lost: the index can always be rebuilt from the files.
 
-`docs/ARCHITECTURE.md` is the design; the *Decisions* in `IMPLEMENTATION-PLAN.md` are binding
+`docs/ARCHITECTURE.md` is the design; its *Design decisions* (§5) are binding
 unless a bead changes them on purpose.
 
 ## Producer review

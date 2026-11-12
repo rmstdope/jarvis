@@ -11,7 +11,7 @@ export const EMBED_CONCURRENCY = Number(process.env.JARVIS_EMBED_CONCURRENCY ?? 
 export const CHUNK_TARGET_TOKENS = 400;
 export const CHUNK_OVERLAP_TOKENS = 50;
 export const TOKENS_PER_WORD = 0.75;
-export const CHUNK_TARGET_WORDS = Math.round(CHUNK_TARGET_TOKENS / TOKENS_PER_WORD); // 534 (533.33 → 533); spec says 534
+export const CHUNK_TARGET_WORDS = Math.round(CHUNK_TARGET_TOKENS / TOKENS_PER_WORD); // 533 (400 / 0.75 = 533.33)
 export const CHUNK_OVERLAP_WORDS = Math.round(CHUNK_OVERLAP_TOKENS / TOKENS_PER_WORD); // 67
 export const CHUNK_MAX_CHARS = 1600;
 

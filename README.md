@@ -75,15 +75,18 @@ is working with:
 | Command | What it does |
 |---|---|
 | `note`, `ingest --file`, `youtube`, `meeting`, `scan-inbox` | capture into the content repo |
+| `reindex [--full]` | bring the local index up to date with the files (`--full` rebuilds it from scratch) |
 | `search "<q>" [--mode hybrid\|semantic\|keyword]`, `ask "<q>"` | find things, or get a cited answer |
 | `enrich [--limit --dry-run]` | ask a model for a summary, 3–8 tags and entity mentions per unenriched doc, resolve mentions against the entity registry (creating stubs), write them to the doc's frontmatter; skipped when no model is available |
 | `edges`, `refine`, `cleanup`, `entities dedup` | the other individual passes: derived links, LLM-judged links, glossary transcript cleanup, entity merging |
-| `process` | reindex → enrich → edges → refine → dedup scan, without git |
+| `process` (alias `pipeline`), `dedup` | reindex → enrich → edges → refine → dedup scan, without git; `dedup` runs the source-URL collision scan alone (exit 1 on collisions) |
 | `sync [--no-push]` | commit → pull (merge) → process → commit enrichment → push |
-| `task add\|list\|show\|done\|suggest`, `tasks`, `link` | tasks and manual links |
+| `task add\|list\|show\|done\|reopen\|move\|suggest`, `tasks`, `link` | tasks and manual links |
+| `initiative add\|edit\|list\|show\|suggest\|close\|reopen` | long-running work made up of several tasks |
 | `briefing create\|components\|list\|show\|comment\|approve\|publish` | briefings and Confluence |
 | `presentation share\|promote`, `summarize` | decks and meeting summaries |
-| `init`, `doctor`, `config`, `models` | onboarding and diagnostics |
+| `serve` | the local HTTP service for the web UI, the extension and the macOS app |
+| `init`, `doctor`, `config`, `models`, `skill` | onboarding, diagnostics, and the agent instructions |
 
 ## Parts
 
@@ -99,8 +102,13 @@ is working with:
 | Model presets | `docs/examples/models/` | `jarvis config preset <name>` |
 | Eval | `scripts/eval-model.ts` | `bun run scripts/eval-model.ts --model copilot:default` |
 
-`bun test` runs 124 tests (two-clone git sync, every pipeline pass, parsers, routes, the LLM providers and
-embedders over mocked HTTP, the CLI as a real subprocess, a fake ACP agent); `bun run test:coverage` reports
-line coverage (about 92 %). CI is change-aware: `bun run ci:plan` prints what a set of changed files would
+## Development
+
+`docs/ARCHITECTURE.md` is the design. Planned work is tracked in beads (`bd`, prefix `jv`); GitHub issues
+are for outside requests and bug reports. `CLAUDE.md` holds the rules for agents that develop J.A.R.V.I.S.
+
+`bun test` is hermetic (two-clone git sync, every pipeline pass, parsers, routes, the LLM providers and
+embedders over mocked HTTP, the CLI as a real subprocess, a fake ACP agent, the web UI under happy-dom);
+`bun run test:coverage` reports line coverage. CI is change-aware: `bun run ci:plan` prints what a set of changed files would
 run (docs-only changes run nothing); `main` requires the `ci-status` check to pass before anything merges.
 `bun run typecheck` covers the core, web and extension trees. CI runs on Linux, macOS and Windows.
