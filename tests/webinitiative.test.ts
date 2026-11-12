@@ -431,7 +431,7 @@ describe("editing in place", () => {
     okEdit();
     click(edit("title"));
     type(field(), "Away");
-    field().dispatchEvent(new env.win.Event("blur") as unknown as Event);
+    field().blur();
     await env.tick(30);
     expect(edits()[0].body).toEqual({ title: "Away" });
   });
@@ -559,6 +559,36 @@ describe("editing in place", () => {
     expect(qa(".jv-ed")).toHaveLength(1);
     expect(q(".jv-ed textarea")).not.toBeNull();
     expect(text(".jv-title")).toBe("First");
+  });
+
+  test("Tab out of an unchanged field closes it and leaves focus where Tab sent it", async () => {
+    await boot("#/initiative/IA");
+    click(edit("title"));
+    const next = q(".jv-dhead button") as HTMLElement;
+    next.focus(); // what Tab does: focus moves, then the field's blur is handled
+    await env.tick(20);
+    expect(q(".jv-ed")).toBeNull();
+    expect((document.activeElement as HTMLElement).getAttribute("data-act")).toBe("close"); // the redraw rebuilt the button; focus stayed on its twin
+    expect(edits()).toHaveLength(0);
+  });
+
+  test("an editor survives a redraw (suggestions arriving) without saving half-typed text", async () => {
+    let release!: () => void;
+    await boot("#/initiative/IA", { suggest: () => new Promise((r) => { release = () => r({ model: true, suggestions: [] }); }) });
+    click(edit("title"));
+    type(field(), "Half");
+    release();
+    await env.tick(40);
+    expect(field().value).toBe("Half");
+    expect(document.activeElement).toBe(field());
+    expect(edits()).toHaveLength(0);
+  });
+
+  test("an initiative without an owner still shows a place to set one", async () => {
+    const d = base();
+    d.initiative.owner = "";
+    await boot("#/initiative/IA", { detail: d });
+    expect(edit("owner").textContent).toBe("no owner");
   });
 
   test("a closed initiative edits the same way and keeps its closed wording", async () => {

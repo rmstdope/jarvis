@@ -184,7 +184,7 @@ html, body { height:100%; } #app { height:100%; }
 .jv-fchips { display:flex; flex-wrap:wrap; gap:6px; margin-bottom:6px; }
 .jv-file { display:inline-flex; align-items:center; gap:4px; max-width:100%; font-size:12px; border:1px solid var(--border); border-radius:999px; padding:2px 6px 2px 10px; background:var(--panel); color:var(--text); white-space:nowrap; }
 .jv-file .jv-fn { overflow:hidden; text-overflow:ellipsis; max-width:260px; }
-.jv-file.jv-ed-bad { border-color:var(--error); color:var(--error); }
+.jv-file.jv-bad { border-color:var(--error); color:var(--error); }
 .jv-file-x { border:0; background:none; color:inherit; padding:0 4px; font-size:14px; }
 .jv-clip { border:0; background:none; font-size:16px; padding:0 4px; } .jv-clip:disabled { opacity:.4; }
 .jv-dropping { outline:2px dashed var(--accent); outline-offset:-6px; border-radius:12px; }
@@ -287,3 +287,4 @@ html, body { height:100%; } #app { height:100%; }
 .jv-ed-list { position:absolute; left:0; right:0; z-index:5; border:1px solid var(--border); background:var(--panel); border-radius:10px; margin-top:2px; box-shadow:0 4px 16px rgba(0,0,0,.08); font:14px var(--sans); color:var(--text); }
 .jv-ed-opt { padding:6px 11px; cursor:pointer; } .jv-ed-opt.on { background:var(--accent-soft); }
 @media (max-width:639px) { .jv-ed-w-owner { display:block; max-width:none; } }
+.jv-owner.jv-editable { position:relative; } .jv-owner.jv-editable::after { position:absolute; left:100%; margin-left:3px; white-space:nowrap; }

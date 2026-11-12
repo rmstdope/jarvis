@@ -104,6 +104,8 @@ describe("which initiative a task or card belongs to", () => {
     const before = f.frontmatter.updated_at;
     await call("POST", `/api/initiative/${a.id}/edit`, { title: "Beta" });
     expect(readDocFile(t.dir, a.id)!.frontmatter.updated_at).toBe(before); // identical text changes nothing
+    const row = (await (await call("GET", "/api/initiatives")).json()).initiatives.find((i: { id: string }) => i.id === a.id); // the list and its cards read this
+    expect(row).toMatchObject({ title: "Beta", goal: "new goal", owner: "bo" });
     for (const bad of [{ title: "" }, { goal: " " }, { owner: "" }, {}]) expect((await call("POST", `/api/initiative/${a.id}/edit`, bad)).status).toBe(400);
     expect((await call("POST", "/api/initiative/NOPE/edit", { title: "x" })).status).toBe(404);
     expect((await call("POST", `/api/initiative/${task.id}/edit`, { title: "x" })).status).toBe(404);

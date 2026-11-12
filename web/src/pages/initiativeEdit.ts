@@ -63,7 +63,7 @@ export function openEditor(o: EditorOpts): Editor {
     if (active >= 0) input.setAttribute("aria-activedescendant", `jv-ed-opt-${active}`); else input.removeAttribute("aria-activedescendant");
   };
   const pick = (n: string) => { input.value = n; typed = false; active = -1; paintList(); input.focus(); };
-  const close = (saved: boolean) => { closed = true; o.done(saved); };
+  const close = (saved: boolean) => { closed = true; release(); o.done(saved); };
 
   function commit(): Promise<boolean> {
     if (closed) return Promise.resolve(true);
@@ -106,7 +106,16 @@ export function openEditor(o: EditorOpts): Editor {
       else void commit();
     }
   });
-  input.addEventListener("blur", () => { if (!saving && !closed) void commit(); });
+  // Clicking away saves, but not mid-click and not mid-redraw: a redraw detaches and re-attaches the field (which blurs it) and the page refocuses it at
+  // once; a click that started on the next piece must finish before the editor closes and redraws under it; and a Tab must have moved the focus first.
+  let down = false;
+  const onDown = () => { down = true; };
+  const onUp = () => { down = false; setTimeout(settle, 0); };
+  const settle = () => { if (!down && !saving && !closed && document.activeElement !== input) void commit(); else if (closed) release(); };
+  const release = () => { document.removeEventListener("mousedown", onDown, true); document.removeEventListener("mouseup", onUp, true); };
+  document.addEventListener("mousedown", onDown, true);
+  document.addEventListener("mouseup", onUp, true);
+  input.addEventListener("blur", () => { setTimeout(settle, 0); });
 
   const buttons = goal
     ? h("div", { class: "jv-ed-acts" },

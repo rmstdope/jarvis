@@ -73,7 +73,7 @@ export async function initiativePage(id: string, ctx: DocCtx): Promise<DocPage> 
     const toggle = h("button", { "data-act": closed ? "reopen" : "close", onClick: () => void (closed ? reopen() : close()) }, closed ? "Reopen" : "Close initiative");
     const kind = h("span", { class: "jv-dkind" }, "Initiative");
     const tail = closed ? `closed ${fmtDate(i.closed_at)} by ${i.closed_by ?? "unknown"}` : entryLine(`started ${fmtDate(i.created_at)}`, i.updated_at ? `updated ${fmtDate(i.updated_at)}` : null);
-    const ownerPiece = editing?.field === "owner" ? editing.editor.el : readPiece("owner", "span", "jv-owner", i.owner);
+    const ownerPiece = editing?.field === "owner" ? editing.editor.el : readPiece("owner", "span", "jv-owner", i.owner || "no owner");
     const meta = h("div", { class: "muted small jv-meta" }, "Initiative · ", ownerPiece, ` · ${tail}`);
     const titlePiece = editing?.field === "title" ? editing.editor.el : readPiece("title", "h2", "jv-title", i.title);
     const goalPiece = editing?.field === "goal" ? editing.editor.el : readPiece("goal", "div", "jv-goal", i.goal);
@@ -103,11 +103,15 @@ export async function initiativePage(id: string, ctx: DocCtx): Promise<DocPage> 
     else if (focus?.startsWith("task:")) (host.querySelector(`[data-task="${focus.slice(5)}"]`) as HTMLElement | null)?.focus();
   }
 
+  /** The read-state element of each piece, made once and re-inserted by every redraw, so a click that started on one survives a redraw in between. */
+  const pieces: Partial<Record<EditField, HTMLElement>> = {};
   /** Title, owner or goal as text that opens its editor on click, Enter or Space; the pencil and tooltip come from the styles and the title attribute. */
-  function readPiece<K extends "h2" | "span" | "div">(field: EditField, tag: K, cls: string, text: string): HTMLElementTagNameMap[K] {
-    return h(tag, { class: `${cls} jv-editable`, "data-edit": field, tabindex: "0", role: "button", title: `Edit ${field}`,
+  function readPiece(field: EditField, tag: "h2" | "span" | "div", cls: string, text: string): HTMLElement {
+    const el = (pieces[field] ??= h(tag, { class: `${cls} jv-editable`, "data-edit": field, tabindex: "0", role: tag === "h2" ? null : "button", title: `Edit ${field}`,
       onClick: () => void startEdit(field),
-      onKeydown: (e: Event) => { const k = (e as KeyboardEvent).key; if (k === "Enter" || k === " ") { e.preventDefault(); void startEdit(field); } } }, text);
+      onKeydown: (e: Event) => { const k = (e as KeyboardEvent).key; if (k === "Enter" || k === " ") { e.preventDefault(); void startEdit(field); } } }));
+    el.textContent = text;
+    return el;
   }
   /** Names that already own an initiative or a task, read the first time an owner is edited. */
   function namesOnce(): Promise<string[]> {
@@ -118,6 +122,7 @@ export async function initiativePage(id: string, ctx: DocCtx): Promise<DocPage> 
   async function saveField(field: EditField, value: string): Promise<void> {
     await api.editInitiative(id, { [field]: value });
     d.initiative = { ...d.initiative, [field]: value, updated_at: new Date().toISOString() };
+    if (field === "owner") ownerNames = undefined; // the new name is worth suggesting next time
     if (field === "title") {
       heading.textContent = value;
       heading.title = value;
