@@ -584,6 +584,20 @@ describe("editing in place", () => {
     expect(edits()).toHaveLength(0);
   });
 
+  test("an editor left open when the page goes away saves nothing later and leaves no listener working", async () => {
+    await boot("#/initiative/IA");
+    env.routes.set("POST /api/initiative/IA/edit", () => ({ status: 500, json: { error: "down" } }));
+    click(edit("title"));
+    type(field(), "Abandoned");
+    key(field(), "Enter");
+    await env.tick(30);
+    expect(edits()).toHaveLength(1); // the failed save
+    q(".jv-ed")!.remove(); // the tab and its page are gone
+    document.dispatchEvent(new env.win.MouseEvent("mouseup", { bubbles: true }) as unknown as Event);
+    await env.tick(20);
+    expect(edits()).toHaveLength(1);
+  });
+
   test("an initiative without an owner still shows a place to set one", async () => {
     const d = base();
     d.initiative.owner = "";

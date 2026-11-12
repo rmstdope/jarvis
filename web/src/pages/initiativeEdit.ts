@@ -111,10 +111,14 @@ export function openEditor(o: EditorOpts): Editor {
   let down = false;
   const onDown = () => { down = true; };
   const onUp = () => { down = false; setTimeout(settle, 0); };
-  const settle = () => { if (!down && !saving && !closed && document.activeElement !== input) void commit(); else if (closed) release(); };
-  const release = () => { document.removeEventListener("mousedown", onDown, true); document.removeEventListener("mouseup", onUp, true); };
+  const settle = () => {
+    if (closed || !input.isConnected) return release(); // the page went away with the editor open: nothing left to save, and no listener left behind
+    if (!down && !saving && document.activeElement !== input) void commit();
+  };
+  const release = () => { document.removeEventListener("mousedown", onDown, true); document.removeEventListener("mouseup", onUp, true); document.removeEventListener("dragend", onUp, true); };
   document.addEventListener("mousedown", onDown, true);
   document.addEventListener("mouseup", onUp, true);
+  document.addEventListener("dragend", onUp, true); // a native drag swallows the mouseup
   input.addEventListener("blur", () => { setTimeout(settle, 0); });
 
   const buttons = goal
