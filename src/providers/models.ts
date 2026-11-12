@@ -51,7 +51,7 @@ function asEffort(e: unknown, where: string): ReasoningEffort | undefined {
   return e as ReasoningEffort;
 }
 
-/** Parse models.toml. Entries missing provider/id are dropped; `jarvis doctor` names misspelt ones ({@link ignoredModelsEntries}). */
+/** Parse models.toml. Entries missing provider/id are dropped; `jarvis doctor` names them and misspelt ones ({@link ignoredModelsEntries}). */
 export function parseModelsToml(text: string): { preference: ProviderName[]; models: ModelEntry[] } {
   const t = Bun.TOML.parse(text) as { preference?: unknown; model?: Record<string, unknown>[] };
   const preference = Array.isArray(t.preference) ? (t.preference.filter((p) => PROVIDER_NAMES.includes(p as ProviderName)) as ProviderName[]) : DEFAULT_PREFERENCE;
@@ -80,9 +80,10 @@ export function parseModelsToml(text: string): { preference: ProviderName[]; mod
 }
 
 /**
- * Two misspellings {@link parseModelsToml} skips, each named as a person would find it in the file:
- * a `models` table or key (the parser reads `[[model]]`) and every `[[model]]` whose provider is not one of
- * {@link PROVIDER_NAMES}. Empty when neither occurs; malformed TOML is the parser's to report.
+ * The entries {@link parseModelsToml} skips, each named as a person would find it in the file:
+ * a `models` table or key (the parser reads `[[model]]`), every `[[model]]` whose provider is not one of
+ * {@link PROVIDER_NAMES}, and every `[[model]]` missing its provider or id (named by the key it does have,
+ * or by its 1-based position when it has neither). Empty when none occurs; malformed TOML is the parser's to report.
  */
 export function ignoredModelsEntries(text: string): string[] {
   let t: { models?: unknown; model?: unknown };
@@ -93,11 +94,16 @@ export function ignoredModelsEntries(text: string): string[] {
   }
   const ignored: string[] = [];
   if (t.models !== undefined) ignored.push(Array.isArray(t.models) ? "the [[models]] table" : "the models key");
-  for (const m of Array.isArray(t.model) ? (t.model as Record<string, unknown>[]) : []) {
-    if (m && typeof m.provider === "string" && !PROVIDER_NAMES.includes(m.provider as ProviderName)) {
-      ignored.push(`the [[model]] with provider "${m.provider}"${typeof m.id === "string" ? ` (${m.id})` : ""}`);
-    }
-  }
+  const entries = Array.isArray(t.model) ? (t.model as Record<string, unknown>[]) : [];
+  entries.forEach((m, i) => {
+    if (!m || typeof m !== "object") return;
+    const hasProvider = typeof m.provider === "string";
+    const hasId = typeof m.id === "string";
+    if (!hasProvider && !hasId) ignored.push(`the [[model]] #${i + 1} missing provider and id`);
+    else if (!hasProvider) ignored.push(`the [[model]] with id "${m.id}" missing provider`);
+    else if (!PROVIDER_NAMES.includes(m.provider as ProviderName)) ignored.push(`the [[model]] with provider "${m.provider}"${hasId ? ` (${m.id})` : " missing id"}`);
+    else if (!hasId) ignored.push(`the [[model]] with provider "${m.provider}" missing id`);
+  });
   return ignored;
 }
 
