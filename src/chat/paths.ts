@@ -13,7 +13,7 @@ export type DirListing = { ok: true; entries: PathEntry[] } | { ok: false };
  * is not readable or is a file gives `{ ok: false }`.
  */
 export function listDir(dataDir: string, dir: string, home: string = homedir()): DirListing {
-  const base = dir === "~" || dir.startsWith("~/") ? join(home, dir.slice(1)) : isAbsolute(dir) ? dir : join(dataDir, dir);
+  const base = dir.startsWith("~/") ? join(home, dir.slice(1)) : isAbsolute(dir) ? dir : join(dataDir, dir);
   try {
     const entries = readdirSync(base, { withFileTypes: true }).map((e): PathEntry => {
       let isDir = e.isDirectory();

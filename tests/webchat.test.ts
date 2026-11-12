@@ -857,6 +857,10 @@ describe("@ path suggestions", () => {
     await typed("@nope/");
     expect(names()).toEqual(["Can't open this folder"]);
     expect(q(".jv-at-row").classList.contains("jv-bad")).toBe(true);
+    key(input(), "Enter"); // Enter never sends while the list is open
+    await env.tick(20);
+    expect(q(".jv-user")).toBeNull();
+    key(input(), "Escape");
     key(input(), "Enter");
     await env.tick(60);
     expect(q(".jv-user").textContent).toBe("@nope/");
@@ -869,6 +873,32 @@ describe("@ path suggestions", () => {
     expect(names()).toEqual(["Looking…"]);
     await env.tick(200);
     expect(names()[0]).toBe("📁notes/");
+  });
+  test("rows of the previous folder can't be chosen while the next folder loads", async () => {
+    await at({ slow: 100, slowMs: 500 });
+    await typed("@no");
+    await env.tick(150);
+    key(input(), "Enter"); // -> @notes/, its listing is pending
+    await env.tick(5);
+    key(input(), "Enter");
+    rows()[0]?.click();
+    expect(input().value).toBe("@notes/");
+    await env.tick(150);
+    expect(names()[0]).toBe("📁oncall/");
+  });
+  test("moving the caret into an @path with ↑/↓ opens it again; a caret just before the @ does not", async () => {
+    await at();
+    await typed("@notes/ x");
+    expect(panel()).toBeNull();
+    input().setSelectionRange(3, 3);
+    input().dispatchEvent(new env.win.KeyboardEvent("keyup", { key: "ArrowUp", bubbles: true }) as unknown as Event);
+    await env.tick(20);
+    expect(panel()).not.toBeNull();
+    await typed("hi @notes");
+    input().setSelectionRange(3, 3);
+    input().dispatchEvent(new env.win.KeyboardEvent("keyup", { key: "ArrowLeft", bubbles: true }) as unknown as Event);
+    await env.tick(20);
+    expect(panel()).toBeNull();
   });
   test("a big folder shows the count and every row (the list scrolls), long names are cut in the middle", async () => {
     await at();

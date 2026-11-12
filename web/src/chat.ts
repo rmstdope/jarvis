@@ -154,14 +154,14 @@ export function createChat(opts: { navigate: (hash: string) => void; onChange?: 
     if (dir === atDir && prefix === atPrefix) return;
     const dirChanged = dir !== atDir;
     atPrefix = prefix; atHi = 0;
-    if (!dirChanged) { atDraw(); return; }
+    if (!dirChanged) { if (atShown !== "loading") atDraw(); return; }
     atDir = dir;
     const have = listings.get(dir);
     if (have) { atShown = have; atDraw(); return; }
     const mine = ++atReq;
     clearTimeout(atSlow);
-    if (atOpen) atSlow = setTimeout(() => { if (mine === atReq) { atShown = "loading"; atDraw(); } }, slowMs);
-    else atSlow = setTimeout(() => { if (mine === atReq && !atOpen) { atShown = "loading"; atDraw(); } }, slowMs);
+    atShown = "loading"; // the previous folder's rows can no longer be chosen; the panel says so only after slowMs
+    atSlow = setTimeout(() => { if (mine === atReq) atDraw(); }, slowMs);
     api.chatPaths(dir).then((r) => r, () => "error" as const).then((r) => {
       if (mine !== atReq) return;
       clearTimeout(atSlow);
@@ -177,9 +177,10 @@ export function createChat(opts: { navigate: (hash: string) => void; onChange?: 
     const body = atShown === "loading" ? single("Looking…", "jv-at-dim") : atShown === "error" ? single("Can't open this folder", "jv-bad")
       : rows.length ? rows.map((e, i) => {
         const full = e.name + (e.dir ? "/" : ""), shown = middleCut(full, AT_NAME_MAX), n = atPrefix.length;
-        const bold = n > 0 && shown.slice(0, n).toLowerCase() === atPrefix.toLowerCase();
+        const cutAt = shown === full ? -1 : shown.indexOf("…"), m = cutAt >= 0 ? Math.min(n, cutAt) : n;
+        const bold = m > 0 && shown.slice(0, m).toLowerCase() === atPrefix.slice(0, m).toLowerCase();
         const row = h("div", { class: `jv-at-row${i === atHi ? " jv-on" : ""}`, role: "option", "aria-selected": String(i === atHi), onMousedown: (ev: Event) => ev.preventDefault(), onClick: () => { atHi = i; atChoose(); } },
-          h("span", { class: "jv-at-i" }, e.dir ? "📁" : "📄"), h("span", { class: "jv-at-name", title: full }, bold ? h("b", {}, shown.slice(0, n)) : null, bold ? shown.slice(n) : shown));
+          h("span", { class: "jv-at-i" }, e.dir ? "📁" : "📄"), h("span", { class: "jv-at-name", title: full }, bold ? h("b", {}, shown.slice(0, m)) : null, bold ? shown.slice(m) : shown));
         return row;
       }) : single(atShown.entries.length === 0 ? "Empty folder" : "No matches", "jv-at-dim");
     atPanel.replaceChildren(
@@ -214,16 +215,16 @@ export function createChat(opts: { navigate: (hash: string) => void; onChange?: 
     }
     if (k.key === "Enter" || k.key === "Tab") {
       if (k.key === "Enter" && k.shiftKey) return false;
-      k.preventDefault();
+      if (!rows.length && k.key === "Tab") return false; // nothing to choose: Tab moves on as usual
+      k.preventDefault(); // Enter never sends while the list is open
       if (rows.length) atChoose();
-      else if (k.key === "Enter") return false; // nothing to choose: the message is sent as typed
       return true;
     }
     return false;
   }
   input.addEventListener("input", () => { atDismissed = false; atEvaluate(); });
   input.addEventListener("click", () => { atDismissed = false; atEvaluate(); });
-  input.addEventListener("keyup", (e) => { if (["ArrowLeft", "ArrowRight", "Home", "End"].includes((e as KeyboardEvent).key)) { atDismissed = false; atEvaluate(); } });
+  input.addEventListener("keyup", (e) => { if (["ArrowLeft", "ArrowRight", "Home", "End", "ArrowUp", "ArrowDown"].includes((e as KeyboardEvent).key)) { atDismissed = false; atEvaluate(); } });
   document.addEventListener("mousedown", (e) => { if (atOpen && !atPanel.contains(e.target as Node) && e.target !== input) atClose(true); });
 
   function restore(): Conv {

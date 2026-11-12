@@ -15,6 +15,10 @@ describe("findMention", () => {
     expect(findMention("@notes ", 7)).toBeNull();
     expect(findMention("@notes/on-call\\ han", 19)).toEqual({ start: 0, end: 19, raw: "notes/on-call\\ han" });
   });
+  test("a caret at the @ itself, before it, is not inside the mention", () => {
+    expect(findMention("hi @notes", 3)).toBeNull();
+    expect(findMention("@notes", 0)).toBeNull();
+  });
   test("the token extends past the caret and the caret may sit inside it", () => {
     expect(findMention("@notes/oncall x", 4)).toEqual({ start: 0, end: 13, raw: "not" });
   });

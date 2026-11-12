@@ -14,7 +14,7 @@ const escaped = (t: string, i: number): boolean => i > 0 && t[i - 1] === "\\" &&
 export function findMention(text: string, caret: number): Mention | null {
   let s = caret;
   while (s > 0 && (!isSpace(text[s - 1]) || escaped(text, s - 1))) s--;
-  if (text[s] !== "@") return null;
+  if (s >= caret || text[s] !== "@") return null;
   let end = caret;
   while (end < text.length && (!isSpace(text[end]) || escaped(text, end))) end++;
   return { start: s, end, raw: text.slice(s + 1, caret) };

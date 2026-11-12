@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { mkdirSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, symlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { listDir } from "../src/chat/paths.ts";
 import { handle } from "../src/server.ts";
@@ -37,6 +37,18 @@ describe("listDir", () => {
   test("missing, a file, and unreadable are not ok", () => {
     expect(listDir(t.dir, "nope/").ok).toBe(false);
     expect(listDir(t.dir, "readme.md").ok).toBe(false);
+  });
+  test("a link to a folder is listed as a folder", () => {
+    symlinkSync(join(t.dir, "notes"), join(t.dir, "link"));
+    const r = listDir(t.dir, "");
+    expect(r.ok && r.entries.find((e) => e.name === "link")).toEqual({ name: "link", dir: true });
+  });
+  test("an unreadable folder is not ok", () => {
+    if (process.getuid?.() === 0 || process.platform === "win32") return;
+    const p = join(t.dir, "locked");
+    mkdirSync(p);
+    chmodSync(p, 0o000);
+    try { expect(listDir(t.dir, "locked/").ok).toBe(false); } finally { chmodSync(p, 0o755); }
   });
 });
 
