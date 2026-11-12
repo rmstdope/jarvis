@@ -21,9 +21,9 @@ const base = (o: Record<string, unknown> = {}) => ({
   tasks: [task(1, { status: "done" }), task(2, { due: "2026-11-20" })],
   through: { total: 1, items: [tied(1, ["task 2"])] }, direct: { total: 1, items: [tied(2)] }, ...o,
 });
-interface Opts { detail?: ReturnType<typeof base> | (() => ReturnType<typeof base>); suggest?: unknown | (() => Promise<unknown>); chat?: boolean }
+interface Opts { detail?: ReturnType<typeof base> | (() => ReturnType<typeof base>); suggest?: unknown | (() => Promise<unknown>); chat?: boolean; width?: number }
 async function boot(hash: string, o: Opts = {}) {
-  env = installWebEnv(1280);
+  env = installWebEnv(o.width ?? 1280);
   timing.undoMs = 40;
   env.routes.set("GET /api/me", () => ({ json: { name: "Mia" } }));
   env.routes.set("GET /api/chat/status", () => ({ json: { available: o.chat ?? true } }));
@@ -351,6 +351,25 @@ describe("review fixes", () => {
     expect(text(".toast")).toBe("Closed: Move billing");
     expect(btn("Reopen")).toBeDefined();
   });
+});
+
+describe("a long title in the top bar", () => {
+  const long = "A".repeat(60) + " " + "B".repeat(59); // 120 characters
+  for (const width of [390, 1280]) {
+    test(`at ${width}px it stays on one line and ends in an ellipsis`, async () => {
+      await boot("#/initiative/IA", { width, detail: base({ initiative: { ...base().initiative, title: long } }) });
+      const st = document.createElement("style");
+      st.textContent = (await import("node:fs")).readFileSync("web/src/styles.css", "utf8");
+      document.head.append(st);
+      expect(q(".jv-shell").classList.contains("jv-phone")).toBe(width < 640);
+      const t = q(".jv-iread .jv-dhead .jv-dtitle");
+      expect(t.textContent).toBe(long);
+      const cs = env.win.getComputedStyle(t as never);
+      expect(cs.whiteSpace).toBe("nowrap");
+      expect(cs.overflow).toBe("hidden");
+      expect(cs.textOverflow).toBe("ellipsis");
+    });
+  }
 });
 
 describe("editing in place", () => {
