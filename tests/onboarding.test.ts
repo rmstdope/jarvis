@@ -115,6 +115,17 @@ describe("doctor", () => {
     writeFileSync(mp, '[[model]]\nprovider = "local"\nid = "qwen3:14b"\n');
     expect((await doctor({ coreOnly: true })).checks.find((c) => c.name === "models-config")).toMatchObject({ status: "ok", detail: mp });
   });
+  test("models-config names a [[model]] dropped for a missing provider or id, and the missing key", async () => {
+    const mp = join(home, "models.toml");
+    writeFileSync(mp, '[[model]]\nprovider = "local"\nmodel = "qwen3:8b"\n\n[[model]]\nid = "gemma4:26b"\n\n[[model]]\nquality = "high"\n\n[[model]]\nprovider = "local"\nid = "qwen3:14b"\n');
+    const check = (await doctor({ coreOnly: true })).checks.find((c) => c.name === "models-config")!;
+    expect(check.status).toBe("warn");
+    expect(check.detail).toContain('the [[model]] with provider "local" missing id');
+    expect(check.detail).toContain('the [[model]] with id "gemma4:26b" missing provider');
+    expect(check.detail).toContain("[[model]] #3 missing provider and id");
+    expect(check.detail).not.toContain("qwen3:14b");
+    expect(check.fix).toContain("provider and id");
+  });
   test("doctor says whether decks can be presented in Slidecraft, with the exact fix", async () => {
     const data = join(t.dir, "content");
     await init({ yes: true, data, author: "tester", preset: "cpu-only-minimal", embedding: "ollama", log: () => {} });

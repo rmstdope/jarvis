@@ -166,7 +166,7 @@ export async function doctor(opts: DoctorOpts = {}): Promise<DoctorReport> {
     !existsSync(mp)
       ? warn("models-config", `${mp} missing; models are detected live`, "jarvis config preset <name>   or   jarvis config redetect --write")
       : ignored.length
-        ? warn("models-config", `${mp}: ignored ${ignored.join(", ")}`, `spell each table [[model]], with provider local, copilot or openai-compat, in ${mp}   or   jarvis config preset <name>`)
+        ? warn("models-config", `${mp}: ignored ${ignored.join(", ")}`, `spell each table [[model]] and give it a provider and id, with provider local, copilot or openai-compat, in ${mp}   or   jarvis config preset <name>`)
         : ok("models-config", false, mp),
   );
   const router = await getRouter();
