@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { listPresets, readPreset, recommendPreset, applyPreset } from "../src/core/presets.ts";
 import { modelsPath, parseModelsToml } from "../src/providers/models.ts";
-import { createRouter } from "../src/providers/router.ts";
+import { createRouter, defaultProviderFactory } from "../src/providers/router.ts";
 import { setRouterForTests } from "../src/providers/index.ts";
 import { parseCopilotModelCatalog, readCopilotModelCatalog } from "../src/providers/copilot.ts";
 import { doctor, checkSqliteVec, checkJarvisCommand, formatDoctor } from "../src/core/doctor.ts";
@@ -271,6 +271,54 @@ describe("doctor: an openai-compat model id the server refuses (jv-6sk)", () => 
     setRouterForTests(await compatRouter(["gpt-5-mini"]));
     const r = await doctor({ coreOnly: true, which: (b) => `/bin/${b}` });
     expect(r.checks.find((x) => x.name === "openai-model")).toMatchObject({ status: "ok", detail: "gpt-5-mini accepted by the server" });
+  });
+});
+
+describe("doctor: an openai-compat server that refuses connections (jv-asw)", () => {
+  afterEach(() => setRouterForTests(null));
+  // A port that was just served and stopped: connecting to it is refused.
+  const closedBaseUrl = () => {
+    const s = Bun.serve({ hostname: "127.0.0.1", port: 0, fetch: () => new Response("") });
+    const url = `http://127.0.0.1:${s.port}/v1`;
+    s.stop(true);
+    return url;
+  };
+
+  test("models-available names the baseUrl, and its fix says to start the server there or change baseUrl", async () => {
+    const baseUrl = closedBaseUrl();
+    setRouterForTests(await createRouter({ config: { preference: ["openai-compat"], models: [{ provider: "openai-compat", id: "qwen3", quality: "high", bestFor: [], baseUrl }], source: "file" } }));
+    const r = await doctor({ coreOnly: true, which: (b) => `/bin/${b}` });
+    const c = r.checks.find((x) => x.name === "models-available");
+    expect(c).toMatchObject({ status: "warn", detail: `no configured model is reachable: nothing answers at ${baseUrl}` });
+    expect(c!.fix).toBe(`start the server at ${baseUrl}   or   change baseUrl in ${modelsPath()}`);
+  });
+
+  test("a server that answers /models with an error is not called silent", async () => {
+    const s = Bun.serve({ hostname: "127.0.0.1", port: 0, fetch: () => Response.json({ error: { message: "bad key" } }, { status: 401 }) });
+    try {
+      setRouterForTests(await createRouter({ config: { preference: ["openai-compat"], models: [{ provider: "openai-compat", id: "qwen3", quality: "high", bestFor: [], baseUrl: `http://127.0.0.1:${s.port}/v1` }], source: "file" } }));
+      const r = await doctor({ coreOnly: true, which: (b) => `/bin/${b}` });
+      expect(r.checks.find((x) => x.name === "models-available")).toMatchObject({ status: "warn", detail: "no configured model is reachable", fix: "start Ollama / install the Copilot CLI / set OPENAI_API_KEY (or the key env named in models.toml)" });
+    } finally {
+      s.stop(true);
+    }
+  });
+
+  test("beside another unreachable provider, the fix keeps the generic advice after the server's", async () => {
+    const baseUrl = closedBaseUrl();
+    const models = [
+      { provider: "openai-compat" as const, id: "qwen3", quality: "high" as const, bestFor: [], baseUrl },
+      { provider: "copilot" as const, id: "default", quality: "high" as const, bestFor: [] },
+    ];
+    setRouterForTests(await createRouter({ config: { preference: ["openai-compat", "copilot"], models, source: "file" }, factory: (e) => (e.provider === "copilot" ? { name: "copilot", available: async () => false, complete: async () => "" } : defaultProviderFactory(e)) }));
+    const r = await doctor({ coreOnly: true, which: (b) => `/bin/${b}` });
+    expect(r.checks.find((x) => x.name === "models-available")!.fix).toBe(`start the server at ${baseUrl}   or   change baseUrl in ${modelsPath()};   for the other models: start Ollama / install the Copilot CLI / set OPENAI_API_KEY (or the key env named in models.toml)`);
+  });
+
+  test("an entry whose key env is unset is a missing key, not a silent server", async () => {
+    setRouterForTests(await createRouter({ config: { preference: ["openai-compat"], models: [{ provider: "openai-compat", id: "qwen3", quality: "high", bestFor: [], baseUrl: closedBaseUrl(), apiKeyEnv: "JARVIS_TEST_UNSET_KEY" }], source: "file" } }));
+    const r = await doctor({ coreOnly: true, which: (b) => `/bin/${b}` });
+    expect(r.checks.find((x) => x.name === "models-available")).toMatchObject({ status: "warn", detail: "no configured model is reachable", fix: "start Ollama / install the Copilot CLI / set OPENAI_API_KEY (or the key env named in models.toml)" });
   });
 });
 
