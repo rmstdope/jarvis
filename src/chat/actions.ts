@@ -40,6 +40,12 @@ export interface ActionContext {
   dataDir: string;
   /** Files attached to this message: name → absolute path. */
   attachments: Record<string, string>;
+  /** The items whose ids the agent saw in this turn's context; an id it picks among several of one kind sharing a title is refused once (jv-6c1). */
+  seen?: { docId: string; title: string; source: string }[];
+  /** Titles ("source:title", lower case) the user was asked about in an earlier turn of this conversation: the agent's pick among them stands. */
+  asked?: ReadonlySet<string>;
+  /** Where a refusal records the title it asked about, for `asked` from the next turn on. */
+  asking?: Set<string>;
 }
 /** What a tool did; `also` holds further rows the same call made (the links of a new task), each undone on its own. */
 interface Done { kind: ChangeKind; items: ChangeItem[]; ops: Op[]; detail?: Change["detail"]; draft?: Change["draft"]; undoable?: boolean; also?: Done[] }
@@ -94,6 +100,25 @@ const resolveRef = (dataDir: string, ref: string, source?: string): string => {
   }
   return ref;
 };
+/**
+ * The id the agent passed, unless it picked it from several items of one kind in its context that
+ * share a title, and the user has not been asked which yet: retrieval put them all in front of it,
+ * so its choice would be a guess the title path refuses (jv-6c1). Refused once per title per
+ * conversation, naming each item; after that the agent's pick, made with the user's answer, stands.
+ */
+const pickFromContext = (dataDir: string, ref: string, ctx: ActionContext): string => {
+  const picked = ctx.seen?.find((s) => s.docId === ref);
+  if (!picked || !ctx.seen) return ref;
+  const key = `${picked.source}:${picked.title.toLowerCase()}`;
+  const same = [...new Set(ctx.seen.filter((s) => s.source === picked.source && s.title.toLowerCase() === picked.title.toLowerCase()).map((s) => s.docId))];
+  if (same.length < 2 || ctx.asked?.has(key)) return ref;
+  ctx.asking?.add(key);
+  const rows = withDb(dataDir, (db) =>
+    db.query<{ id: string; title: string; created_at: string }, string[]>(`SELECT id, title, created_at FROM documents WHERE id IN (${same.map(() => "?").join(",")}) ORDER BY created_at DESC`).all(...same));
+  throw new Error(`more than one ${picked.source} in the context is called "${picked.title}": ${rows.map((f) => `${f.title} [${f.id}] from ${f.created_at.slice(0, 10)}`).join(", ")}; ask the user which they mean`);
+};
+/** The id an action's reference names, by title (`resolveRef`) or as an id the agent picked from its context (`pickFromContext`). */
+const refOf = (ctx: ActionContext, ref: string, source?: string): string => pickFromContext(ctx.dataDir, resolveRef(ctx.dataDir, ref, source), ctx);
 const slugify = (s: string): string => s.toLowerCase().normalize("NFKD").replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 48) || "deck";
 
 /** Verb after "Couldn't" for a failed row. */
@@ -145,9 +170,9 @@ async function perform(tool: string, a: Record<string, unknown>, ctx: ActionCont
       return capture(d, "capture.file", { source: "paste", title: str(a, "title") ?? name, body: readFileSync(path, "utf8"), author });
     }
     case "jarvis_create_task": {
-      const links = ids(a.link).map((l) => resolveRef(d, l));
+      const links = ids(a.link).map((l) => refOf(ctx, l));
       const initiative = str(a, "initiative");
-      const value = await addTask(d, { title: need(a, "title"), body: str(a, "body"), due: str(a, "due"), owner: str(a, "owner"), initiative: initiative && resolveRef(d, initiative, "initiative"), links, author });
+      const value = await addTask(d, { title: need(a, "title"), body: str(a, "body"), due: str(a, "due"), owner: str(a, "owner"), initiative: initiative && refOf(ctx, initiative, "initiative"), links, author });
       const task = item(d, value.id);
       const also: Done[] = readSidecar(d, value.id)
         .filter((l): l is EdgeLine => l.kind === "edge" && l.created_by === "manual" && links.includes(l.dst))
@@ -157,7 +182,7 @@ async function perform(tool: string, a: Record<string, unknown>, ctx: ActionCont
     case "jarvis_update_task":
     case "jarvis_set_task_status":
     case "jarvis_move_task": {
-      const id = resolveRef(d, need(a, "task"), "task");
+      const id = refOf(ctx, need(a, "task"), "task");
       const before = readDocFile(d, id)?.frontmatter.task;
       if (!before) throw new Error("the task was not found");
       const beforeCopy = { ...before };
@@ -171,7 +196,7 @@ async function perform(tool: string, a: Record<string, unknown>, ctx: ActionCont
         kind = status === "done" ? "task.done" : "task.reopen";
       } else if (tool === "jarvis_move_task") {
         const given = str(a, "initiative");
-        const target = given ? resolveRef(d, given, "initiative") : null;
+        const target = given ? refOf(ctx, given, "initiative") : null;
         const r = await moveTask(d, id, target, author);
         kind = "task.move";
         detail = { from: r.from, to: r.to };
@@ -190,7 +215,7 @@ async function perform(tool: string, a: Record<string, unknown>, ctx: ActionCont
       return { kind: "initiative.create", items: [item(d, value.id)], ops: docOp(d, value.id) };
     }
     case "jarvis_link": {
-      const src = resolveRef(d, need(a, "src")), dst = resolveRef(d, need(a, "dst"));
+      const src = refOf(ctx, need(a, "src")), dst = refOf(ctx, need(a, "dst"));
       const relation = (str(a, "relation") ?? "related") as Relation;
       const r = link(d, src, [dst], { relation, author })[0];
       if (r.status === "member") throw new Error(`${r.title} is already a task in ${r.initiative}`);

@@ -56,7 +56,7 @@ export const CHAT_RULES = `You can act on the knowledge base by writing action b
 {"tool": "jarvis_create_task", "args": {"title": "Ring the vendor", "due": "2026-11-13"}, "as": "t1"}
 \`\`\`
 
-Later blocks of the same answer may pass "$t1" wherever an id is needed (for example link or initiative). Ids of existing items are in square brackets in the context; for an existing item whose id you do not have, pass its exact title instead. Actions (a key ending in ? is optional; write it without the ?):
+Later blocks of the same answer may pass "$t1" wherever an id is needed (for example link or initiative). Ids of existing items are in square brackets in the context; for an existing item whose id you do not have, pass its exact title instead. When several items of one kind in the context share the name the user said, ask which one they mean instead of choosing. Actions (a key ending in ? is optional; write it without the ?):
 ${ACTION_REFERENCE}
 
 When the user asks for a change, write its block straight away without asking first; every change can be undone. Write one block per change. After the blocks run you are told what happened; if something failed, say so plainly. The blocks are removed from what the person reads and a card under your answer shows what was done or failed, so do not claim a result and do not repeat the block's content; say in words what you are doing, by title. Never publish or approve anything: a briefing or presentation you make is a draft, and you say so. Capture an attached file only when the user asks. To open a document for the user in a tab beside the chat, write <<open:ID>> with its id in your answer.`;
@@ -78,6 +78,8 @@ export interface ChatSession {
   lastResults: string[];
   busy: boolean;
   sources: { docId: string; title: string; source: string }[];
+  /** Titles the user has been asked to choose between in this session (jv-6c1); see `ActionContext.asked`. */
+  asked: Set<string>;
 }
 
 /** The configured chat model id (`JARVIS_CHAT_MODEL`, else config `chatModel`); undefined lets Copilot pick its default. */
@@ -166,7 +168,7 @@ export class ChatService {
     const id = ulid();
     const acpSessionId = await agent.newSession(this.dataDir);
     new ChangeLog(this.dataDir, conversationId ?? id); // validates the id
-    const s: ChatSession = { id, conversationId: conversationId ?? id, turn: "", attachments: {}, scope: { type: scope.type, ids }, acpSessionId, createdAt: this.now(), lastActive: this.now(), turns: 0, lastResults: [], busy: false, sources };
+    const s: ChatSession = { id, conversationId: conversationId ?? id, turn: "", attachments: {}, scope: { type: scope.type, ids }, acpSessionId, createdAt: this.now(), lastActive: this.now(), turns: 0, lastResults: [], busy: false, sources, asked: new Set() };
     this.sessions.set(s.id, s);
     return s;
   }
@@ -280,12 +282,14 @@ export class ChatService {
     let chain: Promise<void> = Promise.resolve();
     const results: string[] = [];
     const failed: string[] = [];
+    let seen: ChatSession["sources"] = [];
+    const asking = new Set<string>(); // a refusal this turn counts from the next one, once the user has been asked
     /** Run the agent's actions in order, each recorded and pushed as a `change` event. */
     const act = (list: { tool: string; args: Record<string, unknown>; as?: string }[]) => {
       for (const a of list) {
         chain = chain.then(async () => {
           try {
-            const r = await runTool(new ChangeLog(this.dataDir, s.conversationId), turn, a.tool, resolveRefs(a.args, aliases), { dataDir: this.dataDir, attachments });
+            const r = await runTool(new ChangeLog(this.dataDir, s.conversationId), turn, a.tool, resolveRefs(a.args, aliases), { dataDir: this.dataDir, attachments, seen, asked: s.asked, asking });
             results.push(r.text);
             if (r.change && !r.change.ok) failed.push(r.text);
             if (r.change) {
@@ -332,6 +336,7 @@ export class ChatService {
     });
     try {
       const { prompt, sources } = this.buildPrompt(s, message, names);
+      seen = sources;
       for (const src of sources) push({ type: "source", ...src });
       const agent = await this.agent();
       let finished = false;
@@ -359,6 +364,7 @@ export class ChatService {
       s.busy = false;
       if (files.length) rmSync(join(this.dataDir, ".index", "chat", "uploads", turn), { recursive: true, force: true }); // captured files were copied into the content repo
       s.lastResults = results;
+      for (const k of asking) s.asked.add(k);
       s.attachments = {};
       s.lastActive = this.now();
       this.updateHandlers.delete(s.acpSessionId);
