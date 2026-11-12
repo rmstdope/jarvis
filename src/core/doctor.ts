@@ -175,7 +175,7 @@ export async function doctor(opts: DoctorOpts = {}): Promise<DoctorReport> {
       ? warn("models-config", `${mp} missing; models are detected live`, "jarvis config preset <name>   or   jarvis config redetect --write")
       : tomlError
         ? warn("models-config", `${mp} is not valid TOML: ${tomlError}`, `fix the TOML in ${mp}, and spell each table [[model]]   or   jarvis config preset <name>`)
-        : routerError
+        : routerError !== null
           ? warn("models-config", `${mp}: ${routerError}`, `fix that entry in ${mp}   or   jarvis config preset <name>`)
           : ignored.length
             ? warn("models-config", `${mp}: ignored ${ignored.join(", ")}`, `spell each table [[model]] and give it a provider and id, with provider local, copilot or openai-compat, in ${mp}   or   jarvis config preset <name>`)
@@ -183,7 +183,7 @@ export async function doctor(opts: DoctorOpts = {}): Promise<DoctorReport> {
   );
   if (routerError !== null) {
     // The router could not load models.toml; say what that leaves unchecked rather than dropping the lines.
-    for (const name of ["models-available", "models-tasks"]) checks.push(warn(name, "skipped: models.toml could not be loaded", "fix models.toml as the models-config line says"));
+    for (const name of ["models-available", "models-tasks"]) checks.push(warn(name, "skipped: models.toml could not be loaded", `fix ${mp} as the models-config line says`));
   } else if (router) {
     // A named Copilot id outside the CLI's catalog is refused at run time (`--model … is not available`).
     const named = router.entries.filter((e) => e.available && e.entry.provider === "copilot" && e.entry.id !== COPILOT_CLI_DEFAULT && e.entry.id !== "auto");

@@ -184,7 +184,7 @@ describe("doctor", () => {
         const r = await doctor({ coreOnly: true, which: (b) => `/bin/${b}` });
         for (const name of ["models-available", "models-tasks"]) {
           const check = r.checks.find((c) => c.name === name);
-          expect(check).toMatchObject({ status: "warn", detail: "skipped: models.toml could not be loaded", fix: "fix models.toml as the models-config line says" });
+          expect(check).toMatchObject({ status: "warn", detail: "skipped: models.toml could not be loaded", fix: `fix ${mp} as the models-config line says` });
         }
       }
     } finally {
