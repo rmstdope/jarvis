@@ -306,7 +306,7 @@ export class ChatService {
           try {
             const r = await runTool(new ChangeLog(this.dataDir, s.conversationId), turn, a.tool, resolveRefs(a.args, aliases), { dataDir: this.dataDir, attachments, seen, asked: s.asked, asking });
             results.push(r.text);
-            if (r.asked) asks.push(r.text);
+            if (r.asked) asks.push(r.question ?? r.text);
             else if (r.change && !r.change.ok) failed.push(r.text);
             if (r.change) {
               push({ type: "change", change: r.change });

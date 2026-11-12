@@ -284,7 +284,7 @@ async function perform(tool: string, a: Record<string, unknown>, ctx: ActionCont
  * Run one tool call and record it; a failure is recorded as a failed row, never thrown. Returns the
  * row, any further rows the call made (`more`: the links of a new task), and the text the model reads.
  */
-export async function runTool(log: ChangeLog, turn: string, tool: string, args: Record<string, unknown>, ctx: ActionContext): Promise<{ change: Change | null; more: Change[]; text: string; asked?: boolean }> {
+export async function runTool(log: ChangeLog, turn: string, tool: string, args: Record<string, unknown>, ctx: ActionContext): Promise<{ change: Change | null; more: Change[]; text: string; asked?: boolean; question?: string }> {
   if (!(tool in VERBS)) throw new Error(`unknown tool ${tool}`);
   try {
     const done = await perform(tool, args, { ...ctx, tool });
@@ -297,7 +297,11 @@ export async function runTool(log: ChangeLog, turn: string, tool: string, args: 
     if (e instanceof AmbiguousPick) {
       const a = e.ask;
       const change = log.record({ turn, kind: KIND_OF_TOOL[tool], ok: false, items: [], ask: a, verb: VERBS[tool] }, []);
-      return { change, more: [], asked: true, text: `Not done yet: ${a.options.length} ${a.source}s are called "${a.title}", ${a.sameDay ? "all from the same day" : "from different days"}. The user now sees a button for each, with what tells them apart.` };
+      const kind = `${a.options.length} items of kind "${a.source}"`;
+      const when = a.sameDay ? "all from the same day" : "from different days";
+      // What the agent keeps for the next turn: the user's reply names an item by its detail, so each detail is paired with its id. Never shown to the user.
+      const key = a.options.map((o) => `"${o.title}${o.tail}" = [${o.id}]`).join("; ");
+      return { change, more: [], asked: true, question: `${kind} are called "${a.title}", ${when}.`, text: `Not done yet: ${kind} are called "${a.title}", ${when}. The user sees a button for each and will answer with its words, which stand for these ids (never repeat an id to the user): ${key}. Act on the one they choose.` };
     }
     const error = (e as Error).message.replace(/\.$/, "");
     const subject = (tool === "jarvis_edit_initiative" ? str(args, "initiative") : str(args, "title")) ?? str(args, "task") ?? str(args, "src") ?? str(args, "attachment");

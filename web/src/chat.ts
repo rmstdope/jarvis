@@ -295,7 +295,7 @@ export function createChat(opts: { navigate: (hash: string) => void; onChange?: 
     const options = c.ask?.options ?? [];
     const pressed = m.chosen?.[c.id];
     if (pressed) return options.find((o) => o.id === pressed);
-    const later = conv.messages.slice(conv.messages.indexOf(m) + 1).flatMap((x) => x.changes ?? []).filter((x) => x.ok);
+    const later = conv.messages.slice(conv.messages.indexOf(m) + 1).flatMap((x) => x.changes ?? []).filter((x) => x.ok && !x.undone);
     return options.find((o) => later.some((x) => x.items.some((i) => i.id === o.id)));
   }
   /** The buttons of one question: pressable only under the newest, finished answer and until one is pressed. */

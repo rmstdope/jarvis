@@ -52,12 +52,27 @@ export function distinguish(rows: { id: string; title: string; created_at: strin
   const times = sorted.map((x) => clock(x.at));
   const distinct = (xs: string[]): boolean => new Set(xs).size === xs.length;
   const mode = distinct(days) ? "date" : new Set(days).size === 1 && distinct(times) ? "time" : "line";
-  return sorted.map(({ r, at }) => {
+  const out = sorted.map(({ r, at }) => {
     if (mode === "date") { const w = dateWords(at, now); return { id: r.id, title: r.title, detail: `from ${w}`, tail: ` from ${w}`, chip: w }; }
     if (mode === "time") { const t = clock(at); return { id: r.id, title: r.title, detail: t, tail: ` at ${t}`, chip: t }; }
     const line = firstLine(r.body);
     if (!line) return { id: r.id, title: r.title, detail: "(empty)", tail: " — (empty)", chip: "(empty)" };
     return { id: r.id, title: r.title, detail: `“${line}”`, tail: ` — “${line}”`, chip: `“${cut(line)}”` };
+  });
+  if (mode !== "line") return out;
+  // Equal first lines: the time, then the place in the list, so no two buttons or messages read alike.
+  const dupes = (xs: ChoiceOption[]): Set<string> => new Set(xs.filter((x) => xs.filter((y) => y.detail === x.detail).length > 1).map((x) => x.id));
+  const atTime = (o: ChoiceOption, i: number): ChoiceOption => { const t = clock(sorted[i].at); return { ...o, detail: `${o.detail} · ${t}`, tail: `${o.tail} at ${t}`, chip: `${o.chip} · ${t}` }; };
+  const first = dupes(out);
+  const timed = out.map((o, i) => (first.has(o.id) ? atTime(o, i) : o));
+  const second = dupes(timed);
+  const seen = new Map<string, number>();
+  return timed.map((o) => {
+    if (!second.has(o.id)) return o;
+    const n = (seen.get(o.detail) ?? 0) + 1;
+    seen.set(o.detail, n);
+    const of = ` (${n} of ${timed.filter((x) => x.detail === o.detail).length})`;
+    return { ...o, detail: o.detail + of, tail: o.tail + of, chip: o.chip + of };
   });
 }
 /** Whether all the items were created on one day (local time). */

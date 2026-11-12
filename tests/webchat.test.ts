@@ -1028,6 +1028,11 @@ describe("same-titled items: the question with buttons (jv-bt4)", () => {
     await ask("the 14:30 one");
     expect(qa(".jv-crow")[0].textContent).toBe("↓Not linked here — you chose Weekly sync at 14:30 below.");
   });
+  test("an undone change does not settle the row", async () => {
+    await start([askRow()], (push) => { push({ type: "change", change: { ...link, undone: true } }); push({ type: "message", text: "Linked." }); push({ type: "done" }); });
+    await ask("the 14:30 one");
+    expect(qa(".jv-crow")[0].textContent).toContain("Waiting for your choice.");
+  });
   test("other changes in the answer are listed as usual and counted apart", async () => {
     await start([{ id: "CT", turn: "T", kind: "task.create", ok: true, undone: false, undoable: true, items: [{ id: "T9", title: "Ring the vendor", kind: "task" }] }, askRow()]);
     expect(q(".jv-changes h4").textContent).toBe("I made 1 change · 1 waiting for you");

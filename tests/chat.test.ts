@@ -514,7 +514,7 @@ describe("the agent acts (jv-oya.4)", () => {
     const evs = await ndjson(await call("POST", `/api/chat/sessions/${sid}/messages`, { message: `link the Weekly sync meeting to the Lunch rota note ACT jarvis_link {"src":"${m1.id}","dst":"${rota.id}"}` }));
     const said = evs.filter((e) => e.type === "message").map((e) => e.text).join("");
     expect(said).toContain("You need the user to choose");
-    expect(said).toContain("2 meetings are called \"Weekly sync\"");
+    expect(said).toContain("2 items of kind \"meeting\" are called \"Weekly sync\"");
     expect(said).not.toContain("Some of your actions failed");
     for (const id of [m1.id, m2.id]) expect(said).not.toContain(id);
     const sources = evs.filter((e) => e.type === "source");
@@ -523,6 +523,18 @@ describe("the agent acts (jv-oya.4)", () => {
     expect(byId[m2.id].detail).toBeTruthy();
     expect(byId[m1.id].detail).not.toBe(byId[m2.id].detail);
     expect(byId[rota.id].detail).toBeUndefined(); // a title nobody else shares stays bare
+  });
+  test("after a press the agent can tell which item the user chose: its previous results map each detail to an id (jv-bt4)", async () => {
+    const m1 = await ingest(t.dir, { source: "meeting", title: "Weekly sync", body: "agenda one", author: "me" });
+    const m2 = await ingest(t.dir, { source: "meeting", title: "Weekly sync", body: "agenda two", author: "me" });
+    const rota = await ingest(t.dir, { source: "note", title: "Lunch rota", body: "who brings lunch", author: "me" });
+    const sid = await open("conv-bt4b");
+    await ndjson(await call("POST", `/api/chat/sessions/${sid}/messages`, { message: `link the Weekly sync meeting to the Lunch rota note ACT jarvis_link {"src":"${m1.id}","dst":"${rota.id}"}` }));
+    const { chatService } = await import("../src/chat/routes.ts");
+    const svc = chatService({ dataDir: t.dir } as Parameters<typeof chatService>[0]);
+    const prompt = svc.buildPrompt(svc.get(sid)!, "Weekly sync at 14:30").prompt;
+    expect(prompt).toContain("Results of your actions in your previous answer");
+    for (const id of [m1.id, m2.id]) expect(prompt).toMatch(new RegExp(`"Weekly sync[^"]+" = \\[${id}\\]`)); // each reply wording is paired with its id
   });
   test("once the user was asked which, the agent's next pick of one of the meetings stands (jv-6c1)", async () => {
     const m1 = await ingest(t.dir, { source: "meeting", title: "Weekly sync", body: "agenda one", author: "me" });

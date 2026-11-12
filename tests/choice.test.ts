@@ -23,7 +23,12 @@ describe("distinguish", () => {
   });
   test("no text at all reads (empty)", () => {
     const o = distinguish([row("a", 2026, 11, 12, 9, 0, ""), row("b", 2026, 11, 12, 9, 0, "  \n")], now);
-    expect(o.map((x) => x.detail)).toEqual(["(empty)", "(empty)"]);
+    expect(o.map((x) => x.detail)).toEqual(["(empty) · 09:00 (1 of 2)", "(empty) · 09:00 (2 of 2)"]);
+  });
+  test("identical first lines are still told apart: by the time, then by position", () => {
+    const o = distinguish([row("a", 2026, 11, 12, 9, 0, "same"), row("b", 2026, 11, 12, 9, 0, "same"), row("c", 2026, 11, 12, 10, 0, "same")], now);
+    expect(o.map((x) => x.detail)).toEqual(["“same” · 10:00", "“same” · 09:00 (1 of 2)", "“same” · 09:00 (2 of 2)"]);
+    expect(new Set(o.map((x) => x.tail)).size).toBe(3);
   });
   test("a mix of same and different days falls back to first lines", () => {
     const o = distinguish([row("a", 2026, 11, 5, 9, 0, "one"), row("b", 2026, 11, 12, 9, 0, "two"), row("c", 2026, 11, 12, 10, 0, "three")], now);
