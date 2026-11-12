@@ -215,6 +215,7 @@ register("ask", 'ask "<question>" [--mode --limit]', async ({ dataDir, positiona
   console.log(r.answer);
   if (r.citations.length) console.log("\nSources:\n" + r.citations.map((c) => `  [${c.docId}] ${c.title}`).join("\n"));
   console.log(`\n(model: ${r.model})`);
+  if (r.skipped) console.log(`fix: ${r.skipped}`);
 });
 register("models", "models  (configured models and availability)", async () => {
   const router = await getRouter();

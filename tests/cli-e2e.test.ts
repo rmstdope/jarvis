@@ -268,4 +268,13 @@ describe("cli end to end (subprocess)", () => {
     expect(jarvis("meeting", join(import.meta.dir, "fixtures", "teams.vtt"), "--title", "Sync").out).toContain("Sync");
     expect(jarvis("search", "pasta", "--mode", "keyword").out).toContain("notes.md");
   });
+  test("ask without a chat model prints the matching items and a fix line naming the models file, exit 0 (jv-leu)", () => {
+    const n = jarvis("note", "Lens calibration cures focus breathing", "--title", "Breathing");
+    const id = n.out.match(/captured ([0-9A-Z]{26})/)![1];
+    const a = jarvis("ask", "focus breathing", "--mode", "keyword");
+    expect(a.out).not.toContain("error");
+    expect(a.code).toBe(0);
+    expect(a.out).toContain(`[${id}] Breathing`);
+    expect(a.out).toContain(`fix: add or enable a [[model]] with quality = "high" in ${join(home, "models.toml")}`);
+  });
 });
