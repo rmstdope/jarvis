@@ -384,6 +384,12 @@ describe("the agent acts (jv-oya.4)", () => {
     const evs = await ndjson(await call("POST", `/api/chat/sessions/${sid}/messages`, f));
     expect(evs.find((e) => e.type === "change").change).toMatchObject({ kind: "capture.file", ok: true });
   });
+  test("events go out in the order written: text, then the change, then the text after the block (jv-de8)", async () => {
+    const sid = await open("conv8b");
+    const evs = await ndjson(await call("POST", `/api/chat/sessions/${sid}/messages`, { message: 'ACT jarvis_create_task {"title":"Write notes"}' }));
+    const seq = evs.filter((e) => e.type === "message" || e.type === "change").map((e) => (e.type === "change" ? "change" : e.text));
+    expect(seq).toEqual(["On it.\n", "change", "Done."]);
+  });
   test("the blocks and the Info lines never reach the person; aliases carry ids between blocks", async () => {
     const sid = await open("conv8");
     const evs = await ndjson(await call("POST", `/api/chat/sessions/${sid}/messages`, { message: 'ACT jarvis_create_initiative {"title":"Launch","goal":"Ship it"} AS i1 ACT jarvis_create_task {"title":"Write notes","initiative":"$i1"}' }));
@@ -580,5 +586,6 @@ describe("what the assistant says before acting (jv-de8)", () => {
     const { CHAT_RULES } = await import("../src/chat/sessions.ts");
     expect(CHAT_RULES).toContain("I'll link Weekly sync to Q4 planning.");
     expect(CHAT_RULES).toContain("never as already happening or done");
+    expect(CHAT_RULES).not.toContain("say in words what you are doing");
   });
 });

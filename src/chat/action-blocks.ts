@@ -23,38 +23,48 @@ function parse(lines: string[]): ParsedAction | null {
   }
 }
 
+/** What a chunk held, in the order written: visible text and actions. */
+export interface Out { text: string; actions: ParsedAction[]; parts: ({ text: string } | { action: ParsedAction })[] }
+const newOut = (): Out => ({ text: "", actions: [], parts: [] });
+const addText = (out: Out, t: string): void => {
+  if (!t) return;
+  out.text += t;
+  const last = out.parts.at(-1);
+  if (last && "text" in last) last.text += t; else out.parts.push({ text: t });
+};
+
 /** Streaming filter: `push` a chunk of answer text, get the text safe to show and the actions completed so far. */
 export class ActionFilter {
   private held = "";
   private block: string[] | null = null;
-  private line(l: string, out: { text: string; actions: ParsedAction[] }): void {
+  private line(l: string, out: Out): void {
     if (this.block) {
       if (CLOSE.test(l)) {
         const a = parse(this.block);
-        if (a) out.actions.push(a);
+        if (a) { out.actions.push(a); out.parts.push({ action: a }); }
         this.block = null;
       } else this.block.push(l);
     } else if (FENCE.test(l)) this.block = [];
-    else if (!l.startsWith("Info: ")) out.text += l + "\n";
+    else if (!l.startsWith("Info: ")) addText(out, l + "\n");
   }
   /** Feed one chunk. A partial last line is held while it could still become a fence or an `Info:` line. */
-  push(chunk: string): { text: string; actions: ParsedAction[] } {
-    const out = { text: "", actions: [] as ParsedAction[] };
+  push(chunk: string): Out {
+    const out = newOut();
     const parts = (this.held + chunk).split("\n");
     const tail = parts.pop()!;
     for (const l of parts) this.line(l, out);
     const hold = this.block !== null || (tail !== "" && /^\s*(`|$)/.test(tail)) || tail.startsWith("Info: ") || (tail !== "" && "Info: ".startsWith(tail));
     if (hold) this.held = tail;
-    else { out.text += tail; this.held = ""; }
+    else { addText(out, tail); this.held = ""; }
     return out;
   }
   /** The turn is over: a held line is shown unless it was an `Info:` line; an unfinished block is dropped. */
-  end(): { text: string; actions: ParsedAction[] } {
-    const out = { text: "", actions: [] as ParsedAction[] };
+  end(): Out {
+    const out = newOut();
     const t = this.held;
     this.held = "";
     if (this.block && CLOSE.test(t)) this.line(t, out);
-    else if (!this.block && t && !t.startsWith("Info: ")) out.text = t;
+    else if (!this.block && t && !t.startsWith("Info: ")) addText(out, t);
     this.block = null;
     return out;
   }

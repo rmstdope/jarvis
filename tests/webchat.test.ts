@@ -531,6 +531,17 @@ describe("the agent acts: the change card (jv-oya.4)", () => {
       await ask("do it");
       expect(order()).toEqual(["card", "text:Done."]);
     });
+    test("stopped mid-reply: text, card, later text, then Stopped.", async () => {
+      await streamed([]);
+      document.body.innerHTML = "";
+      await setup({ answer: () => ({ stream: async (push, signal) => { push({ type: "message", text: "Before." }); push({ type: "change", change: ch({ kind: "task.create", items: [task("T1", "A")] }) }); push({ type: "message", text: "After." }); await new Promise<void>((r) => signal.addEventListener("abort", () => r())); } }) });
+      type("go");
+      (q(".jv-send") as HTMLElement).click();
+      await env.tick(40);
+      (q(".jv-stop") as HTMLElement).click();
+      await env.tick(40);
+      expect(order()).toEqual(["text:Before.", "card", "text:After.", "jv-stopped muted small"]);
+    });
     test("the order survives a reload; a reply saved without a position keeps the card first", async () => {
       await streamed([{ say: "Before." }, { change: ch({ kind: "task.create", items: [task("T1", "A")] }) }, { say: "After." }]);
       await ask("do it");

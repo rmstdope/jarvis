@@ -2,7 +2,7 @@ import { ulid } from "ulid";
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { basename, extname, join } from "node:path";
 import { AcpClient, spawnCopilotAcp, type AcpTransport } from "./acp.ts";
-import { ActionFilter, resolveRefs } from "./action-blocks.ts";
+import { ActionFilter, resolveRefs, type ParsedAction } from "./action-blocks.ts";
 import { TOOLS, isTranscriptFile, runTool } from "./actions.ts";
 import { ChangeLog, type Change } from "./changes.ts";
 import { loadConfig, loadTeamConfig } from "../core/config.ts";
@@ -59,7 +59,7 @@ export const CHAT_RULES = `You can act on the knowledge base by writing action b
 Later blocks of the same answer may pass "$t1" wherever an id is needed (for example link or initiative). Ids of existing items are in square brackets in the context; for an existing item whose id you do not have, pass its exact title instead. When several items of one kind in the context share the name the user said, ask which one they mean instead of choosing. Actions (a key ending in ? is optional; write it without the ?):
 ${ACTION_REFERENCE}
 
-When the user asks for a change, write its block straight away without asking first; every change can be undone. Write one block per change. After the blocks run you are told what happened; if something failed, say so plainly. The blocks are removed from what the person reads and a card under your answer shows what was done or failed, so do not claim a result and do not repeat the block's content; say in words what you are doing, by title. Word what you write before an action as what you are about to do ("I'll link Weekly sync to Q4 planning."), never as already happening or done ("I'm linking…", "Linked…"); explain any failure after the results, in a sentence or two. Never publish or approve anything: a briefing or presentation you make is a draft, and you say so. Capture an attached file only when the user asks. To open a document for the user in a tab beside the chat, write <<open:ID>> with its id in your answer.`;
+When the user asks for a change, write its block straight away without asking first; every change can be undone. Write one block per change. After the blocks run you are told what happened; if something failed, say so plainly. The blocks are removed from what the person reads and a card in your answer, where the first block ran, shows what was done or failed, so do not claim a result and do not repeat the block's content. Word what you write before an action as what you are about to do ("I'll link Weekly sync to Q4 planning."), never as already happening or done ("I'm linking…", "Linked…"); explain any failure after the results, in a sentence or two. Never publish or approve anything: a briefing or presentation you make is a draft, and you say so. Capture an attached file only when the user asks. To open a document for the user in a tab beside the chat, write <<open:ID>> with its id in your answer.`;
 
 export interface ChatSession {
   id: string;
@@ -303,24 +303,29 @@ export class ChatService {
     };
     let textOnly = false; // the follow-up about failures may speak but never act
     const feed = (chunk: string) => {
-      const r = actions.push(chunk);
-      if (!textOnly) act(r.actions);
-      pushText(filter.push(r.text));
+      route(actions.push(chunk));
     };
+    /** Text and actions in the order the agent wrote them, so a change is sent where its block stood. */
+    const route = (r: { parts: ({ text: string } | { action: ParsedAction })[] }) => {
+      for (const p of r.parts) {
+        if ("action" in p) { if (!textOnly) act([p.action]); }
+        else pushText(filter.push(p.text));
+      }
+    };
+    /** Send after every action queued so far has reported its change. */
+    const emit = (e: ChatEvent) => { chain = chain.then(() => push(e)); };
     const finishText = () => {
-      const r = actions.end();
-      if (!textOnly) act(r.actions);
-      pushText(filter.push(r.text));
+      route(actions.end());
       const rest = filter.end();
-      if (rest) push({ type: "message", text: rest });
+      if (rest) emit({ type: "message", text: rest });
     };
     const opened = new Set<string>();
     const pushText = (r: { text: string; opens: string[] }) => {
-      if (r.text) push({ type: "message", text: r.text });
+      if (r.text) emit({ type: "message", text: r.text });
       for (const id of r.opens) {
         if (opened.has(id)) continue;
         const doc = this.resolveDoc(id);
-        if (doc) { opened.add(id); push({ type: "open", ...doc }); }
+        if (doc) { opened.add(id); emit({ type: "open", ...doc }); }
       }
     };
     this.updateHandlers.set(s.acpSessionId, (u) => {

@@ -18,6 +18,11 @@ describe("ActionFilter (jv-oya.4)", () => {
     expect(r.text).toBe("Sure.\nDone.");
     expect(r.actions).toEqual([{ tool: "jarvis_create_task", args: { title: "A" }, as: "t1" }]);
   });
+  test("parts keep the text and the actions in the order they were written (jv-de8)", () => {
+    const f = new ActionFilter();
+    const r = f.push("Before.\n" + block({ tool: "jarvis_link", args: {} }) + "After.\n" + block({ tool: "jarvis_create_task", args: {} }) + "End");
+    expect(r.parts).toEqual([{ text: "Before.\n" }, { action: { tool: "jarvis_link", args: {} } }, { text: "After.\n" }, { action: { tool: "jarvis_create_task", args: {} } }, { text: "End" }]);
+  });
   test("a block split across chunks is held until its closing fence", () => {
     const full = "Hi\n" + block({ tool: "jarvis_link", args: { src: "a", dst: "b" } }) + "Bye";
     for (let n = 1; n < full.length; n++) {
