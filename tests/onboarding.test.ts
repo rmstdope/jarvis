@@ -165,6 +165,7 @@ describe("doctor", () => {
         expect(check.status).toBe("warn");
         expect(check.detail).toContain(mp);
         expect(check.detail).toContain(problem);
+        expect(check.detail).not.toContain("run jarvis doctor"); // doctor shows the bare cause, not ask's fix line (jv-h6x)
         expect(check.fix).toContain(fix);
       }
     } finally {
