@@ -1082,5 +1082,7 @@ describe("same-titled items: the question with buttons (jv-bt4)", () => {
       { type: "source", docId: "M1", title: "Weekly sync", source: "meeting", detail: "09:00" },
       { type: "source", docId: "N1", title: "Vendor call notes", source: "note" }]);
     expect(qa(".jv-chip").map((c) => c.textContent)).toEqual(["Weekly sync · 14:30", "Weekly sync · 09:00", "Vendor call notes"]);
+    expect(qa(".jv-chip").map((c) => c.classList.contains("jv-chip-d"))).toEqual([true, true, false]); // a detailed chip wraps, so a long detail is never hidden
+    expect((qa(".jv-chip")[0] as HTMLElement).title).toBe("Weekly sync · 14:30");
   });
 });

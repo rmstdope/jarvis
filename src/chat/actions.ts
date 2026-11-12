@@ -86,11 +86,12 @@ const titleForms = (ref: string): string[] => {
  * item of `source` (any source when omitted) whose title matches it, ignoring the case of ASCII
  * letters (SQLite NOCASE). A title is tried as given first, then as a person says it with "the" and
  * a kind word around it ("the Weekly sync meeting" finds "Weekly sync"), so a title that itself ends
- * in a kind word still wins. The kind word also picks the one item of that kind when several share the title (jv-ldo). Several matches are refused, listing each id so the agent can choose. The agent sees
+ * in a kind word still wins. The kind word also picks the one item of that kind when several share the title (jv-ldo). Several matches of one kind make the user be asked which (`AmbiguousPick`, jv-bt4), once per title; after that, or across kinds, they are refused listing each id so the agent can choose. The agent sees
  * ids only for what retrieval put in its context, so it names everything else by title (jv-zyp).
  * No match leaves the reference as it is, for the action to report as not found.
  */
-const resolveRef = (dataDir: string, ref: string, source?: string): string => {
+const resolveRef = (ctx: ActionContext, ref: string, source?: string): string => {
+  const dataDir = ctx.dataDir;
   if (readDocFile(dataDir, ref)) return ref;
   for (const title of titleForms(ref)) {
     let found = withDb(dataDir, (db) =>
@@ -100,7 +101,13 @@ const resolveRef = (dataDir: string, ref: string, source?: string): string => {
     const said = title !== ref.trim() && !sourceOfTrailingKind(title) ? sourceOfTrailingKind(ref) : undefined;
     if (found.length > 1 && said) {
       const narrowed = found.filter((f) => f.source === said);
-      if (narrowed.length === 1) found = narrowed;
+      if (narrowed.length >= 1) found = narrowed; // one left is the item; several left are asked about as a group
+    }
+    // Several of one kind share the title: ask the user which, once per title; otherwise (a mix of kinds, or already asked) the agent picks by id (jv-bt4).
+    const kind = found[0]?.source, name = found[0]?.title.toLowerCase();
+    if (found.length > 1 && found.every((f) => f.source === kind) && !ctx.asked?.has(`${kind}:${name}`)) {
+      ctx.asking?.add(`${kind}:${name}`);
+      throw askWhich(dataDir, found.map((f) => f.id), found[0].title, kind, ctx);
     }
     if (found.length > 1) throw new Error(`more than one item is called "${title}": ${found.map((f) => `${f.title} [${f.id}] from ${f.created_at.slice(0, 10)}`).join(", ")}; pass one of these ids, or ask the user which`);
     if (found[0]) return found[0].id;
@@ -123,13 +130,17 @@ const pickFromContext = (dataDir: string, ref: string, ctx: ActionContext): stri
   const same = [...new Set(ctx.seen.filter((s) => s.source === picked.source && s.title.toLowerCase() === picked.title.toLowerCase()).map((s) => s.docId))];
   if (same.length < 2 || ctx.asked?.has(key)) return ref;
   ctx.asking?.add(key);
+  throw askWhich(dataDir, same, picked.title, picked.source, ctx);
+};
+/** The refusal that asks the user which of the items `ids` (all of one kind, sharing `title`) they mean. */
+const askWhich = (dataDir: string, ids: string[], title: string, source: string, ctx: ActionContext): AmbiguousPick => {
   const rows = withDb(dataDir, (db) =>
-    db.query<{ id: string; title: string; created_at: string }, string[]>(`SELECT id, title, created_at FROM documents WHERE id IN (${same.map(() => "?").join(",")}) ORDER BY created_at DESC`).all(...same))
+    db.query<{ id: string; title: string; created_at: string }, string[]>(`SELECT id, title, created_at FROM documents WHERE id IN (${ids.map(() => "?").join(",")}) ORDER BY created_at DESC`).all(...ids))
     .map((r) => ({ ...r, body: readDocFile(dataDir, r.id)?.body ?? "" }));
-  throw new AmbiguousPick({ tool: ctx.tool ?? "", title: picked.title, source: picked.source, sameDay: onOneDay(rows), options: distinguish(rows) });
+  return new AmbiguousPick({ tool: ctx.tool ?? "", title, source, sameDay: onOneDay(rows), options: distinguish(rows) });
 };
 /** The id an action's reference names, by title (`resolveRef`) or as an id the agent picked from its context (`pickFromContext`). */
-const refOf = (ctx: ActionContext, ref: string, source?: string): string => pickFromContext(ctx.dataDir, resolveRef(ctx.dataDir, ref, source), ctx);
+const refOf = (ctx: ActionContext, ref: string, source?: string): string => pickFromContext(ctx.dataDir, resolveRef(ctx, ref, source), ctx);
 const slugify = (s: string): string => s.toLowerCase().normalize("NFKD").replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 48) || "deck";
 
 /** Verb after "Couldn't" for a failed row. */

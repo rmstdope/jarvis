@@ -492,7 +492,7 @@ describe("the agent acts (jv-oya.4)", () => {
     expect(changes[0].items.map((i: { id: string }) => i.id)).toEqual([meeting.id, drift.id]);
     expect(changes[1].items.map((i: { id: string }) => i.id)).toEqual([task.id, drift.id]);
   });
-  test("a kind word matching neither or both of the items sharing a title still refuses with the ids (jv-ldo)", async () => {
+  test("a kind word narrowing to two meetings asks which; one matching none still refuses with the ids (jv-ldo, jv-bt4)", async () => {
     const m1 = await ingest(t.dir, { source: "meeting", title: "Weekly sync", body: "agenda one", author: "me" });
     const m2 = await ingest(t.dir, { source: "meeting", title: "Weekly sync", body: "agenda two", author: "me" });
     const task = await addTask(t.dir, { title: "Weekly sync", author: "me" });
@@ -500,11 +500,10 @@ describe("the agent acts (jv-oya.4)", () => {
     const sid = await open("conv-ldo2");
     const evs = await ndjson(await call("POST", `/api/chat/sessions/${sid}/messages`, { message: 'ACT jarvis_link {"src":"Weekly sync meeting","dst":"Zoom drift"} ACT jarvis_link {"src":"Weekly sync note","dst":"Zoom drift"}' }));
     const changes = evs.filter((e) => e.type === "change").map((e) => e.change);
-    for (const c of changes) {
-      expect(c.ok).toBe(false);
-      for (const id of [m1.id, m2.id, task.id]) expect(c.error).toContain(`[${id}]`);
-    }
     expect(changes.length).toBe(2);
+    expect(changes[0].ask.options.map((o: { id: string }) => o.id).sort()).toEqual([m1.id, m2.id].sort()); // the task is not a meeting
+    expect(changes[1].ok).toBe(false);
+    for (const id of [m1.id, m2.id, task.id]) expect(changes[1].error).toContain(`[${id}]`);
   });
   test("a kind word that is part of the shared title does not pick an item (jv-ldo)", async () => {
     const m = await ingest(t.dir, { source: "meeting", title: "Standup meeting", body: "agenda", author: "me" });
@@ -611,15 +610,59 @@ describe("the agent acts (jv-oya.4)", () => {
     const c = evs.find((e) => e.type === "change").change;
     expect([c.kind, c.ok, c.error]).toEqual(["link", true, undefined]);
   });
-  test("a title two tasks share is refused rather than guessed (jv-zyp)", async () => {
+  test("a title two tasks share is asked about, not guessed and not shown with ids (jv-zyp, jv-bt4)", async () => {
     const a = await addTask(t.dir, { title: "Review", author: "me" });
     const b = await addTask(t.dir, { title: "review", author: "me" });
     const sid = await open("conv12");
     const evs = await ndjson(await call("POST", `/api/chat/sessions/${sid}/messages`, { message: 'ACT jarvis_set_task_status {"task":"Review","status":"done"}' }));
     const c = evs.find((e) => e.type === "change").change;
     expect(c.ok).toBe(false);
-    expect(c.error).toStartWith('more than one item is called "Review": ');
-    for (const id of [a.id, b.id]) expect(c.error).toContain(`[${id}]`); // the agent can pick one by id, or ask
+    expect(c.error).toBeUndefined();
+    expect(c.ask.options.map((o: { id: string }) => o.id).sort()).toEqual([a.id, b.id].sort()); // a button for each
+    expect([c.ask.source, c.ask.tool]).toEqual(["task", "jarvis_set_task_status"]);
+  });
+  test("a meeting title two meetings share, passed by title, is asked about with a button for each (jv-bt4)", async () => {
+    const m1 = await ingest(t.dir, { source: "meeting", title: "Weekly sync", body: "agenda one", author: "me" });
+    const m2 = await ingest(t.dir, { source: "meeting", title: "Weekly sync", body: "agenda two", author: "me" });
+    await ingest(t.dir, { source: "note", title: "Vendor call notes", body: "notes", author: "me" });
+    const sid = await open("conv-bt4t");
+    const evs = await ndjson(await call("POST", `/api/chat/sessions/${sid}/messages`, { message: 'ACT jarvis_link {"src":"Vendor call notes","dst":"Weekly sync"}' }));
+    const c = evs.find((e) => e.type === "change").change;
+    expect(c.error).toBeUndefined();
+    expect(c.ask.options.map((o: { id: string }) => o.id).sort()).toEqual([m1.id, m2.id].sort());
+    expect(JSON.stringify(c)).not.toContain("pass one of these ids");
+    const said = evs.filter((e) => e.type === "message").map((e) => e.text).join("");
+    expect(said).toContain("You need the user to choose");
+  });
+  test("the kind word the user said narrows a mixed group, and two meetings left are asked about (jv-bt4)", async () => {
+    const m1 = await ingest(t.dir, { source: "meeting", title: "Weekly sync", body: "agenda one", author: "me" });
+    const m2 = await ingest(t.dir, { source: "meeting", title: "Weekly sync", body: "agenda two", author: "me" });
+    await ingest(t.dir, { source: "note", title: "Weekly sync", body: "a note", author: "me" });
+    await ingest(t.dir, { source: "note", title: "Vendor call notes", body: "notes", author: "me" });
+    const sid = await open("conv-bt4m");
+    const evs = await ndjson(await call("POST", `/api/chat/sessions/${sid}/messages`, { message: 'ACT jarvis_link {"src":"Vendor call notes","dst":"the Weekly sync meeting"}' }));
+    const c = evs.find((e) => e.type === "change").change;
+    expect(c.error).toBeUndefined();
+    expect(c.ask.options.map((o: { id: string }) => o.id).sort()).toEqual([m1.id, m2.id].sort());
+  });
+  test("the agent is told to pass the id of the item the user chose (jv-bt4)", async () => {
+    const { CHAT_RULES } = await import("../src/chat/sessions.ts");
+    expect(CHAT_RULES).toContain("pass its id, never the title again");
+  });
+  test("asked once for a title, a later ambiguous title is refused with ids for the agent to pick from (jv-bt4)", async () => {
+    const a = await addTask(t.dir, { title: "Review", author: "me" });
+    const b = await addTask(t.dir, { title: "review", author: "me" });
+    const sid = await open("conv-bt4u");
+    await ndjson(await call("POST", `/api/chat/sessions/${sid}/messages`, { message: 'ACT jarvis_set_task_status {"task":"Review","status":"done"}' }));
+    const evs = await ndjson(await call("POST", `/api/chat/sessions/${sid}/messages`, { message: 'ACT jarvis_set_task_status {"task":"Review","status":"done"}' }));
+    const c = evs.find((e) => e.type === "change").change;
+    expect(c.ask).toBeUndefined();
+    for (const id of [a.id, b.id]) expect(c.error).toContain(`[${id}]`);
+  });
+  test("the agent is told to write the action and let the system ask, never to ask in text itself (jv-bt4)", async () => {
+    const { CHAT_RULES } = await import("../src/chat/sessions.ts");
+    expect(CHAT_RULES).not.toContain("ask which one they mean instead of choosing");
+    expect(CHAT_RULES).toContain("still write the action");
   });
   test("a title is matched among the kind of item the action takes: a task among tasks, an initiative among initiatives (jv-zyp)", async () => {
     await ingest(t.dir, { source: "note", title: "Ship the firmware", body: "the plan", author: "me" });
