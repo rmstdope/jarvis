@@ -31,7 +31,7 @@ export const TOOLS: { name: string; description: string; properties: Record<stri
   { name: "jarvis_update_task", description: "Change a task's due date (YYYY-MM-DD, empty clears) and/or owner.", properties: { task: { type: "string" }, due: { type: "string" }, owner: { type: "string" } }, required: ["task"] },
   { name: "jarvis_set_task_status", description: "Mark a task done or reopen it.", properties: { task: { type: "string" }, status: { enum: ["done", "open"] } }, required: ["task", "status"] },
   { name: "jarvis_move_task", description: "Put a task in an initiative, or take it out (omit initiative).", properties: { task: { type: "string" }, initiative: { type: "string" } }, required: ["task"] },
-  { name: "jarvis_create_initiative", description: "Create an initiative: long-running work made of several tasks. A goal (what done looks like) is required.", properties: { title: { type: "string" }, goal: { type: "string" }, owner: { type: "string" } }, required: ["title", "goal"] },
+  { name: "jarvis_create_initiative", description: "Create a new initiative: long-running work made of several tasks. A goal (what done looks like) is required. To change an existing initiative, use jarvis_edit_initiative instead.", properties: { title: { type: "string" }, goal: { type: "string" }, owner: { type: "string" } }, required: ["title", "goal"] },
   { name: "jarvis_edit_initiative", description: "Change an existing initiative's title, goal (what done looks like) and/or owner.", properties: { initiative: { type: "string" }, title: { type: "string" }, goal: { type: "string" }, owner: { type: "string" } }, required: ["initiative"] },
   { name: "jarvis_link", description: `Link two items. relation is one of ${LINK_RELATIONS.join(", ")}.`, properties: { src: { type: "string" }, dst: { type: "string" }, relation: { type: "string" } }, required: ["src", "dst"] },
   { name: "jarvis_draft_briefing", description: "Draft a briefing (MDX body; never published or approved). sources = ids of the items it draws on.", properties: { title: { type: "string" }, body: { type: "string" }, sources: { type: "array", items: { type: "string" } } }, required: ["title"] },
@@ -51,6 +51,8 @@ export interface ActionContext {
   asking?: Set<string>;
   /** The tool being run, recorded on the question it may raise. */
   tool?: string;
+  /** The id of the initiative an initiative-scoped chat is about: a create named like it changes it instead (jv-2uf). */
+  about?: string;
 }
 /** What a tool did; `also` holds further rows the same call made (the links of a new task), each undone on its own. */
 interface Done { kind: ChangeKind; items: ChangeItem[]; ops: Op[]; detail?: Change["detail"]; draft?: Change["draft"]; undoable?: boolean; also?: Done[] }
@@ -220,7 +222,10 @@ async function perform(tool: string, a: Record<string, unknown>, ctx: ActionCont
       return { kind, items: [item(d, id)], detail, ops: [{ op: "task", id, before: beforeCopy, after }] };
     }
     case "jarvis_create_initiative": {
-      const value = await addInitiative(d, { title: need(a, "title"), goal: need(a, "goal"), owner: str(a, "owner"), author });
+      const title = need(a, "title");
+      if (ctx.about && readDocFile(d, ctx.about)?.frontmatter.title.trim().toLowerCase() === title.toLowerCase())
+        return perform("jarvis_edit_initiative", { initiative: ctx.about, goal: a.goal, owner: a.owner }, ctx); // the agent re-created the initiative in scope: the user asked to change it
+      const value = await addInitiative(d, { title, goal: need(a, "goal"), owner: str(a, "owner"), author });
       return { kind: "initiative.create", items: [item(d, value.id)], ops: docOp(d, value.id) };
     }
     case "jarvis_edit_initiative": {
