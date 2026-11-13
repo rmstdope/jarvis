@@ -135,7 +135,7 @@ export async function handle(req: Request, ctx: ServerContext, webDist?: string)
     } catch (e) {
       if (e instanceof HttpError) return error(e.message, e.status);
       // A browser user gets the file and the cause, not the CLI fix line the error carries for a terminal (jv-jbf).
-      if (e instanceof ModelsConfigError) return error(`${e.path} could not be loaded: ${e.reason}`, 500);
+      if (e instanceof ModelsConfigError) return error(e.summary, 500);
       const msg = (e as Error).message ?? String(e);
       if (/not found/i.test(msg)) return error(msg, 404);
       return error(msg, 500);
