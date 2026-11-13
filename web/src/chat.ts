@@ -471,7 +471,7 @@ export function createChat(opts: { navigate: (hash: string) => void; onChange?: 
   async function undoOne(m: Msg, c: WebChange): Promise<void> {
     try { const r = await api.undoChange(conv.conversationId!, c.id); retitle(merge(r.changes ?? [r.change])); } // every row the Undo settled (a task's links)
     catch (e) { toast((e as Error).message, "error"); }
-    persist(); render();
+    persist(); render(); loadKnown(); // an undone creation may have removed an initiative a mention names
     focusAfter(m, c.id);
     if (c.kind.startsWith("task.")) void tasks.load(name);
   }
@@ -481,7 +481,7 @@ export function createChat(opts: { navigate: (hash: string) => void; onChange?: 
       retitle(merge(r.changes));
       if (r.error) toast(r.error, "error");
     } catch (e) { toast((e as Error).message, "error"); }
-    persist(); render(); input.focus();
+    persist(); render(); input.focus(); loadKnown();
     void tasks.load(name);
   }
   function confirmNew(then: () => void): void {

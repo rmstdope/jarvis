@@ -154,6 +154,14 @@ describe("initiative mentions in answers (jv-aev)", () => {
     expect(shapeMentions(text, new Set(["IA"]), false)).toBe(`Gone and ${m("Here")} and Gone`);
     expect(shapeMentions(text, null, false)).toBe(text);
   });
+  test("a failed initiatives fetch keeps every mention a link", async () => {
+    await setup({ answer: () => ({ stream: async (push) => { push({ type: "message", text: `${m("Old", "IX")}` }); push({ type: "done" }); } }) });
+    env.routes.set("GET /api/initiatives", () => ({ status: 500, json: { error: "boom" } }));
+    type("what?");
+    (q(".jv-send") as HTMLElement).click();
+    await env.tick(60);
+    expect(q(".jv-answer a").getAttribute("href")).toBe("#/initiative/IX");
+  });
   test("a streaming mention shows plain words, then becomes a link; a missing initiative stays plain; repeats all link", async () => {
     let release!: () => void;
     const gate = new Promise<void>((r) => (release = r));
