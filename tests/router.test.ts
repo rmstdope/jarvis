@@ -211,11 +211,12 @@ describe("copilot model steps on an account that does not offer gpt-4.1 (jv-l1q)
 
 describe("getRouter follows models.toml (jv-rs9)", () => {
   test("a model added to models.toml under a running process is used by the next getRouter()", async () => {
-    const { mkdtempSync, writeFileSync } = await import("node:fs");
+    const { mkdtempSync, rmSync, writeFileSync } = await import("node:fs");
     const { tmpdir } = await import("node:os");
     const { join } = await import("node:path");
     const { getRouter, setRouterForTests } = await import("../src/providers/index.ts");
-    const mp = join(mkdtempSync(join(tmpdir(), "jv-rs9-")), "models.toml");
+    const dir = mkdtempSync(join(tmpdir(), "jv-rs9-"));
+    const mp = join(dir, "models.toml");
     const entry = (id: string) => `[[model]]\nprovider = "openai-compat"\nid = "${id}"\nbaseUrl = "http://127.0.0.1:1/v1"\napiKeyEnv = "JV_RS9_NO_SUCH_KEY"\nquality = "high"\n`;
     const prev = process.env.JARVIS_MODELS;
     process.env.JARVIS_MODELS = mp;
@@ -231,6 +232,7 @@ describe("getRouter follows models.toml (jv-rs9)", () => {
       if (prev === undefined) delete process.env.JARVIS_MODELS;
       else process.env.JARVIS_MODELS = prev;
       setRouterForTests(null);
+      rmSync(dir, { recursive: true, force: true });
     }
   });
 });
