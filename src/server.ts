@@ -67,7 +67,7 @@ route("GET", "/api/search", async (_r, url, _p, ctx) => {
 
 route("POST", "/api/sync", async (_r, _u, _p, ctx) => {
   try {
-    return json(await sync(ctx.dataDir, { router: ctx.router ?? (await getRouter()) ?? undefined }));
+    return json(await sync(ctx.dataDir, { router: ctx.router ?? undefined }));
   } catch (e) {
     if (e instanceof SyncBusyError) return error(e.message, 409);
     throw e;

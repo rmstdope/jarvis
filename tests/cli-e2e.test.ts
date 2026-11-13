@@ -295,4 +295,19 @@ describe("cli end to end (subprocess)", () => {
       expect(out).toContain("fix: run jarvis doctor, which names the broken entry and how to fix it");
     }
   });
+  test("sync with an unloadable models.toml still syncs, warning with the file and a doctor fix line (jv-i52)", () => {
+    const mp = join(home, "broken-sync.toml");
+    writeFileSync(mp, '[[models]\nprovider = "local"\n');
+    expect(jarvis("note", "captured on a typo day", "--title", "Typo day").code).toBe(0);
+    const p = Bun.spawnSync(["bun", "run", CLI, "sync", "--no-push", "--data", data], {
+      stdout: "pipe", stderr: "pipe",
+      env: { ...process.env, JARVIS_HOME: home, JARVIS_MODELS: mp, JARVIS_EMBED_FAKE: "1" },
+    });
+    const out = new TextDecoder().decode(p.stdout) + new TextDecoder().decode(p.stderr);
+    expect(out).toContain(`note: ${mp} could not be loaded: `);
+    expect(out).toContain("model steps skipped");
+    expect(out).toContain("fix: run jarvis doctor, which names the broken entry and how to fix it");
+    expect(out).toMatch(/committed [1-9]\d* capture\(s\)/);
+    expect(p.exitCode).toBe(0);
+  });
 });
