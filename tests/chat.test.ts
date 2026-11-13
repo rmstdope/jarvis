@@ -239,6 +239,16 @@ describe("chat service", () => {
     expect(other.filter((e) => e.type === "change").map((e) => (e as unknown as { change: { kind: string } }).change.kind)).toEqual(["initiative.create"]);
     await svc.shutdown();
   });
+  test("the general chat's per-turn context no longer asks the model to cite ids in square brackets (jv-vb5)", async () => {
+    await ingest(t.dir, { source: "note", title: "Zoom drift", body: "audio drifts after an hour", author: "me" });
+    const svc = new ChatService(t.dir, { spawn });
+    const s = await svc.create({ type: "jarvis", ids: [] });
+    const r = svc.buildPrompt(s, "What do we know about Zoom drift?");
+    expect(r.prompt).toContain("Relevant captured items");
+    expect(r.prompt).not.toContain("cite ids in square brackets");
+    expect(r.prompt).toContain("never write an id in your prose");
+    await svc.shutdown();
+  });
   test("a meeting kept off cloud models still reaches the prompt by title and id, never its transcript (jv-9z6)", async () => {
     const meeting = await ingest(t.dir, { source: "meeting", title: "Weekly sync", body: "zebrafish rollout decided by Sam", author: "me" });
     const note = await ingest(t.dir, { source: "note", title: "Zoom drift", body: "audio drifts after an hour", author: "me" });

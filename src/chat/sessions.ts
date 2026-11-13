@@ -247,7 +247,7 @@ export class ChatService {
           db.close();
         }
       }
-      const prompt = ctx ? `You are discussing a team knowledge base. Relevant captured items (cite ids in square brackets when you use them; to open one for the user write <<open:ID>> after it):\n\n${ctx}\nUser: ${message}` : message;
+      const prompt = ctx ? `You are discussing a team knowledge base. Relevant captured items, each as [id] title (never write an id in your prose; to open one for the user write <<open:ID>> after its name):\n\n${ctx}\nUser: ${message}` : message;
       return { prompt, sources };
     }
     if (s.turns === 0) {
