@@ -218,7 +218,8 @@ export function mountApp(root: HTMLElement): void {
     navigate: (hash) => { if (location.hash === hash) void render(); else location.hash = hash; },
     onChange: () => shell.setChatDot(chat.hasConversation() && (tabs.shown() !== null || parseRoute(location.hash).name !== "chat")),
     openQuietly: (ref, title, kind) => openDoc(ref, title, kind, false),
-    showDoc: (ref, title, kind) => openDoc(ref, title, kind, true),
+    // An open tab keeps the title its page gave it; the chat's words only name a new one (jv-oh8).
+    showDoc: (ref, title, kind) => { const had = tabs.list().find((t) => t.key === tabKey(ref)); openDoc(ref, had?.title ?? title, had?.kind ?? kind, true); },
     renamed: (ref, title) => retitleTab(ref, title),
     shownKey: () => tabs.shown(),
   });

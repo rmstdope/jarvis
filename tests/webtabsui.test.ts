@@ -152,6 +152,31 @@ describe("source chips", () => {
   });
 });
 
+describe("an initiative mention", () => {
+  test("of a removed initiative opens a tab titled with the mention's words, not the id (jv-oh8)", async () => {
+    // The list of initiatives fails, so the mention stays a link; the initiative itself is gone (404).
+    await boot({ answer: async (p) => { p({ type: "message", text: "See [Software Principles](jarvis://initiative/01M7B6907GWS94FJ)." }); p({ type: "done" }); } });
+    q(".jv-sg").click();
+    await env.tick(80);
+    (q('.jv-answer a[href="#/initiative/01M7B6907GWS94FJ"]') as HTMLAnchorElement).click();
+    await env.tick(80);
+    expect(q(".jv-docstate h2").textContent).toBe("This document isn't here any more.");
+    expect(q('.jv-tab[data-key="initiative:01M7B6907GWS94FJ"] .jv-tab-t').textContent).toBe("Software Principles");
+  });
+  test("of an initiative whose tab is open keeps that tab's own title, whatever words the mention uses (jv-oh8)", async () => {
+    await boot({ answer: async (p) => { p({ type: "message", text: "See [the principles work](jarvis://initiative/A)." }); p({ type: "done" }); } });
+    env.routes.set("GET /api/initiative/A", () => ({ json: { initiative: { id: "A", title: "Software Principles", owner: "mia", status: "open", done: 0, total: 0, created_at: "2026-01-01T00:00:00Z", goal: "", updated_at: null }, tasks: [], through: { total: 0, items: [] }, direct: { total: 0, items: [] } } }));
+    await go("#/initiative/A");
+    q('.jv-tab[data-key="chat"]').click();
+    await env.tick(40);
+    q(".jv-sg").click();
+    await env.tick(80);
+    (q('.jv-answer a[href="#/initiative/A"]') as HTMLAnchorElement).click();
+    await env.tick(80);
+    expect(q('.jv-tab[data-key="initiative:A"] .jv-tab-t').textContent).toBe("Software Principles");
+  });
+});
+
 describe("keyboard", () => {
   test("/ brings the chat back from a tab and focuses the typing box", async () => {
     await boot();

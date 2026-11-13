@@ -131,6 +131,13 @@ export function createChat(opts: { navigate: (hash: string) => void; onChange?: 
   const dropMsg = h("div", { class: "jv-drop", hidden: "" }, "Drop files to attach");
   el.append(scroll, h("div", { class: "jv-composer-wrap" }, attachRow, composer), dropMsg);
   picker.addEventListener("change", () => { addFiles([...(picker.files ?? [])]); picker.value = ""; });
+  // A click on an answer's initiative mention opens its tab named by the mention's words when it is not open yet, so a gone initiative's tab still reads its name (jv-oh8).
+  col.addEventListener("click", (e) => {
+    const a = (e.target as Element | null)?.closest?.('.jv-answer a[href^="#/initiative/"]');
+    if (!a || !opts.showDoc || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+    e.preventDefault();
+    opts.showDoc({ type: "initiative", id: decodeURIComponent(a.getAttribute("href")!.slice("#/initiative/".length)) }, a.textContent ?? "", "Initiative");
+  });
   let dragDepth = 0;
   const hasFiles = (e: Event) => [...((e as DragEvent).dataTransfer?.types ?? [])].includes("Files");
   el.addEventListener("dragenter", (e) => { if (available === false || !hasFiles(e)) return; e.preventDefault(); dragDepth++; setDropping(true); });
