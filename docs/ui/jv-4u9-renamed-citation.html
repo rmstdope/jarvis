@@ -1,0 +1,40 @@
+<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>A renamed initiative's name in earlier answers</title><style>:root{--bg:#faf7f2;--panel:#fffdf9;--side:#f1ece3;--text:#2a2621;--muted:#857b6e;--border:#e6ddcf;--accent:#b4532a;--accent-soft:#f6e6dc;--green:#3f7d4a;--serif:Georgia,serif;--sans:-apple-system,system-ui,sans-serif}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:15px/1.5 var(--sans)}
+a{color:var(--accent);text-decoration:none}
+.wrap{max-width:760px;margin:0 auto;padding:20px 16px 60px}
+h1{font-size:18px;margin:0 0 4px}.lede{color:var(--muted);font-size:14px;margin:0 0 18px}
+.state{border:1px dashed var(--border);border-radius:12px;padding:6px 16px 12px;margin:0 0 22px;background:var(--panel)}
+.state>h2{font:600 12px var(--sans);text-transform:uppercase;letter-spacing:.07em;color:var(--muted);margin:8px 0}
+.chip{display:inline-block;font-size:12px;border:1px solid var(--accent);color:var(--accent);background:var(--accent-soft);border-radius:999px;padding:2px 10px;margin-bottom:6px}
+.user{background:var(--accent-soft);padding:8px 14px;border-radius:14px;margin:10px 0 10px auto;width:fit-content;max-width:75%}
+.answer{font:16.5px/1.6 var(--serif);margin:6px 0}.answer p{margin:0 0 8px}
+.pills{display:flex;gap:6px;flex-wrap:wrap;margin:4px 0 10px}
+.pill{font-size:12px;border:1px solid var(--border);border-radius:999px;padding:2px 9px;background:var(--panel);color:var(--muted)}
+.changes{border:1px solid var(--border);background:var(--panel);border-radius:12px;padding:8px 14px;margin:6px 0;font-size:14px}
+.changes h4{margin:0 0 4px;font-size:14px}.crow{display:flex;gap:8px;align-items:center}.m{color:var(--green)}
+.undo{border:1px solid var(--border);background:var(--bg);color:var(--accent);border-radius:8px;padding:2px 10px;font-size:13px;margin-left:auto}
+.undone{color:var(--muted);text-decoration:line-through}.undone .m{color:var(--muted)}
+.hl{outline:2px solid #e9b44c;outline-offset:2px;border-radius:3px}
+.was{color:var(--muted);font:13px var(--sans)}
+.tip{position:relative;display:inline-block}.tipbox{position:absolute;left:0;top:1.7em;background:var(--text);color:var(--bg);font:12px/1.4 var(--sans);padding:5px 9px;border-radius:6px;white-space:nowrap;z-index:2}
+.note{font-size:13px;color:var(--muted);margin-top:8px}
+@media(max-width:520px){.user{max-width:90%}.tipbox{white-space:normal;width:220px}}</style></head><body><div class="wrap"><h1>A renamed initiative's name in earlier answers</h1><p class="lede">Agreed: an earlier answer's mention that used the old name reads the new one; Undo puts the old one back; a mention in the answer's own words is left alone; reopening the chat shows the current name.</p><div class=state><h2>1 · Before the rename</h2><span class="chip">◆ Software Principles</span>
+<div class="user">What do we say about code review?</div>
+<div class="answer"><p>The initiative <a href="#">Software Principles</a> asks that every change gets a second pair of eyes before it merges, and that reviewers comment on intent rather than style.</p></div>
+<div class="pills"><span class="pill">◆ Software Principles</span><span class="pill">Review checklist</span></div>
+<div class="user">Byt namn på den till Mjukvaruprinciper.</div></div><div class=state><h2>2 · After the rename (highlight = what changed)</h2><span class="chip">◆ Mjukvaruprinciper</span>
+<div class="user">What do we say about code review?</div>
+<div class="answer"><p>The initiative <a href="#" class=hl>Mjukvaruprinciper</a> asks that every change gets a second pair of eyes before it merges, and that reviewers comment on intent rather than style.</p></div>
+<div class="pills"><span class="pill">◆ Mjukvaruprinciper</span><span class="pill">Review checklist</span></div>
+<div class="user">Byt namn på den till Mjukvaruprinciper.</div>
+<div class="changes"><h4>1 change</h4><div class="crow"><span class="m">✓</span><span>Renamed initiative “Software Principles” → “Mjukvaruprinciper”</span><button class="undo">Undo</button></div></div><div class="answer"><p>Done — it is now called Mjukvaruprinciper.</p></div></div><div class=state><h2>3 · After Undo</h2><span class="chip">◆ Software Principles</span>
+<div class="user">What do we say about code review?</div>
+<div class="answer"><p>The initiative <a href="#">Software Principles</a> asks that every change gets a second pair of eyes before it merges, and that reviewers comment on intent rather than style.</p></div>
+<div class="pills"><span class="pill">◆ Software Principles</span><span class="pill">Review checklist</span></div>
+<div class="user">Byt namn på den till Mjukvaruprinciper.</div>
+<div class="changes"><h4>1 change</h4><div class="crow undone"><span class="m">✓</span><span>Renamed initiative “Software Principles” → “Mjukvaruprinciper”</span></div><div class="note">Undone</div></div><div class="answer"><p>Done — it is now called Mjukvaruprinciper.</p></div></div><div class=state><h2>4 · A mention in the answer's own words — unchanged</h2><div class=answer><p>As <a href="#">the principles initiative</a> puts it, small reviewed changes beat large unreviewed ones.</p></div><div class=pills><span class=pill>◆ Mjukvaruprinciper</span></div></div><div class=state><h2>5 · The same chat reopened the next day</h2><span class="chip">◆ Mjukvaruprinciper</span>
+<div class="user">What do we say about code review?</div>
+<div class="answer"><p>The initiative <a href="#" class=hl>Mjukvaruprinciper</a> asks that every change gets a second pair of eyes before it merges, and that reviewers comment on intent rather than style.</p></div>
+<div class="pills"><span class="pill">◆ Mjukvaruprinciper</span><span class="pill">Review checklist</span></div>
+<div class="user">Byt namn på den till Mjukvaruprinciper.</div>
+<div class="changes"><h4>1 change</h4><div class="crow"><span class="m">✓</span><span>Renamed initiative “Software Principles” → “Mjukvaruprinciper”</span><button class="undo">Undo</button></div></div><div class="answer"><p>Done — it is now called Mjukvaruprinciper.</p></div></div></div></body></html>
