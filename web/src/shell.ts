@@ -87,6 +87,7 @@ export function createShell(opts: { onNewChat: () => void; onSync: () => void; n
     root.classList.toggle("jv-folded", folded);
     root.classList.toggle("jv-phone", phone);
     root.classList.toggle("jv-menu-open", phone && menu);
+    updateFade();
     foldBtn.textContent = folded ? "⇥" : "⇤";
     const label = folded ? "Expand sidebar" : "Collapse sidebar";
     foldBtn.title = `${label} (${shortcut("S")})`;
@@ -118,9 +119,11 @@ export function createShell(opts: { onNewChat: () => void; onSync: () => void; n
     (notesBox.querySelectorAll(".jv-note-x")[Math.min(i, cards.length - 1)] as HTMLElement | undefined ?? syncBtn).focus();
   };
   /** Shows the fade along the notes area's bottom edge while there is more to scroll to. */
-  const updateFade = () => notesBox.classList.toggle("jv-more-below", notesBox.scrollHeight - notesBox.scrollTop - notesBox.clientHeight > 1);
+  function updateFade(): void { notesBox.classList.toggle("jv-more-below", notesBox.scrollHeight - notesBox.scrollTop - notesBox.clientHeight > 1); }
   notesBox.addEventListener("scroll", updateFade);
   window.addEventListener("resize", updateFade);
+  // A box measured while detached or folded reads 0: its size changing (mount, unfold, fonts) re-evaluates the fade.
+  if (typeof ResizeObserver !== "undefined") new ResizeObserver(updateFade).observe(notesBox);
   const paintNotes = () => {
     const shown = showAll ? cards : cards.slice(0, NOTES_SHOWN);
     clear(notesBox);

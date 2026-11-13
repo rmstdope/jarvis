@@ -269,11 +269,20 @@ describe("sync notes (jv-5b3)", () => {
     geo(300, 0, 300);
     expect(box.classList.contains("jv-more-below")).toBe(false);
   });
+  test("unfolding the sidebar re-evaluates the fade", () => {
+    const s = mountN();
+    s.setNotes([card(1), card(2), card(3)]);
+    const box = document.querySelector(".jv-notes") as HTMLElement;
+    for (const [k, v] of [["scrollHeight", 500], ["scrollTop", 0], ["clientHeight", 300]] as const) Object.defineProperty(box, k, { value: v, configurable: true });
+    expect(box.classList.contains("jv-more-below")).toBe(false);
+    (document.querySelector(".jv-fold") as HTMLElement).click();
+    expect(box.classList.contains("jv-more-below")).toBe(true);
+  });
   test("the stylesheet caps the notes area at 40% and pins the foot", async () => {
     const css = await Bun.file(new URL("../web/src/styles.css", import.meta.url)).text();
     expect(css).toMatch(/\.jv-notes \{[^}]*max-height:40%/);
     expect(css).toMatch(/\.jv-notes \{[^}]*overflow-y:auto/);
     expect(css).toMatch(/\.jv-foot \{[^}]*flex:none/);
-    expect(css).toContain(".jv-more-below::after");
+    expect(css).toContain(".jv-notes.jv-more-below::after");
   });
 });
