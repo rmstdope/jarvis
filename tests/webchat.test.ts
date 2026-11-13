@@ -1,10 +1,10 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { installWebEnv, type Handler, type WebEnv } from "./webEnv.ts";
-import { createChat, ndjsonDecoder, type Chat } from "../web/src/chat.ts";
+import { createChat, ndjsonDecoder, shapeMentions, type Chat } from "../web/src/chat.ts";
 
 let env: WebEnv;
 const tasks = (n: number) => Array.from({ length: n }, (_, i) => ({ id: `T${i + 1}`, title: `Task ${i + 1}`, status: "open", owner: "mia" }));
-interface Setup { name?: string; available?: boolean; tasks?: unknown[]; hour?: number; answer?: Handler; undoMs?: number; slowMs?: number }
+interface Setup { name?: string; available?: boolean; tasks?: unknown[]; hour?: number; answer?: Handler; initiatives?: string[]; undoMs?: number; slowMs?: number }
 let nav: string[];
 async function setup(o: Setup = {}): Promise<Chat> {
   env.routes.set("GET /api/me", () => ({ json: o.name === undefined ? {} : { name: o.name } }));
@@ -14,6 +14,7 @@ async function setup(o: Setup = {}): Promise<Chat> {
   env.routes.set("DELETE /api/chat/sessions/S1", () => ({ json: { ok: true } }));
   env.routes.set("POST /api/chat/sessions/S1/cancel", () => ({ json: { ok: true } }));
   env.routes.set("POST /api/chat/sessions/S1/messages", o.answer ?? (() => ({ stream: async (push) => { push({ type: "status", text: "Searching your knowledge for “x”…" }); push({ type: "status", text: "Reading 3 items" }); push({ type: "source", docId: "D1", title: "Doc one", source: "note" }); push({ type: "message", text: "Hello **there**" }); push({ type: "done" }); } })));
+  if (o.initiatives) env.routes.set("GET /api/initiatives", () => ({ json: { initiatives: o.initiatives!.map((id) => ({ id, title: id })) } }));
   env.routes.set("POST /api/task/T1/done", () => ({ json: {} }));
   env.routes.set("POST /api/task/T1/reopen", () => ({ json: {} }));
   const chat = createChat({ navigate: (hash) => nav.push(hash), now: () => new Date(2026, 0, 5, o.hour ?? 14, 0, 0), undoMs: o.undoMs ?? 30, slowMs: o.slowMs });
@@ -133,6 +134,46 @@ describe("open tasks", () => {
     expect((q(".jv-task input") as HTMLInputElement).checked).toBe(false);
     expect(q(".jv-task").classList.contains("jv-done")).toBe(false);
     expect(q(".toast.error").textContent).toBe("Couldn't mark the task done.");
+  });
+});
+
+describe("initiative mentions in answers (jv-aev)", () => {
+  const m = (t: string, id = "IA") => `[${t}](jarvis://initiative/${id})`;
+  test("shapeMentions: a half-written mention streams as its name only", () => {
+    const tails: [string, string][] = [["[Software Prin", "Software Prin"], ["[Software Principles]", "Software Principles"], ["[Software Principles](", "Software Principles"], ["[Software Principles](jarvis:/", "Software Principles"], ["[Software Principles](jarvis://initiative/01A", "Software Principles"]];
+    for (const [tail, shown] of tails) expect(shapeMentions(`See ${tail}`, null, true)).toBe(`See ${shown}`);
+    expect(shapeMentions(`See ${m("Software Principles")} and [Rel`, null, true)).toBe(`See ${m("Software Principles")} and Rel`);
+  });
+  test("shapeMentions: complete text, other links and a finished answer are untouched", () => {
+    expect(shapeMentions(`See ${m("A")}.`, null, true)).toBe(`See ${m("A")}.`);
+    expect(shapeMentions("a [x](https://e.com", null, true)).toBe("a [x](https://e.com");
+    expect(shapeMentions("cite [D1]", null, false)).toBe("cite [D1]");
+  });
+  test("shapeMentions: a mention of an initiative not in the known set reads as its words; null keeps every link", () => {
+    const text = `${m("Gone", "IX")} and ${m("Here")} and ${m("Gone", "IX")}`;
+    expect(shapeMentions(text, new Set(["IA"]), false)).toBe(`Gone and ${m("Here")} and Gone`);
+    expect(shapeMentions(text, null, false)).toBe(text);
+  });
+  test("a failed initiatives fetch keeps every mention a link", async () => {
+    await setup({ answer: () => ({ stream: async (push) => { push({ type: "message", text: `${m("Old", "IX")}` }); push({ type: "done" }); } }) });
+    env.routes.set("GET /api/initiatives", () => ({ status: 500, json: { error: "boom" } }));
+    type("what?");
+    (q(".jv-send") as HTMLElement).click();
+    await env.tick(60);
+    expect(q(".jv-answer a").getAttribute("href")).toBe("#/initiative/IX");
+  });
+  test("a streaming mention shows plain words, then becomes a link; a missing initiative stays plain; repeats all link", async () => {
+    let release!: () => void;
+    const gate = new Promise<void>((r) => (release = r));
+    await setup({ initiatives: ["IA"], answer: () => ({ stream: async (push) => { push({ type: "message", text: "See [Software Prin" }); await gate; push({ type: "message", text: `ciples](jarvis://initiative/IA), ${m("Software Principles")} again, ${m("Old", "IX")}.` }); push({ type: "done" }); } }) });
+    type("what?");
+    (q(".jv-send") as HTMLElement).click();
+    await env.tick(40);
+    expect(q(".jv-answer").textContent).toBe("See Software Prin");
+    release();
+    await env.tick(60);
+    expect(qa(".jv-answer a").map((a) => a.getAttribute("href"))).toEqual(["#/initiative/IA", "#/initiative/IA"]);
+    expect(q(".jv-answer").textContent).toContain("Old.");
   });
 });
 

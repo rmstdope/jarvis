@@ -82,6 +82,25 @@ export function retitleMentions(text: string, id: string, was: string, title: st
   if (!old || title.includes("]")) return text; // a title with "]" would not stay a link
   return text.replace(/\[([^\]]*)\]\(jarvis:\/\/initiative\/([^)\s]+)\)/g, (all, t: string, i: string) => (i === id && t.trim().toLowerCase() === old ? `[${title}](jarvis://initiative/${i})` : all));
 }
+const MENTION_PREFIX = "jarvis://initiative/";
+/**
+ * The answer `text` as it is drawn (jv-aev). While `streaming`, a mention that is still being written
+ * at the end (`[name`, `[name]`, `[name](jarvis:/…`) shows as its name only. When `known` (the ids of the
+ * initiatives that exist) is given, a mention of any other initiative shows as its words, never a dead
+ * link; null keeps every link.
+ */
+export function shapeMentions(text: string, known: Set<string> | null, streaming: boolean): string {
+  let out = text;
+  if (streaming) {
+    const tail = out.match(/\[([^[\]\n]*)(?:\](?:\(([^)\n]*))?)?$/);
+    if (tail) {
+      const addr = tail[2];
+      if (addr === undefined || MENTION_PREFIX.startsWith(addr) || addr.startsWith(MENTION_PREFIX)) out = out.slice(0, tail.index) + tail[1];
+    }
+  }
+  if (known) out = out.replace(/\[([^\]]*)\]\(jarvis:\/\/initiative\/([^)\s]+)\)/g, (all, t: string, i: string) => (known.has(i) ? all : t));
+  return out;
+}
 /** Build the chat view. `navigate` changes the hash; `onChange` fires when the conversation changes. */
 export function createChat(opts: { navigate: (hash: string) => void; onChange?: () => void; openQuietly?: (ref: DocRef, title: string, kind: string) => void; showDoc?: (ref: DocRef, title: string, kind: string) => void; /** A change of the conversation gave an item a new title (a rename, or its undo). */ renamed?: (ref: DocRef, title: string) => void; shownKey?: () => string | null; now?: () => Date; undoMs?: number; slowMs?: number }): Chat {
   const now = opts.now ?? (() => new Date());
@@ -92,6 +111,9 @@ export function createChat(opts: { navigate: (hash: string) => void; onChange?: 
   let name: string | undefined;
   let available: boolean | null = null;
   let answering = false, stoppedByUser = false;
+  /** Ids of the initiatives that exist, or null while unknown (a mention of another id is drawn as plain words). */
+  let knownInitiatives: Set<string> | null = null;
+  const loadKnown = (): void => { void api.initiatives("all").then((r) => { knownInitiatives = new Set(r.initiatives.map((i) => i.id)); render(); }).catch(() => { /* unknown: every mention stays a link */ }); };
   let controller: AbortController | null = null;
   /** Messages whose steps differ from their default fold state: folded by default, except for an empty answer, which starts unfolded. */
   const flippedSteps = new Set<Msg>();
@@ -276,7 +298,7 @@ export function createChat(opts: { navigate: (hash: string) => void; onChange?: 
     }
     const at = m.changes?.length ? Math.min(m.changesAt ?? 0, m.text.length) : 0;
     const before = m.text.slice(0, at), after = m.text.slice(at);
-    const say = (t: string) => (t.trim() ? h("div", { class: "jv-answer", html: renderMarkdown(t) }) : null);
+    const say = (t: string) => (t.trim() ? h("div", { class: "jv-answer", html: renderMarkdown(shapeMentions(t, knownInitiatives, m.status === "streaming")) }) : null);
     if (m.status !== "failed") parts.push(say(before));
     parts.push(drawCard(m.changes ?? [], String(conv.messages.indexOf(m)), { onUndo: (c) => void undoOne(m, c), onUndoAll: () => void undoEverything(m) }, { me: name, now: now(), chosen: (c) => chosenOption(m, c) }));
     if (m.status === "failed") parts.push(h("div", { class: "jv-failed" }, "Something went wrong and I couldn't answer.", h("button", { class: "jv-retry", onClick: () => retry(m) }, "Try again")));
@@ -401,7 +423,7 @@ export function createChat(opts: { navigate: (hash: string) => void; onChange?: 
     else if (a.status === "streaming") a.status = "done";
     for (const s of a.steps ?? []) s.done = true;
     answering = false; controller = null;
-    persist(); render(); toBottom();
+    persist(); render(); toBottom(); loadKnown();
     if (!document.activeElement || document.activeElement === document.body) input.focus();
   }
   function stop(): void {
@@ -449,7 +471,7 @@ export function createChat(opts: { navigate: (hash: string) => void; onChange?: 
   async function undoOne(m: Msg, c: WebChange): Promise<void> {
     try { const r = await api.undoChange(conv.conversationId!, c.id); retitle(merge(r.changes ?? [r.change])); } // every row the Undo settled (a task's links)
     catch (e) { toast((e as Error).message, "error"); }
-    persist(); render();
+    persist(); render(); loadKnown(); // an undone creation may have removed an initiative a mention names
     focusAfter(m, c.id);
     if (c.kind.startsWith("task.")) void tasks.load(name);
   }
@@ -459,7 +481,7 @@ export function createChat(opts: { navigate: (hash: string) => void; onChange?: 
       retitle(merge(r.changes));
       if (r.error) toast(r.error, "error");
     } catch (e) { toast((e as Error).message, "error"); }
-    persist(); render(); input.focus();
+    persist(); render(); input.focus(); loadKnown();
     void tasks.load(name);
   }
   function confirmNew(then: () => void): void {
@@ -478,7 +500,7 @@ export function createChat(opts: { navigate: (hash: string) => void; onChange?: 
   async function refresh(): Promise<void> {
     const [me, st] = await Promise.all([api.me().catch(() => ({} as { name?: string })), api.chatStatus().catch(() => ({ available: false }))]);
     name = me.name; available = st.available;
-    render();
+    render(); loadKnown();
     await tasks.load(name);
     if (allChanges().length && conv.conversationId) {
       try { merge((await api.chatChanges(conv.conversationId)).changes); persist(); render(); } catch { /* keep what the browser remembers */ }
