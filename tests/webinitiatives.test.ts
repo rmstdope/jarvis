@@ -196,7 +196,7 @@ describe("a chat that renames its initiative (jv-maq)", () => {
 });
 
 describe("a chat's rename of its initiative retitles the source pills of its answers (jv-9oe)", () => {
-  /** An initiative chat on "Software Principles": the first answer cites it, the second renames it (and cites it too). */
+  /** An initiative chat on "Software Principles": the first answer cites it, the second cites it, opens it as a card and renames it. */
   async function twoTurns() {
     await boot("#/chat");
     let title = "Software Principles";
@@ -207,7 +207,7 @@ describe("a chat's rename of its initiative retitles the source pills of its ans
     const source = () => ({ type: "source", docId: "IA", title, source: "initiative" });
     const turns = [
       (p: (l: unknown) => void) => { p(source()); p({ type: "source", docId: "N1", title: "Software Principles notes", source: "note" }); p({ type: "message", text: "It is about principles." }); },
-      (p: (l: unknown) => void) => { p(source()); title = "Mjukvaruprinciper"; p({ type: "change", change: change() }); p({ type: "message", text: "Renamed." }); },
+      (p: (l: unknown) => void) => { p(source()); p({ type: "open", docId: "IA", title, source: "initiative" }); title = "Mjukvaruprinciper"; p({ type: "change", change: change() }); p({ type: "message", text: "Renamed." }); },
     ];
     let n = 0;
     env.routes.set("POST /api/chat/sessions/S1/messages", () => ({ stream: async (p: (l: unknown) => void) => { turns[n++](p); p({ type: "done" }); } }));
@@ -223,20 +223,23 @@ describe("a chat's rename of its initiative retitles the source pills of its ans
     return { setTitle: (t: string) => { title = t; }, change };
   }
   const pills = () => qa('.jv-chips a[href="#/initiative/IA"]').map((a) => a.textContent);
-  test("every answer's pill for the initiative reads the new title; another document's pill is untouched", async () => {
+  const card = () => text(".jv-docard-t");
+  test("every answer's pill and card for the initiative read the new title; another document's pill is untouched", async () => {
     await twoTurns();
     expect(pills()).toEqual(["Mjukvaruprinciper", "Mjukvaruprinciper"]);
+    expect(card()).toBe("Mjukvaruprinciper");
     expect(q('.jv-chips a[href="#/item/N1"]').textContent).toBe("Software Principles notes");
     const saved = JSON.parse(localStorage.getItem("jv.chat")!) as { messages: { sources?: { docId: string; title: string }[] }[] };
     expect(saved.messages.flatMap((m) => m.sources ?? []).filter((s) => s.docId === "IA").map((s) => s.title)).toEqual(["Mjukvaruprinciper", "Mjukvaruprinciper"]);
   });
-  test("undoing the rename puts the old title back on the pills", async () => {
+  test("undoing the rename puts the old title back on the pills and the card", async () => {
     const r = await twoTurns();
     const cid = JSON.parse(localStorage.getItem("jv.chat")!).conversationId as string;
     env.routes.set(`POST /api/chat/conversations/${cid}/changes/ch1/undo`, () => { r.setTitle("Software Principles"); return { json: { change: r.change({ undone: true }) } }; });
     q('[data-undo="ch1"]').click();
     await env.tick(80);
     expect(pills()).toEqual(["Software Principles", "Software Principles"]);
+    expect(card()).toBe("Software Principles");
   });
 });
 
