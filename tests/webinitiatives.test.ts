@@ -195,6 +195,68 @@ describe("a chat that renames its initiative (jv-maq)", () => {
   });
 });
 
+describe("Undo after a chat renamed its initiative more than once (jv-maq review)", () => {
+  type Row = { id: string; turn: string; kind: string; ok: boolean; items: { id: string; title: string; kind: string }[]; detail?: { from: string; to: string }; undone: boolean; undoable: boolean };
+  const rename = (id: string, turn: string, from: string, to: string): Row => ({ id, turn, kind: "initiative.title", ok: true, items: [{ id: "IA", title: to, kind: "initiative" }], detail: { from, to }, undone: false, undoable: true });
+  const taskRow = (id: string, turn: string): Row => ({ id, turn, kind: "task.create", ok: true, items: [{ id: "T9", title: "Draft", kind: "task" }], undone: false, undoable: true });
+  /** A fake server holding the conversation's change log, as the routes do: each Undo answers with the whole log. */
+  async function chat(turns: Row[][]) {
+    await boot("#/chat");
+    const srv = { title: "A", log: [] as Row[] };
+    env.routes.set("GET /api/initiative/IA", () => ({ json: { initiative: { id: "IA", title: srv.title, owner: "anna", status: "open", done: 0, total: 0, created_at: "2026-02-02T00:00:00Z", goal: "g" }, tasks: [], through: { total: 0, items: [] }, direct: { total: 0, items: [] } } }));
+    env.routes.set("GET /api/initiative/IA/suggest", () => ({ json: { model: true, suggestions: [] } }));
+    env.routes.set("POST /api/chat/sessions", () => ({ json: { sessionId: "S1" } }));
+    let n = 0;
+    env.routes.set("POST /api/chat/sessions/S1/messages", () => ({ stream: async (p: (l: unknown) => void) => {
+      for (const c of turns[n++]) { srv.log.push(c); if (c.detail) srv.title = c.detail.to; p({ type: "change", change: { ...c } }); }
+      p({ type: "message", text: "Done." }); p({ type: "done" });
+    } }));
+    await go("#/initiative/IA");
+    (qa("button").find((b) => b.textContent === "Ask about this") as HTMLElement).click();
+    await env.tick(60);
+    const cid = JSON.parse(localStorage.getItem("jv.chat")!).conversationId as string;
+    const base = `POST /api/chat/conversations/${cid}/changes`;
+    const settle = (c: Row) => { c.undone = true; if (c.detail) srv.title = c.detail.from; };
+    for (const c of turns.flat()) env.routes.set(`${base}/${c.id}/undo`, () => { settle(c); return { json: { change: { ...c }, changes: srv.log.map((x) => ({ ...x })) } }; });
+    env.routes.set(`${base}/undo-all`, (b) => { for (const c of [...srv.log].reverse()) if (c.turn === (b as { turn: string }).turn && !c.undone) settle(c); return { json: { changes: srv.log.map((x) => ({ ...x })) } }; });
+    for (const _ of turns) {
+      const input = q(".jv-input") as HTMLTextAreaElement;
+      input.value = "Rename it.";
+      input.dispatchEvent(new env.win.KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }) as unknown as Event);
+      await env.tick(80);
+    }
+    return srv;
+  }
+  const labels = () => [text(".jv-attach-t"), q('.jv-tab[data-key="initiative:IA"] .jv-tab-t')?.textContent];
+  const undo = async (sel: string) => { q(sel).click(); await env.tick(80); };
+  test("two renames undone one by one: the labels step back to B, then to A", async () => {
+    await chat([[rename("ch1", "t1", "A", "B")], [rename("ch2", "t2", "B", "C")]]);
+    expect(labels()).toEqual(["◎ C", "C"]);
+    await undo('[data-undo="ch2"]');
+    expect(labels()).toEqual(["◎ B", "B"]);
+    await undo('[data-undo="ch1"]');
+    expect(labels()).toEqual(["◎ A", "A"]);
+  });
+  test("Undo all on a turn that renamed twice puts the first title back", async () => {
+    await chat([[rename("ch1", "t1", "A", "B"), rename("ch2", "t1", "B", "C")]]);
+    expect(labels()).toEqual(["◎ C", "C"]);
+    await undo('[data-undoall="1"]');
+    expect(labels()).toEqual(["◎ A", "A"]);
+  });
+  test("undoing an unrelated row leaves the labels and the tab's page alone", async () => {
+    const srv = await chat([[rename("ch1", "t1", "A", "B")], [taskRow("ch3", "t2")]]);
+    srv.title = "D"; // renamed outside the chat; the tab learns it when it is next drawn
+    await undo('.jv-tab[data-key="initiative:IA"]');
+    await undo('.jv-tab[data-key="chat"]');
+    expect(labels()).toEqual(["◎ B", "D"]);
+    const fetches = () => env.calls.filter((c) => c.method === "GET" && c.path === "/api/initiative/IA").length;
+    const before = fetches();
+    await undo('[data-undo="ch3"]');
+    expect(labels()).toEqual(["◎ B", "D"]);
+    expect(fetches()).toBe(before); // the tab was not drawn again
+  });
+});
+
 describe("initiative cards in Browse carry the goal, not the enrichment summary", () => {
   test("goal comes from progress.goal; summary is ignored", async () => {
     await boot("#/browse");

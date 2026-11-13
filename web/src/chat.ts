@@ -411,11 +411,14 @@ export function createChat(opts: { navigate: (hash: string) => void; onChange?: 
     void send(m.question);
   }
   const allChanges = (): WebChange[] => conv.messages.flatMap((m) => m.changes ?? []);
-  function merge(updated: WebChange[]): void {
+  /** Take the server's rows into the conversation; returns the rows this call turned to undone, newest first. */
+  function merge(updated: WebChange[]): WebChange[] {
     const by = new Map(updated.map((c) => [c.id, c]));
-    for (const m of conv.messages) if (m.changes) m.changes = m.changes.map((c) => by.get(c.id) ?? c);
+    const settled: WebChange[] = [];
+    for (const m of conv.messages) if (m.changes) m.changes = m.changes.map((c) => { const u = by.get(c.id); if (u?.undone && !c.undone) settled.push(u); return u ?? c; });
+    return settled.reverse();
   }
-  /** An initiative renamed (or its rename undone) by the chat: the scope chip and its open tab take the title it has now (jv-maq). */
+  /** An initiative renamed (or its rename undone) by the chat: the scope chip and its open tab take the title it has now (jv-maq). Rows apply in order, so undone rows come newest first and the oldest `from` stands. */
   function retitle(changes: WebChange[]): void {
     for (const c of changes) {
       const it = c.items[0], title = c.undone ? c.detail?.from : c.detail?.to;
@@ -431,7 +434,7 @@ export function createChat(opts: { navigate: (hash: string) => void; onChange?: 
     (target as HTMLElement).focus();
   }
   async function undoOne(m: Msg, c: WebChange): Promise<void> {
-    try { const r = await api.undoChange(conv.conversationId!, c.id); merge(r.changes ?? [r.change]); retitle(r.changes ?? [r.change]); } // every row the Undo settled (a task's links)
+    try { const r = await api.undoChange(conv.conversationId!, c.id); retitle(merge(r.changes ?? [r.change])); } // every row the Undo settled (a task's links)
     catch (e) { toast((e as Error).message, "error"); }
     persist(); render();
     focusAfter(m, c.id);
@@ -440,7 +443,7 @@ export function createChat(opts: { navigate: (hash: string) => void; onChange?: 
   async function undoEverything(m: Msg): Promise<void> {
     try {
       const r = await api.undoAll(conv.conversationId!, m.changes?.[0]?.turn);
-      merge(r.changes); retitle(r.changes.filter((x) => x.undone));
+      retitle(merge(r.changes));
       if (r.error) toast(r.error, "error");
     } catch (e) { toast((e as Error).message, "error"); }
     persist(); render(); input.focus();
