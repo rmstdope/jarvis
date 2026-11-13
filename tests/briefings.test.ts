@@ -99,6 +99,14 @@ describe("markdown", () => {
     expect(renderInline("[x](javascript:alert(1))")).toContain('href="#"');
     expect(renderInline("<script>")).toBe("&lt;script&gt;");
   });
+
+  test("an initiative mention links to its tab in the same browser tab (jv-77m)", () => {
+    expect(renderInline("see [Software Principles](jarvis://initiative/01ABC_d-9)")).toBe('see <a href="#/initiative/01ABC_d-9">Software Principles</a>');
+    expect(renderMarkdown("Pick [**It**](jarvis://initiative/I1).")).toContain('<a href="#/initiative/I1"><strong>It</strong></a>');
+    expect(renderInline("[x](jarvis://initiative/a%22b)")).not.toContain("#/initiative/");
+    expect(renderInline("[x](jarvis://task/T1)")).toContain('href="#" target="_blank"');
+    expect(renderInline("[x](https://x.test)")).toContain('target="_blank"');
+  });
 });
 
 describe("components", () => {
