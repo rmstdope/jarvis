@@ -158,6 +158,13 @@ describe("an unloadable models.toml (jv-i52)", () => {
     expect(warned(s.notes)).toBe(true);
     expect(git(root.dir, ["--git-dir", origin, "log", "--name-only", "main"]).stdout).toContain(`docs/${r.id}.md`);
   });
+  test("a running service rereads models.toml on the next sync once a load failed", async () => {
+    await ingest(a, { source: "note", title: "Typo day", body: "alpha", author: "a" });
+    expect((await sync(a)).notes.some((n) => n.includes("Expected ']]'"))).toBe(true);
+    writeFileSync(mp, 'preference = ["local"]\n[[model]]\nprovider = "copilot"\nid = "gpt-5"\nreasoningEffort = "huge"\n');
+    const again = await sync(a);
+    expect(again.notes.some((n) => n.startsWith(`${mp} could not be loaded: `) && !n.includes("Expected ']]'"))).toBe(true);
+  });
   test("POST /api/sync answers 200 with the push done and the warning", async () => {
     await ingest(a, { source: "note", title: "Typo day", body: "alpha", author: "a" });
     const server = startServer({ dataDir: a }, 0);
