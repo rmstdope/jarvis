@@ -319,7 +319,8 @@ describe("cli end to end (subprocess)", () => {
     });
     const out = new TextDecoder().decode(p.stdout) + new TextDecoder().decode(p.stderr);
     expect(out).toContain(`note: ${mp} could not be loaded: JARVIS_MODELS names it, and it does not exist; model steps skipped`);
-    expect(out).toContain("fix: run jarvis doctor, which names the broken entry and how to fix it");
+    expect(out).toContain(`fix: jarvis config preset <name>   or   jarvis config redetect --write   or   unset JARVIS_MODELS to use ${join(home, "models.toml")}`);
+    expect(out).not.toContain("broken entry");
     expect(out).toMatch(/committed [1-9]\d* capture\(s\)/);
     expect(p.exitCode).toBe(0);
   });

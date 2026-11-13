@@ -38,8 +38,9 @@ export interface ModelsConfig {
   path?: string;
 }
 
+/** The models.toml in use: JARVIS_MODELS when set and non-empty, else {@link defaultModelsPath}. */
 export function modelsPath(): string {
-  return process.env.JARVIS_MODELS ?? defaultModelsPath();
+  return process.env.JARVIS_MODELS || defaultModelsPath();
 }
 
 /** The models.toml used when JARVIS_MODELS is unset: `models.toml` in the config home. */
@@ -53,7 +54,12 @@ export function defaultModelsPath(): string {
  */
 export function namedModelsFileMissing(): boolean {
   const named = process.env.JARVIS_MODELS;
-  return named !== undefined && !existsSync(named);
+  return !!named && !existsSync(named);
+}
+
+/** The exact fix for a JARVIS_MODELS naming a missing file: write that file, or stop naming it. */
+export function missingModelsFileFix(): string {
+  return `jarvis config preset <name>   or   jarvis config redetect --write   or   unset JARVIS_MODELS to use ${defaultModelsPath()}`;
 }
 
 /** Identity of the models.toml on disk (path, mtime, size), or "absent": changes when the file is edited, created or removed (an edit that keeps the size within one coarse mtime tick is missed). */
@@ -230,9 +236,10 @@ export class ModelsConfigError extends Error {
   readonly path: string;
   /** The file and the cause, without the CLI fix line: what a browser user is shown. */
   readonly summary: string;
-  constructor(path: string, reason: string) {
+  /** `fix` replaces the default doctor pointer when the cause has an exact fix of its own. */
+  constructor(path: string, reason: string, fix = "run jarvis doctor, which names the broken entry and how to fix it") {
     const summary = `${path} could not be loaded: ${reason}`;
-    super(`${summary}\nfix: run jarvis doctor, which names the broken entry and how to fix it`);
+    super(`${summary}\nfix: ${fix}`);
     this.name = "ModelsConfigError";
     this.path = path;
     this.reason = reason;
@@ -246,7 +253,7 @@ export class ModelsConfigError extends Error {
  */
 export async function loadModelsConfig(detect: DetectOpts = {}): Promise<ModelsConfig> {
   const p = modelsPath();
-  if (namedModelsFileMissing()) throw new ModelsConfigError(p, "JARVIS_MODELS names it, and it does not exist");
+  if (namedModelsFileMissing()) throw new ModelsConfigError(p, "JARVIS_MODELS names it, and it does not exist", missingModelsFileFix());
   if (existsSync(p)) {
     let parsed: ReturnType<typeof parseModelsToml>;
     try {

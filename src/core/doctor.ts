@@ -9,7 +9,7 @@ import { CHAT_PROBE_TIMEOUT_MS, EMBEDDING_DIMS, PROBE_TIMEOUT_MS } from "./const
 import { ensureCustomSqlite } from "./db.ts";
 import { getEmbedder } from "./embed.ts";
 import { hasRemote, isWorkTree } from "./git.ts";
-import { defaultModelsPath, ignoredModelsEntries, ModelsConfigError, modelsPath, modelsTomlError, namedModelsFileMissing } from "../providers/models.ts";
+import { ignoredModelsEntries, missingModelsFileFix, ModelsConfigError, modelsPath, modelsTomlError, namedModelsFileMissing } from "../providers/models.ts";
 import { getRouter } from "../providers/index.ts";
 import { COPILOT_CLI_DEFAULT, readCopilotModelCatalog } from "../providers/copilot.ts";
 import { unresolvedKinds, type RouterEntry } from "../providers/router.ts";
@@ -172,7 +172,7 @@ export async function doctor(opts: DoctorOpts = {}): Promise<DoctorReport> {
   });
   checks.push(
     namedModelsFileMissing()
-      ? warn("models-config", `${mp} does not exist, and JARVIS_MODELS names it; model steps are skipped`, `jarvis config preset <name>   or   jarvis config redetect --write   or   unset JARVIS_MODELS to use ${defaultModelsPath()}`)
+      ? warn("models-config", `${mp} does not exist, and JARVIS_MODELS names it; model steps are skipped`, missingModelsFileFix())
       : modelsText === null
       ? warn("models-config", `${mp} missing; models are detected live`, "jarvis config preset <name>   or   jarvis config redetect --write")
       : tomlError

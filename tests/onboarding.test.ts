@@ -210,10 +210,13 @@ describe("doctor", () => {
     } finally {
       setRouterForTests(null);
     }
-    // The default path, absent and not named by JARVIS_MODELS, is still live detection.
-    delete process.env.JARVIS_MODELS;
-    const check = (await doctor({ coreOnly: true })).checks.find((c) => c.name === "models-config")!;
-    expect(check.detail).toBe(`${join(home, "models.toml")} missing; models are detected live`);
+    // The default path, absent and not named by JARVIS_MODELS (unset, or set but empty), is still live detection.
+    for (const named of [undefined, ""]) {
+      if (named === undefined) delete process.env.JARVIS_MODELS;
+      else process.env.JARVIS_MODELS = named;
+      const check = (await doctor({ coreOnly: true })).checks.find((c) => c.name === "models-config")!;
+      expect(check.detail).toBe(`${join(home, "models.toml")} missing; models are detected live`);
+    }
   });
   test("doctor says whether decks can be presented in Slidecraft, with the exact fix", async () => {
     const data = join(t.dir, "content");
