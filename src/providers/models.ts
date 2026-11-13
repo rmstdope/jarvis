@@ -42,7 +42,7 @@ export function modelsPath(): string {
   return process.env.JARVIS_MODELS ?? join(configHome(), "models.toml");
 }
 
-/** Identity of the models.toml on disk (path, mtime, size), or "absent": changes whenever the file is edited, created or removed. */
+/** Identity of the models.toml on disk (path, mtime, size), or "absent": changes when the file is edited, created or removed (an edit that keeps the size within one coarse mtime tick is missed). */
 export function modelsSignature(): string {
   const p = modelsPath();
   try {
