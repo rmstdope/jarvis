@@ -8,6 +8,7 @@ import { parseDoc } from "./frontmatter.ts";
 import { git, gitOk, hasIdentity, hasRemote, isWorkTree, unresolvedConflicts } from "./git.ts";
 import { reindex, type ReindexResult } from "./reindex.ts";
 import { getRouter } from "../providers/index.ts";
+import { ModelsConfigError } from "../providers/models.ts";
 
 export interface Collision {
   source_url: string;
@@ -76,12 +77,28 @@ export interface ProcessResult {
   enrichedFiles: boolean;
 }
 
+/**
+ * The process-wide router, or none when models.toml cannot be loaded: every model step is optional, so a broken
+ * models.toml skips them with a note naming the file and a doctor fix line instead of failing the sync.
+ */
+async function loadRouter(notes: string[]): Promise<unknown> {
+  try {
+    return await getRouter();
+  } catch (e) {
+    if (!(e instanceof ModelsConfigError)) throw e;
+    // The error's own wording: its summary, what sync did about it, then the fix line its message ends with.
+    notes.push(`${e.summary}; model steps skipped${e.message.slice(e.summary.length)}`);
+    return undefined;
+  }
+}
+
 /** reindex → (enrich → reindex) → edges → refine → dedup scan. Also `jarvis process`. */
 export async function processContent(dataDir: string, opts: { router?: unknown; db?: Database } = {}): Promise<ProcessResult> {
-  const db = opts.db ?? openDb(dataDir);
   const consumer = isConsumer(dataDir);
-  const router = opts.router === undefined && !consumer ? await getRouter() : opts.router;
-  const ctx: ProcessContext = { dataDir, db, consumer, router: router ?? undefined, counts: {}, notes: [], failures: [] };
+  const notes: string[] = [];
+  const router = opts.router === undefined && !consumer ? await loadRouter(notes) : opts.router;
+  const db = opts.db ?? openDb(dataDir);
+  const ctx: ProcessContext = { dataDir, db, consumer, router: router ?? undefined, counts: {}, notes, failures: [] };
   try {
     const reindexed = await reindex(dataDir, { db });
     if (reindexed.embedError) ctx.notes.push(reindexed.embedError);

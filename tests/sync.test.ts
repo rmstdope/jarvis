@@ -8,6 +8,7 @@ import { withDb } from "../src/core/db.ts";
 import { clearEmbedder, tmpDataDir, useFakeEmbedder } from "./helpers.ts";
 import { fakeRouter } from "./fakeRouter.ts";
 import { startServer } from "../src/server.ts";
+import { setRouterForTests } from "../src/providers/index.ts";
 
 let root: ReturnType<typeof tmpDataDir>;
 let a: string, b: string, origin: string;
@@ -128,6 +129,52 @@ describe("sync across two clones", () => {
     const s = await sync(a, { router: refused });
     expect(s.pushed).toBe(true);
     expect(s.failures).toEqual([{ step: "enrich", failed: 1, reason: 'Model "gpt-4.1" from --model flag is not available.', doctor: true }]);
+  });
+});
+
+describe("an unloadable models.toml (jv-i52)", () => {
+  // Every model step is optional: a typo in models.toml skips them, and the captures still reach the team.
+  let saved: string | undefined;
+  let mp: string;
+  beforeEach(() => {
+    saved = process.env.JARVIS_MODELS;
+    mp = join(root.dir, "models.toml");
+    writeFileSync(mp, '[[models]\nprovider = "local"\n');
+    process.env.JARVIS_MODELS = mp;
+    setRouterForTests(undefined); // let sync load the router from the broken file
+  });
+  afterEach(() => {
+    if (saved === undefined) delete process.env.JARVIS_MODELS;
+    else process.env.JARVIS_MODELS = saved;
+    setRouterForTests(null);
+  });
+  const warned = (notes: string[]) => notes.some((n) => n.startsWith(`${mp} could not be loaded: `) && n.includes("model steps skipped") && n.includes("fix: run jarvis doctor"));
+
+  test("sync still commits and pushes, skipping the model steps with a warning naming the file and doctor", async () => {
+    const r = await ingest(a, { source: "note", title: "Typo day", body: "alpha", author: "a" });
+    const s = await sync(a);
+    expect(s.committed).toBe(1);
+    expect(s.pushed).toBe(true);
+    expect(warned(s.notes)).toBe(true);
+    expect(git(root.dir, ["--git-dir", origin, "log", "--name-only", "main"]).stdout).toContain(`docs/${r.id}.md`);
+  });
+  test("a running service rereads models.toml on the next sync once a load failed", async () => {
+    await ingest(a, { source: "note", title: "Typo day", body: "alpha", author: "a" });
+    expect((await sync(a)).notes.some((n) => n.includes("Expected ']]'"))).toBe(true);
+    writeFileSync(mp, 'preference = ["local"]\n[[model]]\nprovider = "copilot"\nid = "gpt-5"\nreasoningEffort = "huge"\n');
+    const again = await sync(a);
+    expect(again.notes.some((n) => n.startsWith(`${mp} could not be loaded: `) && !n.includes("Expected ']]'"))).toBe(true);
+  });
+  test("POST /api/sync answers 200 with the push done and the warning", async () => {
+    await ingest(a, { source: "note", title: "Typo day", body: "alpha", author: "a" });
+    const server = startServer({ dataDir: a }, 0);
+    try {
+      const r = await fetch(`http://127.0.0.1:${server.port}/api/sync`, { method: "POST" });
+      const body = await r.json();
+      expect({ status: r.status, pushed: body.pushed, warned: warned(body.notes ?? []) }).toEqual({ status: 200, pushed: true, warned: true });
+    } finally {
+      server.stop(true);
+    }
   });
 });
 
