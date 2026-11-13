@@ -195,6 +195,54 @@ describe("a chat that renames its initiative (jv-maq)", () => {
   });
 });
 
+describe("a chat's rename of its initiative retitles the source pills of its answers (jv-9oe)", () => {
+  /** An initiative chat on "Software Principles": the first answer cites it, the second cites it, opens it as a card and renames it. */
+  async function twoTurns() {
+    await boot("#/chat");
+    let title = "Software Principles";
+    env.routes.set("GET /api/initiative/IA", () => ({ json: { initiative: { id: "IA", title, owner: "anna", status: "open", done: 0, total: 0, created_at: "2026-02-02T00:00:00Z", goal: "g" }, tasks: [], through: { total: 0, items: [] }, direct: { total: 0, items: [] } } }));
+    env.routes.set("GET /api/initiative/IA/suggest", () => ({ json: { model: true, suggestions: [] } }));
+    env.routes.set("POST /api/chat/sessions", () => ({ json: { sessionId: "S1" } }));
+    const change = (o: Record<string, unknown> = {}) => ({ id: "ch1", turn: "t2", kind: "initiative.title", ok: true, items: [{ id: "IA", title: "Mjukvaruprinciper", kind: "initiative" }], detail: { from: "Software Principles", to: "Mjukvaruprinciper" }, undone: false, undoable: true, ...o });
+    const source = () => ({ type: "source", docId: "IA", title, source: "initiative" });
+    const turns = [
+      (p: (l: unknown) => void) => { p(source()); p({ type: "source", docId: "N1", title: "Software Principles notes", source: "note" }); p({ type: "message", text: "It is about principles." }); },
+      (p: (l: unknown) => void) => { p(source()); p({ type: "open", docId: "IA", title, source: "initiative" }); title = "Mjukvaruprinciper"; p({ type: "change", change: change() }); p({ type: "message", text: "Renamed." }); },
+    ];
+    let n = 0;
+    env.routes.set("POST /api/chat/sessions/S1/messages", () => ({ stream: async (p: (l: unknown) => void) => { turns[n++](p); p({ type: "done" }); } }));
+    await go("#/initiative/IA");
+    (qa("button").find((b) => b.textContent === "Ask about this") as HTMLElement).click();
+    await env.tick(60);
+    for (const q1 of ["What is it about?", "Byt namn på den till Mjukvaruprinciper."]) {
+      const input = q(".jv-input") as HTMLTextAreaElement;
+      input.value = q1;
+      input.dispatchEvent(new env.win.KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }) as unknown as Event);
+      await env.tick(80);
+    }
+    return { setTitle: (t: string) => { title = t; }, change };
+  }
+  const pills = () => qa('.jv-chips a[href="#/initiative/IA"]').map((a) => a.textContent);
+  const card = () => text(".jv-docard-t");
+  test("every answer's pill and card for the initiative read the new title; another document's pill is untouched", async () => {
+    await twoTurns();
+    expect(pills()).toEqual(["Mjukvaruprinciper", "Mjukvaruprinciper"]);
+    expect(card()).toBe("Mjukvaruprinciper");
+    expect(q('.jv-chips a[href="#/item/N1"]').textContent).toBe("Software Principles notes");
+    const saved = JSON.parse(localStorage.getItem("jv.chat")!) as { messages: { sources?: { docId: string; title: string }[] }[] };
+    expect(saved.messages.flatMap((m) => m.sources ?? []).filter((s) => s.docId === "IA").map((s) => s.title)).toEqual(["Mjukvaruprinciper", "Mjukvaruprinciper"]);
+  });
+  test("undoing the rename puts the old title back on the pills and the card", async () => {
+    const r = await twoTurns();
+    const cid = JSON.parse(localStorage.getItem("jv.chat")!).conversationId as string;
+    env.routes.set(`POST /api/chat/conversations/${cid}/changes/ch1/undo`, () => { r.setTitle("Software Principles"); return { json: { change: r.change({ undone: true }) } }; });
+    q('[data-undo="ch1"]').click();
+    await env.tick(80);
+    expect(pills()).toEqual(["Software Principles", "Software Principles"]);
+    expect(card()).toBe("Software Principles");
+  });
+});
+
 describe("Undo after a chat renamed its initiative more than once (jv-maq review)", () => {
   type Row = { id: string; turn: string; kind: string; ok: boolean; items: { id: string; title: string; kind: string }[]; detail?: { from: string; to: string }; undone: boolean; undoable: boolean };
   const rename = (id: string, turn: string, from: string, to: string): Row => ({ id, turn, kind: "initiative.title", ok: true, items: [{ id: "IA", title: to, kind: "initiative" }], detail: { from, to }, undone: false, undoable: true });

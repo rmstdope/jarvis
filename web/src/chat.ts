@@ -418,12 +418,16 @@ export function createChat(opts: { navigate: (hash: string) => void; onChange?: 
     for (const m of conv.messages) if (m.changes) m.changes = m.changes.map((c) => { const u = by.get(c.id); if (u?.undone && !c.undone) settled.push(u); return u ?? c; });
     return settled.reverse();
   }
-  /** An initiative renamed (or its rename undone) by the chat: the scope chip and its open tab take the title it has now (jv-maq). Rows apply in order, so undone rows come newest first and the oldest `from` stands. */
+  /** An initiative renamed (or its rename undone) by the chat: the scope chip, every answer's source pill and card for it (jv-9oe) and its open tab take the title it has now (jv-maq). Rows apply in order, so undone rows come newest first and the oldest `from` stands. */
   function retitle(changes: WebChange[]): void {
     for (const c of changes) {
       const it = c.items[0], title = c.undone ? c.detail?.from : c.detail?.to;
       if (c.kind !== "initiative.title" || !c.ok || !it || !title) continue;
       if (conv.attached?.id === it.id) conv.attached = { ...conv.attached, title };
+      for (const m of conv.messages) {
+        for (const s of m.sources ?? []) if (s.docId === it.id && s.source === "initiative") s.title = title;
+        for (const d of m.cards ?? []) if (d.id === it.id && d.type === "initiative") d.title = title;
+      }
       opts.renamed?.({ type: "initiative", id: it.id }, title);
     }
   }
