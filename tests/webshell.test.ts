@@ -191,7 +191,8 @@ describe("sync notes (jv-5b3)", () => {
     expect(line().classList.contains("jv-err")).toBe(false);
     s.setNotes([card(1), card(2)]);
     expect(line().textContent).toBe("Synced just now · 2 notes");
-    expect(document.querySelector(".jv-notes")!.nextElementSibling).toBe(line());
+    expect(document.querySelector(".jv-notes")!.nextElementSibling).toBe(document.querySelector(".jv-foot"));
+    expect(document.querySelector(".jv-notes")!.parentElement).toBe(document.querySelector(".jv-side"));
     expect(document.querySelectorAll(".jv-note .jv-fix").length).toBe(0);
     s.setNotes([]);
     expect(line().textContent).toBe("Synced just now");
@@ -250,5 +251,29 @@ describe("sync notes (jv-5b3)", () => {
     const s = mountN();
     s.setNotes([card(1)]);
     expect(document.querySelector(".jv-sync .jv-sync-dot")).not.toBeNull();
+  });
+  test("the notes area scrolls on its own: a fade class follows the scroll geometry", () => {
+    const s = mountN();
+    s.setNotes([card(1), card(2), card(3)]);
+    const box = document.querySelector(".jv-notes") as HTMLElement;
+    const geo = (sh: number, st: number, ch: number) => {
+      Object.defineProperty(box, "scrollHeight", { value: sh, configurable: true });
+      Object.defineProperty(box, "scrollTop", { value: st, configurable: true });
+      Object.defineProperty(box, "clientHeight", { value: ch, configurable: true });
+      box.dispatchEvent(new Event("scroll"));
+    };
+    geo(500, 0, 300);
+    expect(box.classList.contains("jv-more-below")).toBe(true);
+    geo(500, 200, 300);
+    expect(box.classList.contains("jv-more-below")).toBe(false);
+    geo(300, 0, 300);
+    expect(box.classList.contains("jv-more-below")).toBe(false);
+  });
+  test("the stylesheet caps the notes area at 40% and pins the foot", async () => {
+    const css = await Bun.file(new URL("../web/src/styles.css", import.meta.url)).text();
+    expect(css).toMatch(/\.jv-notes \{[^}]*max-height:40%/);
+    expect(css).toMatch(/\.jv-notes \{[^}]*overflow-y:auto/);
+    expect(css).toMatch(/\.jv-foot \{[^}]*flex:none/);
+    expect(css).toContain(".jv-more-below::after");
   });
 });

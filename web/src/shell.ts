@@ -73,7 +73,8 @@ export function createShell(opts: { onNewChat: () => void; onSync: () => void; n
   const side = h("aside", { class: "jv-side" },
     h("div", { class: "jv-brand" }, h("span", { class: "jv-mark" }), h("span", { class: "jv-name lbl" }, "J.A.R.V.I.S."), foldBtn),
     newBtn, nav, h("div", { class: "jv-grow" }),
-    h("div", { class: "jv-foot" }, notesBox, syncLine, syncBtn, themeSwitch));
+    notesBox,
+    h("div", { class: "jv-foot" }, syncLine, syncBtn, themeSwitch));
   const menuBtn = h("button", { class: "jv-menu", "aria-label": "Menu", "aria-expanded": "false", onClick: () => (menu ? closeMenu() : openMenu()) }, "☰");
   const phoneBar = h("header", { class: "jv-phonebar" }, menuBtn, h("span", { class: "jv-name" }, "J.A.R.V.I.S."), opts.strip?.phoneBtn ?? null, h("button", { class: "jv-pnew", title: `New chat (${shortcut("O")})`, "aria-label": "New chat", onClick: () => opts.onNewChat() }, "＋"));
   const backdrop = h("div", { class: "jv-backdrop", onClick: () => closeMenu() });
@@ -116,6 +117,10 @@ export function createShell(opts: { onNewChat: () => void; onSync: () => void; n
     paintSync();
     (notesBox.querySelectorAll(".jv-note-x")[Math.min(i, cards.length - 1)] as HTMLElement | undefined ?? syncBtn).focus();
   };
+  /** Shows the fade along the notes area's bottom edge while there is more to scroll to. */
+  const updateFade = () => notesBox.classList.toggle("jv-more-below", notesBox.scrollHeight - notesBox.scrollTop - notesBox.clientHeight > 1);
+  notesBox.addEventListener("scroll", updateFade);
+  window.addEventListener("resize", updateFade);
   const paintNotes = () => {
     const shown = showAll ? cards : cards.slice(0, NOTES_SHOWN);
     clear(notesBox);
@@ -124,6 +129,7 @@ export function createShell(opts: { onNewChat: () => void; onSync: () => void; n
       h("h4", {}, c.heading), h("p", {}, c.body),
       c.fix ? h("div", { class: "jv-fix" }, `Fix: ${c.fix.before}`, h("code", {}, c.fix.command), `${c.fix.after} `, h("button", { class: "jv-copy", onClick: (e: Event) => copy(c.fix!.command, e.currentTarget as HTMLElement) }, "Copy")) : null)));
     if (cards.length > NOTES_SHOWN) notesBox.append(h("button", { class: "jv-notes-more", onClick: () => { showAll = !showAll; paintNotes(); } }, showAll ? "Show fewer" : `Show ${cards.length - NOTES_SHOWN} more`));
+    updateFade();
     syncBtn.querySelector(".jv-sync-dot")?.remove();
     if (cards.length) syncBtn.append(h("span", { class: "jv-sync-dot", title: "Notes from the last sync" }));
   };
