@@ -24,6 +24,12 @@ describe("cardsFromSync", () => {
     expect(c.body).toBe("2 source_url collision(s): run `jarvis dedup`");
     expect(c.fix).toEqual({ before: "run ", command: "jarvis dedup", after: "" });
   });
+  test("a fix naming several alternatives offers the first whole command, not a cut-off one", () => {
+    const c = one("/a/m.toml could not be loaded: JARVIS_MODELS names it, and it does not exist; model steps skipped\nfix: jarvis config preset <name>   or   jarvis config redetect --write   or   unset JARVIS_MODELS");
+    expect(c.fix?.command).toBe("jarvis config preset <name>");
+    expect(c.body).toBe("/a/m.toml could not be loaded: JARVIS_MODELS names it, and it does not exist; model steps skipped");
+  });
+  test("only a line that starts with fix: is a fix line", () => expect(one("bad prefix: x").body).toBe("bad prefix: x"));
   test("a note with no fix has none", () => expect(one("push failed: x").fix).toBeUndefined());
   test("failed steps become cards after the notes, worded as the old toast", () => {
     const cards = cardsFromSync({ notes: ["push failed: x"], failures: [

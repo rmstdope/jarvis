@@ -145,7 +145,7 @@ export function createShell(opts: { onNewChat: () => void; onSync: () => void; n
     setActive(route) { const a = navFor(route); for (const n of nav.querySelectorAll("a")) n.classList.toggle("active", n.getAttribute("data-route") === a); },
     setChatDot(on) { dot.hidden = !on; },
     setSync(s) { sync = s; paintSync(); },
-    setNotes(c) { cards = c; if (cards.length <= NOTES_SHOWN) showAll = false; paintNotes(); paintSync(); },
+    setNotes(c) { cards = c; showAll = false; paintNotes(); paintSync(); },
     toggleFold, isFolded: () => root.classList.contains("jv-folded"), openMenu, closeMenu, menuOpen: () => menu,
   };
 }

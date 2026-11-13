@@ -210,6 +210,13 @@ describe("sync notes (jv-5b3)", () => {
     more().click();
     expect(heads().length).toBe(3);
   });
+  test("a later sync's cards start collapsed even after Show more was used", () => {
+    const s = mountN();
+    s.setNotes([1, 2, 3, 4, 5].map((n) => card(n)));
+    (document.querySelector(".jv-notes-more") as HTMLElement).click();
+    s.setNotes([1, 2, 3, 4, 5].map((n) => card(n)));
+    expect(heads().length).toBe(3);
+  });
   test("× is Close note, closes that card only, tells the owner, and moves focus on", () => {
     const seen: unknown[][] = [];
     const s = mountN({ onNotes: (c) => seen.push(c) });

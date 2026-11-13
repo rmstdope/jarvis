@@ -20,14 +20,14 @@ function headingFor(note: string): string {
   if (/^(embedding server|ollama embed|omlx embed)/.test(note)) return "Search by meaning unavailable";
   return "Note from sync";
 }
-/** Split fix text around its command: the first backticked span, else the first `jarvis <word>`. */
+/** Split fix text around its command: the first backticked span, else the first `jarvis <word> …` up to a comma, a double space or "or". */
 function fixFrom(text: string): SyncFix | undefined {
-  const m = /`([^`]+)`/.exec(text) ?? /\bjarvis [a-z][\w-]*/.exec(text);
+  const m = /`([^`]+)`/.exec(text) ?? /\bjarvis [a-z][\w-]*(?: (?!or\b)(?:--?[\w-]+|[\w<>-]+))*/.exec(text);
   if (!m) return undefined;
   return { before: text.slice(0, m.index), command: m[1] ?? m[0], after: text.slice(m.index + m[0].length) };
 }
 function cardFromNote(note: string): SyncCard {
-  const m = /\n?fix: (.*)$/s.exec(note);
+  const m = /(?:^|\n)fix: (.*)$/s.exec(note);
   const body = m ? note.slice(0, m.index) : note;
   const fix = fixFrom(m ? m[1]! : body.slice(Math.max(0, body.indexOf("run `"))));
   return { heading: headingFor(body), body, ...(fix && (m || body.includes("run `")) ? { fix } : {}) };
