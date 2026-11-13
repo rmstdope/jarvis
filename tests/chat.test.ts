@@ -645,6 +645,14 @@ describe("the agent acts (jv-oya.4)", () => {
     expect(c.error).toBeUndefined();
     expect(c.ask.options.map((o: { id: string }) => o.id).sort()).toEqual([m1.id, m2.id].sort());
   });
+  test("the agent is told to write every initiative it names as a mention with the exact title (jv-aev)", async () => {
+    const { CHAT_RULES } = await import("../src/chat/sessions.ts");
+    expect(CHAT_RULES).toContain("[Title](jarvis://initiative/ID)");
+    expect(CHAT_RULES).toContain("Every time you name an initiative");
+    expect(CHAT_RULES).toContain("exactly as it is stored");
+    expect(CHAT_RULES).toContain("stays outside the link");
+    expect(CHAT_RULES).toContain("not notes, tasks or briefings");
+  });
   test("the agent is told to pass the id of the item the user chose (jv-bt4)", async () => {
     const { CHAT_RULES } = await import("../src/chat/sessions.ts");
     expect(CHAT_RULES).toContain("pass its id, never the title again");

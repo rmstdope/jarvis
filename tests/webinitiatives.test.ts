@@ -331,7 +331,7 @@ describe("a chat's rename of its initiative rewrites earlier answers' inline men
   const row = (id: string, from: string, to: string, o: Partial<Row> = {}): Row => ({ id, turn: `t-${id}`, kind: "initiative.title", ok: true, items: [{ id: "IA", title: to, kind: "initiative" }], detail: { from, to }, undone: false, undoable: true, ...o });
   /** A chat on "Software Principles" whose turns are scripted: each is the answer text plus the rename (if any) it makes. */
   async function chat(turns: { text: string; rename?: Row; first?: string }[]) {
-    await boot("#/chat");
+    await boot("#/chat", { list: [INI({ title: "Software Principles" })] });
     const srv = { title: "Software Principles", log: [] as Row[] };
     env.routes.set("GET /api/initiative/IA", () => ({ json: { initiative: { id: "IA", title: srv.title, owner: "anna", status: "open", done: 0, total: 0, created_at: "2026-02-02T00:00:00Z", goal: "g" }, tasks: [], through: { total: 0, items: [] }, direct: { total: 0, items: [] } } }));
     env.routes.set("GET /api/initiative/IA/suggest", () => ({ json: { model: true, suggestions: [] } }));
@@ -407,7 +407,7 @@ describe("a chat's rename of its initiative rewrites earlier answers' inline men
     await chat([{ text: `See ${link("Software Principles")}.` }, { text: "Renamed.", rename: R1 }]);
     const stored = localStorage.getItem("jv.chat")!;
     env.restore();
-    await boot("#/chat", { chat: stored });
+    await boot("#/chat", { chat: stored, list: [INI()] });
     expect(mentions()[0]).toBe("Mjukvaruprinciper");
     expect(qa(".jv-chips a")[0].textContent).toBe("Mjukvaruprinciper");
   });
