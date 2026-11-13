@@ -151,6 +151,50 @@ describe("which initiative a task belongs to, and initiatives in Browse & search
   });
 });
 
+describe("a chat that renames its initiative (jv-maq)", () => {
+  /** An initiative-scoped chat on "Software Principles" whose tab is open, and whose answer renames it to "Mjukvaruprinciper". */
+  async function renamed() {
+    await boot("#/chat");
+    let title = "Software Principles";
+    env.routes.set("GET /api/initiative/IA", () => ({ json: { initiative: { id: "IA", title, owner: "anna", status: "open", done: 0, total: 0, created_at: "2026-02-02T00:00:00Z", goal: "g" }, tasks: [], through: { total: 0, items: [] }, direct: { total: 0, items: [] } } }));
+    env.routes.set("GET /api/initiative/IA/suggest", () => ({ json: { model: true, suggestions: [] } }));
+    env.routes.set("POST /api/chat/sessions", () => ({ json: { sessionId: "S1" } }));
+    const change = (o: Record<string, unknown> = {}) => ({ id: "ch1", turn: "t1", kind: "initiative.title", ok: true, items: [{ id: "IA", title: "Mjukvaruprinciper", kind: "initiative" }], detail: { from: "Software Principles", to: "Mjukvaruprinciper" }, undone: false, undoable: true, ...o });
+    env.routes.set("POST /api/chat/sessions/S1/messages", () => ({ stream: async (p: (l: unknown) => void) => { title = "Mjukvaruprinciper"; p({ type: "change", change: change() }); p({ type: "message", text: "Renamed." }); p({ type: "done" }); } }));
+    await go("#/initiative/IA");
+    (qa("button").find((b) => b.textContent === "Ask about this") as HTMLElement).click();
+    await env.tick(60);
+    expect(text(".jv-attach-t")).toBe("◎ Software Principles");
+    const input = q(".jv-input") as HTMLTextAreaElement;
+    input.value = "Byt namn på den till Mjukvaruprinciper.";
+    input.dispatchEvent(new env.win.KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }) as unknown as Event);
+    await env.tick(80);
+    return { setTitle: (t: string) => { title = t; }, change };
+  }
+  const tabTitle = () => q('.jv-tab[data-key="initiative:IA"] .jv-tab-t')?.textContent;
+  test("the scope chip and the initiative's tab read the new title without a reload", async () => {
+    await renamed();
+    expect(text(".jv-attach-t")).toBe("◎ Mjukvaruprinciper");
+    expect(tabTitle()).toBe("Mjukvaruprinciper");
+    q('.jv-tab[data-key="initiative:IA"]').click();
+    await env.tick(60);
+    expect(qa(".jv-doc").find((d) => !d.hidden)!.querySelector(".jv-dtitle")!.textContent).toBe("Mjukvaruprinciper");
+  });
+  test("undoing the rename puts the old title back on the chip and the tab", async () => {
+    const r = await renamed();
+    expect(text(".jv-attach-t")).toBe("◎ Mjukvaruprinciper");
+    const cid = JSON.parse(localStorage.getItem("jv.chat")!).conversationId as string;
+    env.routes.set(`POST /api/chat/conversations/${cid}/changes/ch1/undo`, () => { r.setTitle("Software Principles"); return { json: { change: r.change({ undone: true }) } }; });
+    q('[data-undo="ch1"]').click();
+    await env.tick(80);
+    expect(text(".jv-attach-t")).toBe("◎ Software Principles");
+    expect(tabTitle()).toBe("Software Principles");
+    q('.jv-tab[data-key="initiative:IA"]').click();
+    await env.tick(60);
+    expect(qa(".jv-doc").find((d) => !d.hidden)!.querySelector(".jv-dtitle")!.textContent).toBe("Software Principles");
+  });
+});
+
 describe("initiative cards in Browse carry the goal, not the enrichment summary", () => {
   test("goal comes from progress.goal; summary is ignored", async () => {
     await boot("#/browse");

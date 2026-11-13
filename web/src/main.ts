@@ -4,7 +4,7 @@ import { createChat, type Chat } from "./chat.ts";
 import { applyTheme, delPref, getPref, getTheme, KEY_LAST_SYNC, KEY_LAST_SYNC_FAILED, KEY_SYNC_SKIP, setPref } from "./prefs.ts";
 import { createShell, type Shell } from "./shell.ts";
 import { createStrip, type Strip } from "./strip.ts";
-import { createTabs, KEY_TABS_STORE, type DocRef, type Tabs } from "./tabs.ts";
+import { createTabs, KEY_TABS_STORE, tabKey, type DocRef, type Tabs } from "./tabs.ts";
 import { renderDoc, type DocView } from "./docview.ts";
 import { kindLabel } from "./transcript.ts";
 
@@ -94,6 +94,14 @@ function ensureView(key: string): DocView {
   v.el.hidden = true;
   docHost.append(v.el);
   return v;
+}
+/** An open document got a new title elsewhere: its tab reads it now and its page is drawn afresh (jv-maq). */
+function retitleTab(ref: DocRef, title: string): void {
+  const key = tabKey(ref);
+  if (!tabs.has(key)) return;
+  tabs.setTitle(key, title);
+  views.get(key)?.el.remove(); views.delete(key);
+  syncView();
 }
 /** Draw what the state says: the shown tab, else Chat, else the sidebar page already drawn. */
 function syncView(focusDoc = false): void {
@@ -220,6 +228,7 @@ export function mountApp(root: HTMLElement): void {
     onChange: () => shell.setChatDot(chat.hasConversation() && (tabs.shown() !== null || parseRoute(location.hash).name !== "chat")),
     openQuietly: (ref, title, kind) => openDoc(ref, title, kind, false),
     showDoc: (ref, title, kind) => openDoc(ref, title, kind, true),
+    renamed: (ref, title) => retitleTab(ref, title),
     shownKey: () => tabs.shown(),
   });
   docHost = h("div", { class: "jv-doc-host", hidden: "" });
