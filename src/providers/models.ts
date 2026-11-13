@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, writeFileSync, mkdirSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync, mkdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { configHome } from "../core/config.ts";
 import { OMLX_EMBED_MODEL, OMLX_URL, PROBE_TIMEOUT_MS } from "../core/constants.ts";
@@ -40,6 +40,17 @@ export interface ModelsConfig {
 
 export function modelsPath(): string {
   return process.env.JARVIS_MODELS ?? join(configHome(), "models.toml");
+}
+
+/** Identity of the models.toml on disk (path, mtime, size), or "absent": changes whenever the file is edited, created or removed. */
+export function modelsSignature(): string {
+  const p = modelsPath();
+  try {
+    const st = statSync(p);
+    return `${p}|${st.mtimeMs}|${st.size}`;
+  } catch {
+    return `${p}|absent`;
+  }
 }
 
 function asQuality(q: unknown): Quality {

@@ -208,3 +208,29 @@ describe("copilot model steps on an account that does not offer gpt-4.1 (jv-l1q)
     await completesEveryCopilotStep({ preference: ["copilot"], models: [{ provider: "copilot", id: "gpt-5.6-luna", quality: "high", bestFor: [...TASK_KINDS] }], source: "file" });
   });
 });
+
+describe("getRouter follows models.toml (jv-rs9)", () => {
+  test("a model added to models.toml under a running process is used by the next getRouter()", async () => {
+    const { mkdtempSync, writeFileSync } = await import("node:fs");
+    const { tmpdir } = await import("node:os");
+    const { join } = await import("node:path");
+    const { getRouter, setRouterForTests } = await import("../src/providers/index.ts");
+    const mp = join(mkdtempSync(join(tmpdir(), "jv-rs9-")), "models.toml");
+    const entry = (id: string) => `[[model]]\nprovider = "openai-compat"\nid = "${id}"\nbaseUrl = "http://127.0.0.1:1/v1"\napiKeyEnv = "JV_RS9_NO_SUCH_KEY"\nquality = "high"\n`;
+    const prev = process.env.JARVIS_MODELS;
+    process.env.JARVIS_MODELS = mp;
+    try {
+      writeFileSync(mp, entry("one"));
+      setRouterForTests(undefined);
+      const first = await getRouter();
+      expect(first!.config.models.map((m) => m.id)).toEqual(["one"]);
+      expect(await getRouter()).toBe(first); // unchanged file: same router
+      writeFileSync(mp, entry("one") + entry("two"));
+      expect((await getRouter())!.config.models.map((m) => m.id)).toEqual(["one", "two"]);
+    } finally {
+      if (prev === undefined) delete process.env.JARVIS_MODELS;
+      else process.env.JARVIS_MODELS = prev;
+      setRouterForTests(null);
+    }
+  });
+});
