@@ -203,11 +203,15 @@ export class ModelsConfigError extends Error {
   readonly reason: string;
   /** The models.toml that could not be loaded. */
   readonly path: string;
+  /** The file and the cause, without the CLI fix line: what a browser user is shown. */
+  readonly summary: string;
   constructor(path: string, reason: string) {
-    super(`${path} could not be loaded: ${reason}\nfix: run jarvis doctor, which names the broken entry and how to fix it`);
+    const summary = `${path} could not be loaded: ${reason}`;
+    super(`${summary}\nfix: run jarvis doctor, which names the broken entry and how to fix it`);
     this.name = "ModelsConfigError";
     this.path = path;
     this.reason = reason;
+    this.summary = summary;
   }
 }
 

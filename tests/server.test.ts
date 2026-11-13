@@ -124,3 +124,31 @@ describe("http api", () => {
     expect((await call("POST", "/api/filters", { pattern: "x" })).status).toBe(400);
   });
 });
+
+describe("an unloadable models.toml over http (jv-jbf)", () => {
+  test("/api/ask names the file without a CLI instruction, and a fixed file works without a restart", async () => {
+    const { setRouterForTests } = await import("../src/providers/index.ts");
+    const { join } = await import("node:path");
+    const { writeFileSync } = await import("node:fs");
+    const mp = join(t.dir, "models.toml");
+    const saved = process.env.JARVIS_MODELS;
+    process.env.JARVIS_MODELS = mp;
+    try {
+      writeFileSync(mp, '[[models]\nprovider = "local"\n');
+      setRouterForTests(undefined); // the real router reads models.toml, as a running serve does
+      const broken = await call("POST", "/api/ask", { question: "anything" });
+      expect(broken.status).toBe(500);
+      const msg = (await broken.json()).error as string;
+      expect(msg).toContain(mp);
+      expect(msg).toContain("could not be loaded");
+      expect(msg).not.toContain("jarvis doctor");
+      expect(msg).not.toMatch(/\brun\b/);
+      writeFileSync(mp, ""); // fixed: a file with no models, so no provider is probed
+      const fixed = await call("POST", "/api/ask", { question: "anything" });
+      expect(fixed.status).toBe(200);
+    } finally {
+      setRouterForTests(null);
+      if (saved === undefined) delete process.env.JARVIS_MODELS; else process.env.JARVIS_MODELS = saved;
+    }
+  });
+});
