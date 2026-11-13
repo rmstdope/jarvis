@@ -660,6 +660,27 @@ describe("the agent acts (jv-oya.4)", () => {
     expect(CHAT_RULES).toContain("Never write an id in your prose");
     expect(CHAT_RULES).toContain("not even in square brackets after a name");
   });
+  test("asked for an item's id, the agent is told to give it in code formatting and change nothing (jv-871)", async () => {
+    const { CHAT_RULES } = await import("../src/chat/sessions.ts");
+    // The ban on ids in prose must not be absolute: an explicit request for an id is answered.
+    expect(CHAT_RULES).not.toContain("Never write an id in your prose, not even");
+    expect(CHAT_RULES).toContain("unless the user asks for one; in particular, not even in square brackets after a name");
+    expect(CHAT_RULES).toContain("When the user asks for an item's id");
+    expect(CHAT_RULES).toContain("in code formatting (`ID`)");
+    // Naming a command the user will run is not a request for the chat to make that change.
+    expect(CHAT_RULES).toContain("write no action block unless they also ask you to make a change");
+    expect(CHAT_RULES).toContain("a command they will run themselves is not a request for you to make that change");
+  });
+  test("the general chat's per-turn context line allows an id the user asks for (jv-871)", async () => {
+    // The context line is fixed wording; a matching note is needed only for it to appear at all.
+    await ingest(t.dir, { source: "note", title: "Zoom drift", body: "audio drifts after an hour", author: "me" });
+    const svc = new ChatService(t.dir, { spawn });
+    const s = await svc.create({ type: "jarvis", ids: [] });
+    const r = svc.buildPrompt(s, "Zoom drift");
+    expect(r.prompt).toContain("Relevant captured items");
+    expect(r.prompt).toContain("never write an id in your prose unless the user asks for one;");
+    await svc.shutdown();
+  });
   test("the agent is told to write every initiative it names as a mention with the exact title (jv-aev)", async () => {
     const { CHAT_RULES } = await import("../src/chat/sessions.ts");
     expect(CHAT_RULES).toContain("[Title](jarvis://initiative/ID)");
