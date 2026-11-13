@@ -86,7 +86,8 @@ async function loadRouter(notes: string[]): Promise<unknown> {
     return await getRouter();
   } catch (e) {
     if (!(e instanceof ModelsConfigError)) throw e;
-    notes.push(`${e.path} could not be loaded: ${e.reason}; model steps skipped\nfix: run jarvis doctor, which names the broken entry and how to fix it`);
+    // The error's own wording: its summary, what sync did about it, then the fix line its message ends with.
+    notes.push(`${e.summary}; model steps skipped${e.message.slice(e.summary.length)}`);
     return undefined;
   }
 }
