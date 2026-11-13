@@ -174,7 +174,7 @@ describe("chat service", () => {
     expect(ev[ev.length - 1]).toMatchObject({ type: "done", stopReason: "end_turn" });
     const ev2 = await collect(svc.send(jarvis.id, "pasta"));
     expect(ev2.some((e) => e.type === "source")).toBe(false);
-    expect(ev2.filter((e) => e.type === "message").map((e) => e.text).join("")).toMatch(/^Echo: Reminder: .*\n\npasta$/s); // later turns carry only the ask reminder, no retrieval (jv-xbz)
+    expect(ev2.filter((e) => e.type === "message").map((e) => e.text).join("")).toMatch(/^Echo: Reminder: .*\n\npasta$/s); // later turns carry the ask reminder (jv-xbz)
     const item = await svc.create({ type: "item", ids: [doc.id] });
     expect(item.sources[0].docId).toBe(doc.id);
     const first = await collect(svc.send(item.id, "summarise"));
@@ -558,7 +558,8 @@ describe("the agent acts (jv-oya.4)", () => {
     const svc = chatService({ dataDir: t.dir } as Parameters<typeof chatService>[0]);
     const s = svc.get(sid)!;
     const count = (p: string) => p.split(ASK_REMINDER).length - 1;
-    expect(count(svc.buildPrompt(s, "hello").prompt)).toBe(0); // turn 0 carries the full rules
+    expect(count(svc.buildPrompt(s, "hello").prompt)).toBe(0); // turn 0 carries the rule inside CHAT_RULES, not the reminder
+    expect(svc.buildPrompt(s, "hello").prompt).toContain(ASK_REMINDER.replace("Reminder: ", ""));
     s.turns = 3;
     expect(count(svc.buildPrompt(s, "Link Vendor call notes to Planning.").prompt)).toBe(1);
   });

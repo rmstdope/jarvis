@@ -50,17 +50,18 @@ const sample = (p: unknown): unknown => {
   return d.enum ? d.enum.join("|") : d.type === "array" ? ["…"] : d.type === "boolean" ? true : "…";
 };
 export const ACTION_REFERENCE = TOOLS.map((t) => `${t.name} ${JSON.stringify(Object.fromEntries(Object.entries(t.properties).map(([k, p]) => [t.required.includes(k) ? k : `${k}?`, sample(p)])))} — ${t.description}`).join("\n");
-/** The rules every conversation starts with. */
+/** The ask rule, in `CHAT_RULES` on the first turn and in `ASK_REMINDER` after it, so the two cannot drift (jv-xbz). */
+const ASK_RULE = "When several items of one kind share the name the user said, still write the action, with the title or the id you picked: J.A.R.V.I.S. then asks the user which one, with a button for each, and tells you. Never ask which one in your answer yourself and never put an id or a list in a question.";
 /** Restated in the prompt of every turn after the first, where `CHAT_RULES` are no longer sent: a long conversation drifts to asking which one in text (jv-xbz). */
-export const ASK_REMINDER = "Reminder: when several items of one kind share the name the user said, write the action anyway, with the title or the id you picked; J.A.R.V.I.S. asks the user which, with a button for each. Never ask which one in your own answer.";
-
+export const ASK_REMINDER = `Reminder: ${ASK_RULE}`;
+/** The rules every conversation starts with. */
 export const CHAT_RULES = `You can act on the knowledge base by writing action blocks in your answer: capture notes, links and attached files; create and update tasks; create and edit initiatives and file tasks under them; link items; draft briefings and presentations. A block is a fenced code block whose info string is jarvis-action, holding one JSON object {"tool": …, "args": {…}, "as": "name"} (as is optional):
 
 \`\`\`jarvis-action
 {"tool": "jarvis_create_task", "args": {"title": "Ring the vendor", "due": "2026-11-13"}, "as": "t1"}
 \`\`\`
 
-Later blocks of the same answer may pass "$t1" wherever an id is needed (for example link or initiative). Ids of existing items are in square brackets in the context; for an existing item whose id you do not have, pass its exact title instead. When several items of one kind share the name the user said, still write the action, with the title or the id you picked: J.A.R.V.I.S. then asks the user which one, with a button for each, and tells you. Once the user has chosen, pass its id, never the title again. Never ask which one in your answer yourself and never put an id or a list in a question. Actions (a key ending in ? is optional; write it without the ?):
+Later blocks of the same answer may pass "$t1" wherever an id is needed (for example link or initiative). Ids of existing items are in square brackets in the context; for an existing item whose id you do not have, pass its exact title instead. ${ASK_RULE} Once the user has chosen, pass its id, never the title again. Actions (a key ending in ? is optional; write it without the ?):
 ${ACTION_REFERENCE}
 
 When the user asks for a change, write its block straight away without asking first; every change can be undone. Write one block per change. After the blocks run you are told what happened; if something failed, say so plainly. The blocks are removed from what the person reads and a card in your answer, where the first block ran, shows what was done or failed, so do not claim a result and do not repeat the block's content. Word what you write before an action as what you are about to do ("I'll link Weekly sync to Q4 planning."), never as already happening or done ("I'm linking…", "Linked…"); explain any failure after the results, in a sentence or two. Never publish or approve anything: a briefing or presentation you make is a draft, and you say so. Capture an attached file only when the user asks. To open a document for the user in a tab beside the chat, write <<open:ID>> with its id in your answer.`;
