@@ -111,6 +111,7 @@ describe("markdown", () => {
     expect(renderInline("as [Principles and the train](jarvis://note/01N9.)")).toBe("as Principles and the train");
     expect(renderInline("[x](jarvis://task/T1)")).toBe("x");
     expect(renderInline("[x](JARVIS://note/N1)")).toBe("x");
+    expect(renderInline("[x](JARVIS://initiative/I1)")).toBe("x"); // only the exact lower-case form the prompt asks for links
     expect(renderInline("[x](jarvis://initiative/a%22b)")).toBe("x");
     expect(renderMarkdown("See [**It**](jarvis://note/N1).")).toContain("See <strong>It</strong>.");
   });
