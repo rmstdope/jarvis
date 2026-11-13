@@ -39,7 +39,21 @@ export interface ModelsConfig {
 }
 
 export function modelsPath(): string {
-  return process.env.JARVIS_MODELS ?? join(configHome(), "models.toml");
+  return process.env.JARVIS_MODELS ?? defaultModelsPath();
+}
+
+/** The models.toml used when JARVIS_MODELS is unset: `models.toml` in the config home. */
+export function defaultModelsPath(): string {
+  return join(configHome(), "models.toml");
+}
+
+/**
+ * Whether JARVIS_MODELS names a file that does not exist. Such a path is a mistake to name, never a reason to
+ * fall back to live detection: the user chose a file, and detection could pick a cloud model they did not.
+ */
+export function namedModelsFileMissing(): boolean {
+  const named = process.env.JARVIS_MODELS;
+  return named !== undefined && !existsSync(named);
 }
 
 /** Identity of the models.toml on disk (path, mtime, size), or "absent": changes when the file is edited, created or removed (an edit that keeps the size within one coarse mtime tick is missed). */
@@ -226,9 +240,13 @@ export class ModelsConfigError extends Error {
   }
 }
 
-/** The models config: models.toml when it exists (throws {@link ModelsConfigError} if it cannot be loaded), else live detection. */
+/**
+ * The models config: models.toml when it exists (throws {@link ModelsConfigError} if it cannot be loaded), else live
+ * detection. A JARVIS_MODELS naming a missing file throws {@link ModelsConfigError} rather than detecting.
+ */
 export async function loadModelsConfig(detect: DetectOpts = {}): Promise<ModelsConfig> {
   const p = modelsPath();
+  if (namedModelsFileMissing()) throw new ModelsConfigError(p, "JARVIS_MODELS names it, and it does not exist");
   if (existsSync(p)) {
     let parsed: ReturnType<typeof parseModelsToml>;
     try {
