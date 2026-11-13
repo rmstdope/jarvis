@@ -137,6 +137,17 @@ describe("open tasks", () => {
 });
 
 describe("answering", () => {
+  test("an initiative mention in an answer is a same-tab link to that initiative (jv-77m)", async () => {
+    await setup({ answer: () => ({ stream: async (push) => { push({ type: "message", text: "See [Software Principles](jarvis://initiative/IA)." }); push({ type: "done" }); } }) });
+    type("what?");
+    (q(".jv-send") as HTMLElement).click();
+    await env.tick(40);
+    const a = q(".jv-answer a") as HTMLAnchorElement;
+    expect(a.textContent).toBe("Software Principles");
+    expect(a.getAttribute("href")).toBe("#/initiative/IA");
+    expect(a.hasAttribute("target")).toBe(false);
+  });
+
   test("user bubble, steps while the agent works, then folded steps, serif answer and source chips", async () => {
     let release!: () => void;
     const gate = new Promise<void>((r) => (release = r));
