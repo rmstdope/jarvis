@@ -26,7 +26,10 @@ export function renderInline(s: string, o: MdOptions = {}): string {
   t = escapeHtml(t);
   t = t.replace(/!\[([^\]]*)\]\(([^)\s]+)\)/g, (_, alt, src) => `<img alt="${alt}" src="${safeUrl(src)}">`);
   t = t.replace(/\[\[([0-9A-Z]{26})\]\]/g, (_, id) => `<a class="cite" href="${o.citationHref ? o.citationHref(id) : `#/item/${id}`}">[${id.slice(0, 8)}…]</a>`);
-  t = t.replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, (_, text, href) => `<a href="${safeUrl(href)}" target="_blank" rel="noopener">${text}</a>`);
+  t = t.replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, (_, text, href) => {
+    const init = href.match(/^jarvis:\/\/initiative\/([0-9A-Za-z_-]+)$/); // an initiative mention opens its tab in this browser tab (jv-77m)
+    return init ? `<a href="#/initiative/${init[1]}">${text}</a>` : `<a href="${safeUrl(href)}" target="_blank" rel="noopener">${text}</a>`;
+  });
   t = t.replace(/(\*\*|__)(?=\S)([\s\S]*?\S)\1/g, "<strong>$2</strong>");
   t = t.replace(/(^|[\s(])\*(?=\S)([^*\n]*?\S)\*(?=[\s).,;:!?]|$)/g, "$1<em>$2</em>");
   t = t.replace(/(^|[\s(])_(?=\S)([^_\n]*?\S)_(?=[\s).,;:!?]|$)/g, "$1<em>$2</em>");
