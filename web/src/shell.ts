@@ -1,10 +1,13 @@
 /** The app shell: sidebar (foldable to a rail, a slide-in menu on phones), look switch and sync line. */
-import { ago, append, h } from "./ui.ts";
+import { ago, append, clear, h } from "./ui.ts";
+import type { SyncCard } from "./syncnotes.ts";
 import type { Strip } from "./strip.ts";
 import { getPref, getTheme, KEY_FOLDED, setPref, setTheme, type Theme } from "./prefs.ts";
 
 export const TABLET_MAX = 999;
 export const PHONE_MAX = 639;
+/** How many note cards show before "Show N more". */
+const NOTES_SHOWN = 3;
 const isMac = () => /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent || "");
 /** "⌘⇧S" on a Mac, "Ctrl+Shift+S" elsewhere. */
 export function shortcut(key: string): string { return isMac() ? `⌘⇧${key}` : `Ctrl+Shift+${key}`; }
@@ -26,8 +29,8 @@ export function navFor(route: string): string {
   return route;
 }
 
-/** What the sidebar's sync line shows; `ok` with `failedSteps` shared the work but a model step failed (jv-m9l). */
-export type SyncState = { kind: "never" } | { kind: "syncing" } | { kind: "failed" } | { kind: "ok"; at: number; failedSteps?: string };
+/** What the sidebar's sync line shows; the notes a sync left are the cards (`setNotes`), counted on the line. */
+export type SyncState = { kind: "never" } | { kind: "syncing" } | { kind: "failed" } | { kind: "ok"; at: number };
 
 export interface Shell {
   el: HTMLElement;
@@ -36,6 +39,8 @@ export interface Shell {
   setActive(route: string): void;
   setChatDot(on: boolean): void;
   setSync(s: SyncState): void;
+  /** Show these cards above the Sync line (replacing the old ones), jv-5b3. */
+  setNotes(cards: SyncCard[]): void;
   toggleFold(): void;
   isFolded(): boolean;
   openMenu(): void;
@@ -44,11 +49,12 @@ export interface Shell {
 }
 
 /** Build the shell. `onNewChat` and `onSync` are the two actions the sidebar owns. */
-export function createShell(opts: { onNewChat: () => void; onSync: () => void; now?: () => number; strip?: Strip; onNav?: () => void }): Shell {
+export function createShell(opts: { onNewChat: () => void; onSync: () => void; now?: () => number; strip?: Strip; onNav?: () => void; onNotes?: (cards: SyncCard[]) => void; copiedMs?: number }): Shell {
   const now = opts.now ?? (() => Date.now());
   let userFolded = getPref(KEY_FOLDED) === "1";
   let tablet = false, phone = false, menu = false;
   let sync: SyncState = { kind: "never" };
+  let cards: SyncCard[] = [], showAll = false;
 
   const root = h("div", { class: "jv-shell" });
   const foldBtn = h("button", { class: "jv-fold", onClick: () => toggleFold() });
@@ -61,12 +67,13 @@ export function createShell(opts: { onNewChat: () => void; onSync: () => void; n
   const nav = h("nav", { class: "jv-navlist", "aria-label": "Main" }, chatEntry, h("div", { class: "jv-sec" }, "Your knowledge"), ...PAGES.map(([r, l, rl, ic]) => entry(r, l, rl, ic)));
   const syncLine = h("span", { class: "jv-syncline lbl" });
   const syncBtn = h("button", { class: "jv-sync", onClick: () => opts.onSync() }, h("span", { class: "lbl" }, "Sync"), h("span", { class: "rl" }, "Sync"));
+  const notesBox = h("div", { class: "jv-notes lbl" });
   const themeBtns = (["auto", "light", "dark"] as Theme[]).map((t) => h("button", { class: "jv-themebtn", "data-theme-choice": t, onClick: () => { setTheme(t); paintTheme(); } }, t === "auto" ? "Auto" : t === "light" ? "Light" : "Dark"));
   const themeSwitch = h("div", { class: "jv-theme lbl", role: "group", "aria-label": "Look" }, ...themeBtns);
   const side = h("aside", { class: "jv-side" },
     h("div", { class: "jv-brand" }, h("span", { class: "jv-mark" }), h("span", { class: "jv-name lbl" }, "J.A.R.V.I.S."), foldBtn),
     newBtn, nav, h("div", { class: "jv-grow" }),
-    h("div", { class: "jv-foot" }, syncLine, syncBtn, themeSwitch));
+    h("div", { class: "jv-foot" }, notesBox, syncLine, syncBtn, themeSwitch));
   const menuBtn = h("button", { class: "jv-menu", "aria-label": "Menu", "aria-expanded": "false", onClick: () => (menu ? closeMenu() : openMenu()) }, "☰");
   const phoneBar = h("header", { class: "jv-phonebar" }, menuBtn, h("span", { class: "jv-name" }, "J.A.R.V.I.S."), opts.strip?.phoneBtn ?? null, h("button", { class: "jv-pnew", title: `New chat (${shortcut("O")})`, "aria-label": "New chat", onClick: () => opts.onNewChat() }, "＋"));
   const backdrop = h("div", { class: "jv-backdrop", onClick: () => closeMenu() });
@@ -90,9 +97,35 @@ export function createShell(opts: { onNewChat: () => void; onSync: () => void; n
   };
   const paintSync = () => {
     syncBtn.toggleAttribute("disabled", sync.kind === "syncing");
-    syncLine.classList.toggle("jv-err", sync.kind === "failed" || (sync.kind === "ok" && !!sync.failedSteps));
-    syncLine.textContent = sync.kind === "syncing" ? "Syncing…" : sync.kind === "failed" ? "Sync failed" : sync.kind === "never" ? "Not synced yet" : `Synced ${ago(now() - sync.at)}${sync.failedSteps ? ` · ${sync.failedSteps} failed` : ""}`;
+    const warn = sync.kind === "ok" && cards.length > 0;
+    syncLine.classList.toggle("jv-err", sync.kind === "failed");
+    syncLine.classList.toggle("jv-warn", warn);
+    syncLine.textContent = sync.kind === "syncing" ? "Syncing…" : sync.kind === "failed" ? "Sync failed" : sync.kind === "never" ? "Not synced yet" : `Synced ${ago(now() - sync.at)}${warn ? ` · ${cards.length} note${cards.length === 1 ? "" : "s"}` : ""}`;
     syncBtn.setAttribute("title", syncLine.textContent);
+  };
+  const copy = (command: string, btn: HTMLElement) => {
+    void Promise.resolve().then(() => navigator.clipboard.writeText(command)).then(() => {
+      btn.textContent = "Copied";
+      setTimeout(() => { btn.textContent = "Copy"; }, opts.copiedMs ?? 2000);
+    }).catch(() => { /* clipboard blocked: the label stays Copy */ });
+  };
+  const closeCard = (i: number) => {
+    cards = cards.filter((_, j) => j !== i);
+    opts.onNotes?.(cards);
+    paintNotes();
+    paintSync();
+    (notesBox.querySelectorAll(".jv-note-x")[Math.min(i, cards.length - 1)] as HTMLElement | undefined ?? syncBtn).focus();
+  };
+  const paintNotes = () => {
+    const shown = showAll ? cards : cards.slice(0, NOTES_SHOWN);
+    clear(notesBox);
+    shown.forEach((c, i) => notesBox.append(h("div", { class: "jv-note" },
+      h("button", { class: "jv-note-x", "aria-label": "Close note", title: "Close note", onClick: () => closeCard(i) }, "×"),
+      h("h4", {}, c.heading), h("p", {}, c.body),
+      c.fix ? h("div", { class: "jv-fix" }, `Fix: ${c.fix.before}`, h("code", {}, c.fix.command), `${c.fix.after} `, h("button", { class: "jv-copy", onClick: (e: Event) => copy(c.fix!.command, e.currentTarget as HTMLElement) }, "Copy")) : null)));
+    if (cards.length > NOTES_SHOWN) notesBox.append(h("button", { class: "jv-notes-more", onClick: () => { showAll = !showAll; paintNotes(); } }, showAll ? "Show fewer" : `Show ${cards.length - NOTES_SHOWN} more`));
+    syncBtn.querySelector(".jv-sync-dot")?.remove();
+    if (cards.length) syncBtn.append(h("span", { class: "jv-sync-dot", title: "Notes from the last sync" }));
   };
   const mqTablet = matchMedia(`(max-width: ${TABLET_MAX}px)`), mqPhone = matchMedia(`(max-width: ${PHONE_MAX}px)`);
   const readMq = () => { tablet = mqTablet.matches; phone = mqPhone.matches; if (!phone) menu = false; paintFold(); };
@@ -112,6 +145,7 @@ export function createShell(opts: { onNewChat: () => void; onSync: () => void; n
     setActive(route) { const a = navFor(route); for (const n of nav.querySelectorAll("a")) n.classList.toggle("active", n.getAttribute("data-route") === a); },
     setChatDot(on) { dot.hidden = !on; },
     setSync(s) { sync = s; paintSync(); },
+    setNotes(c) { cards = c; showAll = false; paintNotes(); paintSync(); },
     toggleFold, isFolded: () => root.classList.contains("jv-folded"), openMenu, closeMenu, menuOpen: () => menu,
   };
 }

@@ -1,7 +1,8 @@
-import { api, ApiError, type SyncStepFailure } from "./api.ts";
+import { api, ApiError } from "./api.ts";
+import { cardsFromSync, loadCards, saveCards } from "./syncnotes.ts";
 import { clear, h, modal, parseRoute, toast } from "./ui.ts";
 import { createChat, type Chat } from "./chat.ts";
-import { applyTheme, delPref, getPref, getTheme, KEY_LAST_SYNC, KEY_LAST_SYNC_FAILED, KEY_SYNC_SKIP, setPref } from "./prefs.ts";
+import { applyTheme, getPref, getTheme, KEY_LAST_SYNC, KEY_SYNC_SKIP, setPref } from "./prefs.ts";
 import { createShell, type Shell } from "./shell.ts";
 import { createStrip, type Strip } from "./strip.ts";
 import { createTabs, KEY_TABS_STORE, tabKey, type DocRef, type Tabs } from "./tabs.ts";
@@ -36,22 +37,10 @@ async function confirmSync() {
     { label: "Sync", primary: true, onClick: () => { if (cb.checked) setPref(KEY_SYNC_SKIP, "1"); void runSync(); } },
   ], "Sync");
 }
-/** The last sync as stored in this browser: when it ran and which model steps it failed, if any. */
+/** The last sync as stored in this browser: when it ran, if ever. */
 function lastSyncState() {
   const at = Number(getPref(KEY_LAST_SYNC));
-  return at > 0 ? { kind: "ok" as const, at, failedSteps: getPref(KEY_LAST_SYNC_FAILED) || undefined } : { kind: "never" as const };
-}
-/** Remember a sync that shared its work, with the model steps it failed (none clears them). */
-function recordSync(failedSteps?: string) {
-  setPref(KEY_LAST_SYNC, String(Date.now()));
-  if (failedSteps) setPref(KEY_LAST_SYNC_FAILED, failedSteps); else delPref(KEY_LAST_SYNC_FAILED);
-}
-const STEP_LABEL: Record<string, [label: string, unit: string]> = { enrich: ["enrichment", "item(s)"], refine: ["link refinement", "batch(es)"] };
-const stepLabel = (f: SyncStepFailure) => STEP_LABEL[f.step]?.[0] ?? f.step;
-/** The toast for a sync whose model steps failed: whether the work was shared, each step with its count and why, and doctor where it has the fix. */
-function failedStepsToast(r: { pushed: boolean }, failures: SyncStepFailure[]): string {
-  const steps = failures.map((f) => `${stepLabel(f)} failed for ${f.failed} ${STEP_LABEL[f.step]?.[1] ?? "time(s)"}${f.reason ? `: ${f.reason.replace(/\.$/, "")}` : ""}`).join("; ");
-  return `${r.pushed ? "Shared with the team" : "Not shared with the team"}, but ${steps}.${failures.some((f) => f.doctor) ? " Run \`jarvis doctor\` for the fix." : ""}`;
+  return at > 0 ? { kind: "ok" as const, at } : { kind: "never" as const };
 }
 async function runSync() {
   shell.setSync({ kind: "syncing" });
@@ -59,11 +48,13 @@ async function runSync() {
   try {
     const r = await api.sync();
     if (r.conflicted.length) { failed = true; toast(`Sync stopped: resolve ${r.conflicted.length} merge conflict(s).`, "error", 8000); }
-    else if (r.failures?.length) {
-      recordSync(r.failures.map(stepLabel).join(" and "));
-      toast(failedStepsToast(r, r.failures), "error", 12000);
+    else {
+      setPref(KEY_LAST_SYNC, String(Date.now()));
+      const cards = cardsFromSync(r);
+      saveCards(cards);
+      shell.setNotes(cards);
+      toast(`Synced: ${r.committed} captured, ${r.committedEnriched} enriched, ${r.pulled ? "pulled" : "no pull"}, ${r.pushed ? "pushed" : "not pushed"}${r.collisions.length ? `, ${r.collisions.length} collision(s)` : ""}`);
     }
-    else { recordSync(); toast(`Synced: ${r.committed} captured, ${r.committedEnriched} enriched, ${r.pulled ? "pulled" : "no pull"}, ${r.pushed ? "pushed" : "not pushed"}${r.collisions.length ? `, ${r.collisions.length} collision(s)` : ""}`); }
     if (parseRoute(location.hash).name === "browse") void render();
   } catch (e) {
     if (e instanceof ApiError && e.status === 409) toast("A sync is already running.", "error", 6000);
@@ -222,7 +213,7 @@ export function mountApp(root: HTMLElement): void {
   tabs = createTabs({ get: () => getPref(KEY_TABS_STORE), set: (v) => setPref(KEY_TABS_STORE, v) });
   strip = createStrip({ show: showTab, close: closeTab });
   window.addEventListener("resize", () => strip.draw(tabs.list(), tabs.shown() ?? (parseRoute(location.hash).name === "chat" ? "chat" : null)));
-  shell = createShell({ onNewChat: () => chat.newChat(), onSync: () => void confirmSync(), strip, onNav: () => { if (tabs.shown() !== null) { tabs.show(null); syncView(); } } });
+  shell = createShell({ onNotes: saveCards, onNewChat: () => chat.newChat(), onSync: () => void confirmSync(), strip, onNav: () => { if (tabs.shown() !== null) { tabs.show(null); syncView(); } } });
   chat = createChat({
     navigate: (hash) => { if (location.hash === hash) void render(); else location.hash = hash; },
     onChange: () => shell.setChatDot(chat.hasConversation() && (tabs.shown() !== null || parseRoute(location.hash).name !== "chat")),
@@ -237,6 +228,7 @@ export function mountApp(root: HTMLElement): void {
   main = page;
   shell.main.append(chat.el, page, docHost);
   shell.setSync(lastSyncState());
+  shell.setNotes(loadCards());
   root.append(shell.el);
   window.addEventListener("hashchange", () => void render());
   document.addEventListener("keydown", onKey);
