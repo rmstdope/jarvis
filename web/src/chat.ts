@@ -77,6 +77,12 @@ export interface Chat {
 }
 
 /** Build the chat view. `navigate` changes the hash; `onChange` fires when the conversation changes. */
+/** The markdown `text` with the link text of every `[…](jarvis://initiative/<id>)` mention that read `was` (ignoring capitals and surrounding spaces) now reading `title`; other words and links stay (jv-4u9). */
+export function retitleMentions(text: string, id: string, was: string, title: string): string {
+  const old = was.trim().toLowerCase();
+  if (!old) return text;
+  return text.replace(/\[([^\]]*)\]\(jarvis:\/\/initiative\/([^)\s]+)\)/g, (all, t: string, i: string) => (i === id && t.trim().toLowerCase() === old ? `[${title}](jarvis://initiative/${i})` : all));
+}
 export function createChat(opts: { navigate: (hash: string) => void; onChange?: () => void; openQuietly?: (ref: DocRef, title: string, kind: string) => void; showDoc?: (ref: DocRef, title: string, kind: string) => void; /** A change of the conversation gave an item a new title (a rename, or its undo). */ renamed?: (ref: DocRef, title: string) => void; shownKey?: () => string | null; now?: () => Date; undoMs?: number; slowMs?: number }): Chat {
   const now = opts.now ?? (() => new Date());
   const newId = (): string => `c${Date.now().toString(36)}${Math.random().toString(36).slice(2, 10)}`;
@@ -418,12 +424,15 @@ export function createChat(opts: { navigate: (hash: string) => void; onChange?: 
     for (const m of conv.messages) if (m.changes) m.changes = m.changes.map((c) => { const u = by.get(c.id); if (u?.undone && !c.undone) settled.push(u); return u ?? c; });
     return settled.reverse();
   }
-  /** An initiative renamed (or its rename undone) by the chat: the scope chip, every answer's source pill and card for it (jv-9oe) and its open tab take the title it has now (jv-maq). Rows apply in order, so undone rows come newest first and the oldest `from` stands. */
+  /** An initiative renamed (or its rename undone) by the chat: the scope chip, every answer's source pill and card for it (jv-9oe), its earlier answers' inline mentions (jv-4u9) and its open tab take the title it has now (jv-maq). Rows apply in order, so undone rows come newest first and the oldest `from` stands. */
   function retitle(changes: WebChange[]): void {
     for (const c of changes) {
       const it = c.items[0], title = c.undone ? c.detail?.from : c.detail?.to;
       if (c.kind !== "initiative.title" || !c.ok || !it || !title) continue;
       if (conv.attached?.id === it.id) conv.attached = { ...conv.attached, title };
+      const at = conv.messages.findIndex((m) => m.changes?.some((x) => x.id === c.id));
+      const was = (c.undone ? c.detail?.to : c.detail?.from) ?? "";
+      conv.messages.forEach((m, i) => { if (m.role === "assistant" && (at < 0 || i < at)) m.text = retitleMentions(m.text, it.id, was, title); });
       for (const m of conv.messages) {
         for (const s of m.sources ?? []) if (s.docId === it.id && s.source === "initiative") s.title = title;
         for (const d of m.cards ?? []) if (d.id === it.id && d.type === "initiative") d.title = title;
