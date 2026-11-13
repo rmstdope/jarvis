@@ -38,8 +38,28 @@ export interface ModelsConfig {
   path?: string;
 }
 
+/** The models.toml in use: JARVIS_MODELS when set and non-empty, else {@link defaultModelsPath}. */
 export function modelsPath(): string {
-  return process.env.JARVIS_MODELS ?? join(configHome(), "models.toml");
+  return process.env.JARVIS_MODELS || defaultModelsPath();
+}
+
+/** The models.toml used when JARVIS_MODELS is unset: `models.toml` in the config home. */
+export function defaultModelsPath(): string {
+  return join(configHome(), "models.toml");
+}
+
+/**
+ * Whether JARVIS_MODELS names a file that does not exist. Such a path is a mistake to name, never a reason to
+ * fall back to live detection: the user chose a file, and detection could pick a cloud model they did not.
+ */
+export function namedModelsFileMissing(): boolean {
+  const named = process.env.JARVIS_MODELS;
+  return !!named && !existsSync(named);
+}
+
+/** The exact fix for a JARVIS_MODELS naming a missing file: write that file, or stop naming it. */
+export function missingModelsFileFix(): string {
+  return `jarvis config preset <name>   or   jarvis config redetect --write   or   unset JARVIS_MODELS to use ${defaultModelsPath()}`;
 }
 
 /** Identity of the models.toml on disk (path, mtime, size), or "absent": changes when the file is edited, created or removed (an edit that keeps the size within one coarse mtime tick is missed). */
@@ -216,9 +236,10 @@ export class ModelsConfigError extends Error {
   readonly path: string;
   /** The file and the cause, without the CLI fix line: what a browser user is shown. */
   readonly summary: string;
-  constructor(path: string, reason: string) {
+  /** `fix` replaces the default doctor pointer when the cause has an exact fix of its own. */
+  constructor(path: string, reason: string, fix = "run jarvis doctor, which names the broken entry and how to fix it") {
     const summary = `${path} could not be loaded: ${reason}`;
-    super(`${summary}\nfix: run jarvis doctor, which names the broken entry and how to fix it`);
+    super(`${summary}\nfix: ${fix}`);
     this.name = "ModelsConfigError";
     this.path = path;
     this.reason = reason;
@@ -226,9 +247,13 @@ export class ModelsConfigError extends Error {
   }
 }
 
-/** The models config: models.toml when it exists (throws {@link ModelsConfigError} if it cannot be loaded), else live detection. */
+/**
+ * The models config: models.toml when it exists (throws {@link ModelsConfigError} if it cannot be loaded), else live
+ * detection. A JARVIS_MODELS naming a missing file throws {@link ModelsConfigError} rather than detecting.
+ */
 export async function loadModelsConfig(detect: DetectOpts = {}): Promise<ModelsConfig> {
   const p = modelsPath();
+  if (namedModelsFileMissing()) throw new ModelsConfigError(p, "JARVIS_MODELS names it, and it does not exist", missingModelsFileFix());
   if (existsSync(p)) {
     let parsed: ReturnType<typeof parseModelsToml>;
     try {

@@ -196,6 +196,28 @@ describe("doctor", () => {
     const pinned = await doctor({ coreOnly: true, which: (b) => `/bin/${b}` });
     expect(pinned.checks.filter((c) => c.detail.startsWith("skipped:"))).toEqual([]);
   });
+  test("a JARVIS_MODELS that names a missing file is named in models-config, not reported as detected live (jv-944)", async () => {
+    const mp = join(home, "typo", "models.toml");
+    process.env.JARVIS_MODELS = mp;
+    try {
+      setRouterForTests(undefined);
+      const r = await doctor({ coreOnly: true, which: (b) => `/bin/${b}` });
+      const check = r.checks.find((c) => c.name === "models-config")!;
+      expect(check.status).toBe("warn");
+      expect(check.detail).toBe(`${mp} does not exist, and JARVIS_MODELS names it; model steps are skipped`);
+      expect(check.fix).toBe(`jarvis config preset <name>   or   jarvis config redetect --write   or   unset JARVIS_MODELS to use ${join(home, "models.toml")}`);
+      for (const name of ["models-available", "models-tasks"]) expect(r.checks.find((c) => c.name === name)).toMatchObject({ status: "warn", detail: "skipped: models.toml could not be loaded" });
+    } finally {
+      setRouterForTests(null);
+    }
+    // The default path, absent and not named by JARVIS_MODELS (unset, or set but empty), is still live detection.
+    for (const named of [undefined, ""]) {
+      if (named === undefined) delete process.env.JARVIS_MODELS;
+      else process.env.JARVIS_MODELS = named;
+      const check = (await doctor({ coreOnly: true })).checks.find((c) => c.name === "models-config")!;
+      expect(check.detail).toBe(`${join(home, "models.toml")} missing; models are detected live`);
+    }
+  });
   test("doctor says whether decks can be presented in Slidecraft, with the exact fix", async () => {
     const data = join(t.dir, "content");
     await init({ yes: true, data, author: "tester", preset: "cpu-only-minimal", embedding: "ollama", log: () => {} });
