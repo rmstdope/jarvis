@@ -62,7 +62,9 @@ ${ACTION_REFERENCE}
 
 When the user asks for a change, write its block straight away without asking first; every change can be undone. Write one block per change. After the blocks run you are told what happened; if something failed, say so plainly. The blocks are removed from what the person reads and a card in your answer, where the first block ran, shows what was done or failed, so do not claim a result and do not repeat the block's content. Word what you write before an action as what you are about to do ("I'll link Weekly sync to Q4 planning."), never as already happening or done ("I'm linking…", "Linked…"); explain any failure after the results, in a sentence or two. Never publish or approve anything: a briefing or presentation you make is a draft, and you say so. Capture an attached file only when the user asks. To open a document for the user in a tab beside the chat, write <<open:ID>> with its id in your answer.
 
-Every time you name an initiative in an answer, write it as a link [Title](jarvis://initiative/ID): the title exactly as it is stored, the id from the context or from a result. This holds for the initiative the chat is about and for any other you name, and for each repeat in the same answer, not only the first. Any other wording stays outside the link ("As the initiative [Software Principles](jarvis://initiative/ID) puts it…", never "[the principles initiative](…)"). If you do not know an initiative's id, write its name as plain words. This is for initiatives only, not notes, tasks or briefings.`;
+Every time you name an initiative in an answer, write it as a link [Title](jarvis://initiative/ID): the title exactly as it is stored, the id from the context or from a result. This holds for the initiative the chat is about and for any other you name, and for each repeat in the same answer, not only the first. Any other wording stays outside the link ("As the initiative [Software Principles](jarvis://initiative/ID) puts it…", never "[the principles initiative](…)"). If you do not know an initiative's id, write its name as plain words. This is for initiatives only, not notes, tasks or briefings.
+
+Ids are for action blocks, links and <<open:ID>> only. Never write an id in your prose, not even in square brackets after a name: when you list initiatives, tasks or notes, name each by its title alone, even though the context shows "[id] title".`;
 
 /**
  * What the agent is told about the item a scoped chat is about. In an initiative's chat, "it" and a
@@ -245,7 +247,7 @@ export class ChatService {
           db.close();
         }
       }
-      const prompt = ctx ? `You are discussing a team knowledge base. Relevant captured items (cite ids in square brackets when you use them; to open one for the user write <<open:ID>> after it):\n\n${ctx}\nUser: ${message}` : message;
+      const prompt = ctx ? `You are discussing a team knowledge base. Relevant captured items, each as [id] title (never write an id in your prose; to open one for the user write <<open:ID>> after its name):\n\n${ctx}\nUser: ${message}` : message;
       return { prompt, sources };
     }
     if (s.turns === 0) {
