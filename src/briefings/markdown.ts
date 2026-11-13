@@ -28,7 +28,9 @@ export function renderInline(s: string, o: MdOptions = {}): string {
   t = t.replace(/\[\[([0-9A-Z]{26})\]\]/g, (_, id) => `<a class="cite" href="${o.citationHref ? o.citationHref(id) : `#/item/${id}`}">[${id.slice(0, 8)}…]</a>`);
   t = t.replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, (_, text, href) => {
     const init = href.match(/^jarvis:\/\/initiative\/([0-9A-Za-z_-]+)$/); // an initiative mention opens its tab in this browser tab (jv-77m)
-    return init ? `<a href="#/initiative/${init[1]}">${text}</a>` : `<a href="${safeUrl(href)}" target="_blank" rel="noopener">${text}</a>`;
+    if (init) return `<a href="#/initiative/${init[1]}">${text}</a>`;
+    if (/^jarvis:\/\//i.test(href)) return text; // any other jarvis:// address has nowhere to go: its words, not a dead link (jv-ba9)
+    return `<a href="${safeUrl(href)}" target="_blank" rel="noopener">${text}</a>`;
   });
   t = t.replace(/(\*\*|__)(?=\S)([\s\S]*?\S)\1/g, "<strong>$2</strong>");
   t = t.replace(/(^|[\s(])\*(?=\S)([^*\n]*?\S)\*(?=[\s).,;:!?]|$)/g, "$1<em>$2</em>");
