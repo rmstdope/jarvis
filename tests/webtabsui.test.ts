@@ -163,6 +163,18 @@ describe("an initiative mention", () => {
     expect(q(".jv-docstate h2").textContent).toBe("This document isn't here any more.");
     expect(q('.jv-tab[data-key="initiative:01M7B6907GWS94FJ"] .jv-tab-t').textContent).toBe("Software Principles");
   });
+  test("of an initiative whose tab is open keeps that tab's own title, whatever words the mention uses (jv-oh8)", async () => {
+    await boot({ answer: async (p) => { p({ type: "message", text: "See [the principles work](jarvis://initiative/A)." }); p({ type: "done" }); } });
+    env.routes.set("GET /api/initiative/A", () => ({ json: { initiative: { id: "A", title: "Software Principles", owner: "mia", status: "open", done: 0, total: 0, created_at: "2026-01-01T00:00:00Z", goal: "", updated_at: null }, tasks: [], through: { total: 0, items: [] }, direct: { total: 0, items: [] } } }));
+    await go("#/initiative/A");
+    q('.jv-tab[data-key="chat"]').click();
+    await env.tick(40);
+    q(".jv-sg").click();
+    await env.tick(80);
+    (q('.jv-answer a[href="#/initiative/A"]') as HTMLAnchorElement).click();
+    await env.tick(80);
+    expect(q('.jv-tab[data-key="initiative:A"] .jv-tab-t').textContent).toBe("Software Principles");
+  });
 });
 
 describe("keyboard", () => {

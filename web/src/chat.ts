@@ -131,18 +131,18 @@ export function createChat(opts: { navigate: (hash: string) => void; onChange?: 
   const dropMsg = h("div", { class: "jv-drop", hidden: "" }, "Drop files to attach");
   el.append(scroll, h("div", { class: "jv-composer-wrap" }, attachRow, composer), dropMsg);
   picker.addEventListener("change", () => { addFiles([...(picker.files ?? [])]); picker.value = ""; });
-  let dragDepth = 0;
-  const hasFiles = (e: Event) => [...((e as DragEvent).dataTransfer?.types ?? [])].includes("Files");
-  el.addEventListener("dragenter", (e) => { if (available === false || !hasFiles(e)) return; e.preventDefault(); dragDepth++; setDropping(true); });
-  el.addEventListener("dragover", (e) => { if (available === false || !hasFiles(e)) return; e.preventDefault(); });
-  // A click on an answer's initiative mention opens its tab named by the mention's words, the title it keeps if the initiative is gone (jv-oh8).
+  // A click on an answer's initiative mention opens its tab named by the mention's words when it is not open yet, so a gone initiative's tab still reads its name (jv-oh8).
   col.addEventListener("click", (e) => {
     const a = (e.target as Element | null)?.closest?.('.jv-answer a[href^="#/initiative/"]');
     if (!a || !opts.showDoc || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
     e.preventDefault();
     opts.showDoc({ type: "initiative", id: decodeURIComponent(a.getAttribute("href")!.slice("#/initiative/".length)) }, a.textContent ?? "", "Initiative");
   });
-  el.addEventListener("dragleave",() => { if (dragDepth > 0 && --dragDepth === 0) setDropping(false); });
+  let dragDepth = 0;
+  const hasFiles = (e: Event) => [...((e as DragEvent).dataTransfer?.types ?? [])].includes("Files");
+  el.addEventListener("dragenter", (e) => { if (available === false || !hasFiles(e)) return; e.preventDefault(); dragDepth++; setDropping(true); });
+  el.addEventListener("dragover", (e) => { if (available === false || !hasFiles(e)) return; e.preventDefault(); });
+  el.addEventListener("dragleave", () => { if (dragDepth > 0 && --dragDepth === 0) setDropping(false); });
   el.addEventListener("drop", (e) => {
     if (!hasFiles(e)) return;
     e.preventDefault(); dragDepth = 0; setDropping(false);
