@@ -645,6 +645,11 @@ describe("the agent acts (jv-oya.4)", () => {
     expect(c.error).toBeUndefined();
     expect(c.ask.options.map((o: { id: string }) => o.id).sort()).toEqual([m1.id, m2.id].sort());
   });
+  test("the agent is told never to echo an item's id after its name in prose (jv-vb5)", async () => {
+    const { CHAT_RULES } = await import("../src/chat/sessions.ts");
+    expect(CHAT_RULES).toContain("Never write an id in your prose");
+    expect(CHAT_RULES).toContain("not even in square brackets after a name");
+  });
   test("the agent is told to write every initiative it names as a mention with the exact title (jv-aev)", async () => {
     const { CHAT_RULES } = await import("../src/chat/sessions.ts");
     expect(CHAT_RULES).toContain("[Title](jarvis://initiative/ID)");
