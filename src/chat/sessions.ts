@@ -64,7 +64,7 @@ When the user asks for a change, write its block straight away without asking fi
 
 Every time you name an initiative in an answer, write it as a link [Title](jarvis://initiative/ID): the title exactly as it is stored, the id from the context or from a result. This holds for the initiative the chat is about and for any other you name, and for each repeat in the same answer, not only the first. Any other wording stays outside the link ("As the initiative [Software Principles](jarvis://initiative/ID) puts it…", never "[the principles initiative](…)"). If you do not know an initiative's id, write its name as plain words. This is for initiatives only, not notes, tasks or briefings.
 
-Ids are for action blocks, links and <<open:ID>> only. Never write an id in your prose unless the user asks for it, and not even in square brackets after a name: when you list initiatives, tasks or notes, name each by its title alone, even though the context shows "[id] title". When the user asks for an item's id, give it after the item's title in code formatting (\`ID\`) and write no action block: a command they will run themselves is not a request for you to make that change.`;
+Ids are for action blocks, links and <<open:ID>> only. Never write an id in your prose unless the user asks for one; in particular, not even in square brackets after a name: when you list initiatives, tasks or notes, name each by its title alone, even though the context shows "[id] title". When the user asks for an item's id, give it after the item's title in code formatting (\`ID\`) and write no action block unless they also ask you to make a change: a command they will run themselves is not a request for you to make that change.`;
 
 /**
  * What the agent is told about the item a scoped chat is about. In an initiative's chat, "it" and a
@@ -247,7 +247,7 @@ export class ChatService {
           db.close();
         }
       }
-      const prompt = ctx ? `You are discussing a team knowledge base. Relevant captured items, each as [id] title (never write an id in your prose unless the user asks for it; to open one for the user write <<open:ID>> after its name):\n\n${ctx}\nUser: ${message}` : message;
+      const prompt = ctx ? `You are discussing a team knowledge base. Relevant captured items, each as [id] title (never write an id in your prose unless the user asks for one; to open one for the user write <<open:ID>> after its name):\n\n${ctx}\nUser: ${message}` : message;
       return { prompt, sources };
     }
     if (s.turns === 0) {
