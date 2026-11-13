@@ -174,13 +174,13 @@ describe("chat service", () => {
     expect(ev[ev.length - 1]).toMatchObject({ type: "done", stopReason: "end_turn" });
     const ev2 = await collect(svc.send(jarvis.id, "pasta"));
     expect(ev2.some((e) => e.type === "source")).toBe(false);
-    expect(ev2.filter((e) => e.type === "message").map((e) => e.text).join("")).toBe("Echo: pasta");
+    expect(ev2.filter((e) => e.type === "message").map((e) => e.text).join("")).toMatch(/^Echo: Reminder: .*\n\npasta$/s); // later turns carry only the ask reminder, no retrieval (jv-xbz)
     const item = await svc.create({ type: "item", ids: [doc.id] });
     expect(item.sources[0].docId).toBe(doc.id);
     const first = await collect(svc.send(item.id, "summarise"));
     expect(first.filter((e) => e.type === "message").map((e) => e.text).join("")).toBe("Echo with context: summarise");
     const second = await collect(svc.send(item.id, "more"));
-    expect(second.filter((e) => e.type === "message").map((e) => e.text).join("")).toBe("Echo: more");
+    expect(second.filter((e) => e.type === "message").map((e) => e.text).join("")).toMatch(/^Echo: Reminder: .*\n\nmore$/s);
     // one in-flight prompt per session
     const slow = collect(svc.send(item.id, "SLOW"));
     await new Promise((r) => setTimeout(r, 20));
@@ -209,7 +209,7 @@ describe("chat service", () => {
     expect(first).toContain("Dry-run invoices");
     expect(first).toContain("Cutover plan");
     s.turns = 1;
-    expect(svc.buildPrompt(s, "more").prompt).toBe("more");
+    expect(svc.buildPrompt(s, "more").prompt).toMatch(/^Reminder: [^]*\n\nmore$/); // no re-grounding, only the ask reminder (jv-xbz)
     await svc.shutdown();
   });
   test("initiative scope: the first turn tells the agent a change to it edits this initiative, by its id, never a new one (jv-2uf)", async () => {
@@ -549,6 +549,18 @@ describe("the agent acts (jv-oya.4)", () => {
     expect(byId[m2.id].detail).toBeTruthy();
     expect(byId[m1.id].detail).not.toBe(byId[m2.id].detail);
     expect(byId[rota.id].detail).toBeUndefined(); // a title nobody else shares stays bare
+  });
+  test("every later turn restates the ask-with-buttons rule, so a long conversation does not drift to asking in text (jv-xbz)", async () => {
+    await ingest(t.dir, { source: "meeting", title: "Weekly sync", body: "agenda one", author: "me" });
+    const sid = await open("conv-xbz");
+    const { chatService } = await import("../src/chat/routes.ts");
+    const { ASK_REMINDER } = await import("../src/chat/sessions.ts");
+    const svc = chatService({ dataDir: t.dir } as Parameters<typeof chatService>[0]);
+    const s = svc.get(sid)!;
+    const count = (p: string) => p.split(ASK_REMINDER).length - 1;
+    expect(count(svc.buildPrompt(s, "hello").prompt)).toBe(0); // turn 0 carries the full rules
+    s.turns = 3;
+    expect(count(svc.buildPrompt(s, "Link Vendor call notes to Planning.").prompt)).toBe(1);
   });
   test("after a press the agent can tell which item the user chose: its previous results map each detail to an id (jv-bt4)", async () => {
     const m1 = await ingest(t.dir, { source: "meeting", title: "Weekly sync", body: "agenda one", author: "me" });

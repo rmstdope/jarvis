@@ -51,6 +51,9 @@ const sample = (p: unknown): unknown => {
 };
 export const ACTION_REFERENCE = TOOLS.map((t) => `${t.name} ${JSON.stringify(Object.fromEntries(Object.entries(t.properties).map(([k, p]) => [t.required.includes(k) ? k : `${k}?`, sample(p)])))} — ${t.description}`).join("\n");
 /** The rules every conversation starts with. */
+/** Restated in the prompt of every turn after the first, where `CHAT_RULES` are no longer sent: a long conversation drifts to asking which one in text (jv-xbz). */
+export const ASK_REMINDER = "Reminder: when several items of one kind share the name the user said, write the action anyway, with the title or the id you picked; J.A.R.V.I.S. asks the user which, with a button for each. Never ask which one in your own answer.";
+
 export const CHAT_RULES = `You can act on the knowledge base by writing action blocks in your answer: capture notes, links and attached files; create and update tasks; create and edit initiatives and file tasks under them; link items; draft briefings and presentations. A block is a fenced code block whose info string is jarvis-action, holding one JSON object {"tool": …, "args": {…}, "as": "name"} (as is optional):
 
 \`\`\`jarvis-action
@@ -218,7 +221,7 @@ export class ChatService {
     const attach = lines.length ? `\n\nAttached files (capture one only if asked; pass its name as attachment):\n${lines.join("\n")}` : "";
     const question = s.turns === 0 && !r.prompt.includes("User: ") ? `User: ${r.prompt}` : r.prompt;
     const prev = s.lastResults.length ? `Results of your actions in your previous answer:\n${s.lastResults.map((r) => `- ${r}`).join("\n")}\n\n` : "";
-    return { prompt: `${s.turns === 0 ? `${CHAT_RULES}\n\n` : ""}${prev}${question}${attach}`, sources: r.sources };
+    return { prompt: `${s.turns === 0 ? `${CHAT_RULES}\n\n` : `${ASK_REMINDER}\n\n`}${prev}${question}${attach}`, sources: r.sources };
   }
   /** Grounded body on the first turn for item/briefing; retrieval snippets every turn for jarvis. */
   private buildQuestion(s: ChatSession, message: string): { prompt: string; sources: ChatSession["sources"] } {
