@@ -11,6 +11,7 @@ import type { Source } from "./core/constants.ts";
 import { ASK_MAX_LIMIT } from "./core/constants.ts";
 import { ask } from "./core/ask.ts";
 import { getRouter } from "./providers/index.ts";
+import { ModelsConfigError } from "./providers/models.ts";
 import "./core/passes.ts";
 import { decorateItems, initiativeOfTask } from "./core/initiativeDecor.ts";
 
@@ -133,6 +134,8 @@ export async function handle(req: Request, ctx: ServerContext, webDist?: string)
       return await m.handler(req, url, m.params, ctx);
     } catch (e) {
       if (e instanceof HttpError) return error(e.message, e.status);
+      // A browser user gets the file and the cause, not the CLI fix line the error carries for a terminal (jv-jbf).
+      if (e instanceof ModelsConfigError) return error(`${e.path} could not be loaded: ${e.reason}`, 500);
       const msg = (e as Error).message ?? String(e);
       if (/not found/i.test(msg)) return error(msg, 404);
       return error(msg, 500);
