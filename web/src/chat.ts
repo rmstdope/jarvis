@@ -76,13 +76,13 @@ export interface Chat {
   redraw(): void;
 }
 
-/** Build the chat view. `navigate` changes the hash; `onChange` fires when the conversation changes. */
 /** The markdown `text` with the link text of every `[…](jarvis://initiative/<id>)` mention that read `was` (ignoring capitals and surrounding spaces) now reading `title`; other words and links stay (jv-4u9). */
 export function retitleMentions(text: string, id: string, was: string, title: string): string {
   const old = was.trim().toLowerCase();
-  if (!old) return text;
+  if (!old || title.includes("]")) return text; // a title with "]" would not stay a link
   return text.replace(/\[([^\]]*)\]\(jarvis:\/\/initiative\/([^)\s]+)\)/g, (all, t: string, i: string) => (i === id && t.trim().toLowerCase() === old ? `[${title}](jarvis://initiative/${i})` : all));
 }
+/** Build the chat view. `navigate` changes the hash; `onChange` fires when the conversation changes. */
 export function createChat(opts: { navigate: (hash: string) => void; onChange?: () => void; openQuietly?: (ref: DocRef, title: string, kind: string) => void; showDoc?: (ref: DocRef, title: string, kind: string) => void; /** A change of the conversation gave an item a new title (a rename, or its undo). */ renamed?: (ref: DocRef, title: string) => void; shownKey?: () => string | null; now?: () => Date; undoMs?: number; slowMs?: number }): Chat {
   const now = opts.now ?? (() => new Date());
   const newId = (): string => `c${Date.now().toString(36)}${Math.random().toString(36).slice(2, 10)}`;
@@ -432,7 +432,7 @@ export function createChat(opts: { navigate: (hash: string) => void; onChange?: 
       if (conv.attached?.id === it.id) conv.attached = { ...conv.attached, title };
       const at = conv.messages.findIndex((m) => m.changes?.some((x) => x.id === c.id));
       const was = (c.undone ? c.detail?.to : c.detail?.from) ?? "";
-      conv.messages.forEach((m, i) => { if (m.role === "assistant" && (at < 0 || i < at)) m.text = retitleMentions(m.text, it.id, was, title); });
+      conv.messages.forEach((m, i) => { if (m.role === "assistant" && i < at) m.text = retitleMentions(m.text, it.id, was, title); });
       for (const m of conv.messages) {
         for (const s of m.sources ?? []) if (s.docId === it.id && s.source === "initiative") s.title = title;
         for (const d of m.cards ?? []) if (d.id === it.id && d.type === "initiative") d.title = title;

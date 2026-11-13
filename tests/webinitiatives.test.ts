@@ -330,7 +330,7 @@ describe("a chat's rename of its initiative rewrites earlier answers' inline men
   type Row = { id: string; turn: string; kind: string; ok: boolean; items: { id: string; title: string; kind: string }[]; detail: { from: string; to: string }; undone: boolean; undoable: boolean };
   const row = (id: string, from: string, to: string, o: Partial<Row> = {}): Row => ({ id, turn: `t-${id}`, kind: "initiative.title", ok: true, items: [{ id: "IA", title: to, kind: "initiative" }], detail: { from, to }, undone: false, undoable: true, ...o });
   /** A chat on "Software Principles" whose turns are scripted: each is the answer text plus the rename (if any) it makes. */
-  async function chat(turns: { text: string; rename?: Row }[]) {
+  async function chat(turns: { text: string; rename?: Row; first?: string }[]) {
     await boot("#/chat");
     const srv = { title: "Software Principles", log: [] as Row[] };
     env.routes.set("GET /api/initiative/IA", () => ({ json: { initiative: { id: "IA", title: srv.title, owner: "anna", status: "open", done: 0, total: 0, created_at: "2026-02-02T00:00:00Z", goal: "g" }, tasks: [], through: { total: 0, items: [] }, direct: { total: 0, items: [] } } }));
@@ -340,6 +340,7 @@ describe("a chat's rename of its initiative rewrites earlier answers' inline men
     env.routes.set("POST /api/chat/sessions/S1/messages", () => ({ stream: async (p: (l: unknown) => void) => {
       const t = turns[n++];
       p({ type: "source", docId: "IA", title: srv.title, source: "initiative" });
+      if (t.first) p({ type: "message", text: t.first }); // text said before the rename
       if (t.rename) { srv.log.push(t.rename); srv.title = t.rename.detail.to; p({ type: "change", change: { ...t.rename } }); }
       p({ type: "message", text: t.text }); p({ type: "done" });
     } }));
@@ -375,12 +376,23 @@ describe("a chat's rename of its initiative rewrites earlier answers' inline men
     expect(saved()).toEqual([`See ${link("Mjukvaruprinciper")}.`, `Renamed ${link("Software Principles")}.`]);
     expect(mentions()).toEqual(["Mjukvaruprinciper", "Software Principles"]);
   });
+  test("the renaming answer (text said before the rename) and a later answer keep their words, through the rename and its Undo", async () => {
+    const c = await chat([{ text: "", first: `Before ${link("Software Principles")}. `, rename: R1 }, { text: `Later ${link("Mjukvaruprinciper")}.` }]);
+    expect(saved()).toEqual([`Before ${link("Software Principles")}. `, `Later ${link("Mjukvaruprinciper")}.`]);
+    await c.undo("ch1");
+    expect(saved()).toEqual([`Before ${link("Software Principles")}. `, `Later ${link("Mjukvaruprinciper")}.`]);
+  });
+  test("a new title containing ] leaves the mentions alone", async () => {
+    await chat([{ text: `See ${link("Software Principles")}.` }, { text: "Renamed.", rename: row("ch1", "Software Principles", "Principles [v2]") }]);
+    expect(saved()[0]).toBe(`See ${link("Software Principles")}.`);
+  });
   test("the match ignores capitals and spaces; own-words mentions, other initiatives and plain text stay", async () => {
     await chat([{ text: `${link(" software principles ")}, ${link("the principles initiative")}, ${link("Software Principles", "IB")}, Software Principles` }, { text: "Renamed.", rename: R1 }]);
     expect(saved()[0]).toBe(`${link("Mjukvaruprinciper")}, ${link("the principles initiative")}, ${link("Software Principles", "IB")}, Software Principles`);
   });
   test("Undo puts the old name back in those mentions", async () => {
     const c = await chat([{ text: `See ${link("Software Principles")}.` }, { text: "Renamed.", rename: R1 }]);
+    expect(saved()[0]).toBe(`See ${link("Mjukvaruprinciper")}.`);
     await c.undo("ch1");
     expect(saved()[0]).toBe(`See ${link("Software Principles")}.`);
     expect(mentions()).toEqual(["Software Principles"]);
