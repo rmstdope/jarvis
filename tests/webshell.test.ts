@@ -167,3 +167,81 @@ describe("modal focus", () => {
     expect(cancelled).toBe(0);
   });
 });
+
+describe("sync notes (jv-5b3)", () => {
+  const card = (n: number, fix = false) => ({ heading: `Heading ${n}`, body: `Body ${n}`, ...(fix ? { fix: { before: "run ", command: "jarvis doctor", after: ", which helps" } } : {}) });
+  const line = () => document.querySelector(".jv-syncline")!;
+  const heads = () => texts(".jv-note h4");
+  const mountN = (extra: { onNotes?: (c: unknown[]) => void; copiedMs?: number } = {}) => {
+    const s = createShell({ onNewChat: () => {}, onSync: () => {}, now: () => 1_000_000_000_000, ...extra } as Parameters<typeof createShell>[0]);
+    document.body.append(s.el);
+    s.setSync({ kind: "ok", at: 1_000_000_000_000 });
+    return s;
+  };
+  test("one card per note above the Sync line, with the count in amber (not the error red)", () => {
+    const s = mountN();
+    expect(line().textContent).toBe("Synced just now");
+    s.setNotes([card(1, true)]);
+    expect(heads()).toEqual(["Heading 1"]);
+    expect(texts(".jv-note p")).toEqual(["Body 1"]);
+    expect(document.querySelector(".jv-note .jv-fix")!.textContent).toBe("Fix: run jarvis doctor, which helps Copy");
+    expect(document.querySelector(".jv-note code")!.textContent).toBe("jarvis doctor");
+    expect(line().textContent).toBe("Synced just now · 1 note");
+    expect(line().classList.contains("jv-warn")).toBe(true);
+    expect(line().classList.contains("jv-err")).toBe(false);
+    s.setNotes([card(1), card(2)]);
+    expect(line().textContent).toBe("Synced just now · 2 notes");
+    expect(document.querySelector(".jv-notes")!.nextElementSibling).toBe(line());
+    expect(document.querySelectorAll(".jv-note .jv-fix").length).toBe(0);
+    s.setNotes([]);
+    expect(line().textContent).toBe("Synced just now");
+    expect(document.querySelector(".jv-sync-dot")).toBeNull();
+  });
+  test("more than three: the first three, then Show N more / Show fewer", () => {
+    const s = mountN();
+    s.setNotes([1, 2, 3, 4, 5].map((n) => card(n)));
+    expect(heads()).toEqual(["Heading 1", "Heading 2", "Heading 3"]);
+    expect(line().textContent).toBe("Synced just now · 5 notes");
+    const more = () => document.querySelector(".jv-notes-more") as HTMLElement;
+    expect(more().textContent).toBe("Show 2 more");
+    more().click();
+    expect(heads().length).toBe(5);
+    expect(more().textContent).toBe("Show fewer");
+    more().click();
+    expect(heads().length).toBe(3);
+  });
+  test("× is Close note, closes that card only, tells the owner, and moves focus on", () => {
+    const seen: unknown[][] = [];
+    const s = mountN({ onNotes: (c) => seen.push(c) });
+    s.setNotes([card(1), card(2)]);
+    const xs = () => [...document.querySelectorAll(".jv-note .jv-note-x")] as HTMLElement[];
+    expect(xs()[0]!.getAttribute("aria-label")).toBe("Close note");
+    xs()[0]!.click();
+    expect(heads()).toEqual(["Heading 2"]);
+    expect(line().textContent).toBe("Synced just now · 1 note");
+    expect(seen.at(-1)).toEqual([card(2)]);
+    expect(document.activeElement).toBe(xs()[0]!);
+    xs()[0]!.click();
+    expect(line().textContent).toBe("Synced just now");
+    expect(seen.at(-1)).toEqual([]);
+    expect(document.activeElement).toBe(document.querySelector(".jv-sync"));
+  });
+  test("Copy puts the command on the clipboard and reads Copied for a moment", async () => {
+    const copied: string[] = [];
+    Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText: async (t: string) => { copied.push(t); } } });
+    const s = mountN({ copiedMs: 20 });
+    s.setNotes([card(1, true)]);
+    const btn = document.querySelector(".jv-note .jv-copy") as HTMLElement;
+    btn.click();
+    await new Promise((r) => setTimeout(r, 5));
+    expect(copied).toEqual(["jarvis doctor"]);
+    expect(btn.textContent).toBe("Copied");
+    await new Promise((r) => setTimeout(r, 40));
+    expect(btn.textContent).toBe("Copy");
+  });
+  test("a folded sidebar shows an amber dot on Sync while a card is open", () => {
+    const s = mountN();
+    s.setNotes([card(1)]);
+    expect(document.querySelector(".jv-sync .jv-sync-dot")).not.toBeNull();
+  });
+});

@@ -39,7 +39,17 @@ html, body { height:100%; } #app { height:100%; }
 .jv-sec { font-size:11px; text-transform:uppercase; letter-spacing:.08em; color:var(--muted); padding:14px 10px 4px; }
 .jv-grow { flex:1; }
 .jv-foot { border-top:1px solid var(--border); padding-top:10px; display:flex; flex-wrap:wrap; align-items:center; gap:8px; font-size:13px; color:var(--muted); }
-.jv-syncline { flex:1; } .jv-syncline.jv-err { color:var(--error); }
+.jv-syncline { flex:1; } .jv-syncline.jv-err { color:var(--error); } .jv-syncline.jv-warn { color:var(--amber); }
+.jv-notes { width:100%; display:flex; flex-direction:column; gap:6px; }
+.jv-notes:empty { display:none; }
+.jv-note { position:relative; background:var(--amber-soft); border:1px solid color-mix(in srgb, var(--amber) 35%, transparent); border-radius:10px; padding:8px 28px 8px 10px; font-size:12.5px; color:var(--text); }
+.jv-note h4 { margin:0 0 4px; font-size:12.5px; color:var(--amber); }
+.jv-note p { margin:0 0 6px; overflow-wrap:anywhere; white-space:pre-wrap; }
+.jv-note-x { position:absolute; top:2px; right:4px; border:0; background:none; color:var(--muted); font-size:16px; padding:0 4px; }
+.jv-fix { overflow-wrap:anywhere; } .jv-fix code { overflow-wrap:anywhere; }
+.jv-copy { font-size:11.5px; border:1px solid var(--border); background:var(--panel); border-radius:6px; padding:0 6px; }
+.jv-notes-more { border:0; background:none; color:var(--amber); text-decoration:underline; font-size:12px; padding:0; text-align:left; }
+.jv-sync { position:relative; } .jv-sync-dot { display:none; position:absolute; top:4px; right:8px; width:8px; height:8px; border-radius:50%; background:var(--amber); }
 .jv-theme { display:inline-flex; border:1px solid var(--border); border-radius:8px; overflow:hidden; width:100%; }
 .jv-themebtn { flex:1; border:0; border-radius:0; background:none; font-size:12px; padding:3px 8px; color:var(--muted); }
 .jv-themebtn[aria-pressed=true] { background:var(--accent-soft); color:var(--accent); }
@@ -50,6 +60,7 @@ html, body { height:100%; } #app { height:100%; }
 .jv-phonebar, .jv-backdrop { display:none; }
 /* rail */
 .jv-folded .jv-side { width:78px; align-items:center; padding:14px 6px; }
+.jv-folded .jv-sync-dot { display:block; }
 .jv-folded .lbl, .jv-folded .jv-sec, .jv-folded .jv-theme, .jv-folded .jv-syncline { display:none; }
 .jv-folded .rl { display:block; font-size:10px; color:var(--muted); line-height:1.1; }
 .jv-folded .jv-nav, .jv-folded .jv-new, .jv-folded .jv-sync { flex-direction:column; gap:2px; width:62px; padding:6px 2px; text-align:center; align-items:center; }

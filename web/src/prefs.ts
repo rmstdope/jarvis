@@ -11,8 +11,8 @@ export function delPref(k: string): void { try { localStorage.removeItem(k); } c
 export const KEY_THEME = "jv.theme";
 export const KEY_FOLDED = "jv.folded";
 export const KEY_LAST_SYNC = "jv.lastSync";
-/** The model steps the last sync failed (e.g. "enrichment"), kept so a reload still shows them (jv-zgk). */
-export const KEY_LAST_SYNC_FAILED = "jv.lastSyncFailed";
+/** The cards a sync left open in the sidebar, kept so a reload still shows them (jv-5b3). */
+export const KEY_SYNC_NOTES = "jv.syncNotes";
 export const KEY_SYNC_SKIP = "sb.sync.noconfirm";
 export const KEY_BROWSE = "jv.browse";
 export const KEY_INITIATIVES = "jv.initiatives";

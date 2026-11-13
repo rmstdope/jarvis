@@ -167,51 +167,75 @@ describe("sync", () => {
     expect(document.querySelector(".modal")).toBeNull(); // skipped now
     await env.tick(30);
   });
-  test("a sync that pushed but whose model step failed says it was shared and names the step (jv-m9l)", async () => {
+  const heads = () => qa(".jv-note h4").map((e) => e.textContent);
+  test("a sync's notes and failed model steps become cards; the summary toast stays and nothing is red (jv-5b3)", async () => {
     await boot();
     localStorage.setItem("sb.sync.noconfirm", "1");
     const reason = 'Model "gpt-4.1" from --model flag is not available.';
-    env.routes.set("POST /api/sync", () => ({ json: { ...syncOk, committed: 7, failures: [{ step: "enrich", failed: 7, reason, doctor: true }] } }));
+    env.routes.set("POST /api/sync", () => ({ json: { ...syncOk, committed: 7, notes: ["/a/models.toml could not be loaded: x; model steps skipped\nfix: run jarvis doctor, which names the broken entry"], failures: [{ step: "enrich", failed: 7, reason, doctor: true }] } }));
     q(".jv-sync").click();
     await env.tick(30);
-    expect(q(".toast").textContent).toBe(`Shared with the team, but enrichment failed for 7 item(s): ${reason} Run \`jarvis doctor\` for the fix.`);
-    expect(q(".jv-syncline").textContent).toBe("Synced just now · enrichment failed");
-    expect(q(".jv-syncline").classList.contains("jv-err")).toBe(true);
+    expect(q(".toast").textContent).toBe("Synced: 7 captured, 0 enriched, pulled, pushed");
+    expect(q(".toast").classList.contains("error")).toBe(false);
+    expect(heads()).toEqual(["AI steps skipped", "Some items weren't enriched"]);
+    expect(q(".jv-note p").textContent).toBe("/a/models.toml could not be loaded: x; model steps skipped");
+    expect(q(".jv-syncline").textContent).toBe("Synced just now · 2 notes");
+    expect(q(".jv-syncline").classList.contains("jv-err")).toBe(false);
   });
-  test("a reload still shows that the last sync's model step failed (jv-zgk)", async () => {
+  test("cards survive a reload until closed; a later sync replaces them, a clean one clears them (jv-5b3)", async () => {
     await boot();
     localStorage.setItem("sb.sync.noconfirm", "1");
-    env.routes.set("POST /api/sync", () => ({ json: { ...syncOk, failures: [{ step: "enrich", failed: 2, reason: "file missing", doctor: false }] } }));
+    env.routes.set("POST /api/sync", () => ({ json: { ...syncOk, notes: ["push failed: nope"] } }));
     q(".jv-sync").click();
     await env.tick(30);
-    expect(q(".jv-syncline").textContent).toBe("Synced just now · enrichment failed");
-    const stored = snapshotStorage();
+    expect(heads()).toEqual(["Couldn't share your work"]);
+    let stored = snapshotStorage();
     env.restore();
-    await boot("", stored); // the reload: a fresh page over the same browser storage
-    expect(q(".jv-syncline").textContent).toBe("Synced just now · enrichment failed");
-    expect(q(".jv-syncline").classList.contains("jv-err")).toBe(true);
-    // A later clean sync clears it, and a reload after that shows no failure.
+    await boot("", stored); // the reload
+    expect(heads()).toEqual(["Couldn't share your work"]);
+    expect(q(".jv-syncline").textContent).toBe("Synced just now · 1 note");
+    env.routes.set("POST /api/sync", () => ({ json: { ...syncOk, notes: ["pull failed (x); continuing local-only"] } }));
+    q(".jv-sync").click();
+    await env.tick(30);
+    expect(heads()).toEqual(["Couldn't get teammates' changes"]);
     env.routes.set("POST /api/sync", () => ({ json: syncOk }));
     q(".jv-sync").click();
     await env.tick(30);
+    expect(heads()).toEqual([]);
     expect(q(".jv-syncline").textContent).toBe("Synced just now");
-    const stored2 = snapshotStorage();
+    stored = snapshotStorage();
     env.restore();
-    await boot("", stored2);
-    expect(q(".jv-syncline").textContent).toBe("Synced just now");
-    expect(q(".jv-syncline").classList.contains("jv-err")).toBe(false);
+    await boot("", stored);
+    expect(heads()).toEqual([]);
   });
-  test("an unpushed sync with two failed steps says so, and points at doctor only where it has a fix (jv-m9l)", async () => {
+  test("closing a card is remembered across a reload (jv-5b3)", async () => {
     await boot();
     localStorage.setItem("sb.sync.noconfirm", "1");
-    env.routes.set("POST /api/sync", () => ({ json: { ...syncOk, pushed: false, failures: [
-      { step: "enrich", failed: 1, reason: "file missing", doctor: false },
-      { step: "refine", failed: 2, reason: "no results array", doctor: false },
-    ] } }));
+    env.routes.set("POST /api/sync", () => ({ json: { ...syncOk, notes: ["push failed: a", "pull failed (b); continuing local-only"] } }));
     q(".jv-sync").click();
     await env.tick(30);
-    expect(q(".toast").textContent).toBe("Not shared with the team, but enrichment failed for 1 item(s): file missing; link refinement failed for 2 batch(es): no results array.");
-    expect(q(".jv-syncline").textContent).toBe("Synced just now · enrichment and link refinement failed");
+    q(".jv-note-x").click();
+    const stored = snapshotStorage();
+    env.restore();
+    await boot("", stored);
+    expect(heads()).toEqual(["Couldn't get teammates' changes"]);
+  });
+  test("a stopped or failed sync adds no cards and leaves the old ones (jv-5b3)", async () => {
+    await boot();
+    localStorage.setItem("sb.sync.noconfirm", "1");
+    env.routes.set("POST /api/sync", () => ({ json: { ...syncOk, notes: ["push failed: a"] } }));
+    q(".jv-sync").click();
+    await env.tick(30);
+    env.routes.set("POST /api/sync", () => ({ json: { ...syncOk, conflicted: ["a.md"], notes: ["merge conflict: resolve"] } }));
+    q(".jv-sync").click();
+    await env.tick(30);
+    expect(q(".toast").textContent).toBe("Sync stopped: resolve 1 merge conflict(s).");
+    expect(heads()).toEqual(["Couldn't share your work"]);
+    env.routes.set("POST /api/sync", () => ({ status: 500, json: { error: "disk" } }));
+    q(".jv-sync").click();
+    await env.tick(30);
+    expect(q(".jv-syncline").textContent).toBe("Sync failed");
+    expect(heads()).toEqual(["Couldn't share your work"]);
   });
   test("a failed sync says so in the line; a running one is reported as today", async () => {
     await boot();
