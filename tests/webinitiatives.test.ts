@@ -9,9 +9,10 @@ const text = (sel: string) => q(sel)?.textContent ?? "";
 const go = async (hash: string) => { location.hash = hash; await env.tick(60); };
 
 const INI = (o: Record<string, unknown> = {}) => ({ id: "IA", title: "Move billing", owner: "anna", status: "open", done: 2, total: 4, created_at: "2026-03-01T00:00:00Z", updated_at: "2026-03-05T10:00:00Z", goal: "All billing on the new ledger", ...o });
-interface Opts { list?: unknown[]; tasks?: unknown[] }
+interface Opts { list?: unknown[]; tasks?: unknown[]; chat?: string }
 async function boot(hash: string, o: Opts = {}) {
   env = installWebEnv(1280);
+  if (o.chat) localStorage.setItem("jv.chat", o.chat); // a reload over the same browser storage
   env.routes.set("GET /api/me", () => ({ json: { name: "Mia" } }));
   env.routes.set("GET /api/chat/status", () => ({ json: { available: true } }));
   env.routes.set("GET /api/tasks", () => ({ json: { tasks: o.tasks ?? [] } }));
@@ -321,5 +322,93 @@ describe("initiative cards in Browse carry the goal, not the enrichment summary"
     const css = (await import("node:fs")).readFileSync("web/src/styles.css", "utf8");
     expect(css).toContain(".jv-icard .jv-s:not(.jv-snip) { display:-webkit-box;");
     expect(css).not.toMatch(/^\.jv-s \{ display:-webkit-box/m);
+  });
+});
+
+describe("a chat's rename of its initiative rewrites earlier answers' inline mentions of it (jv-4u9)", () => {
+  const link = (t: string, id = "IA") => `[${t}](jarvis://initiative/${id})`;
+  type Row = { id: string; turn: string; kind: string; ok: boolean; items: { id: string; title: string; kind: string }[]; detail: { from: string; to: string }; undone: boolean; undoable: boolean };
+  const row = (id: string, from: string, to: string, o: Partial<Row> = {}): Row => ({ id, turn: `t-${id}`, kind: "initiative.title", ok: true, items: [{ id: "IA", title: to, kind: "initiative" }], detail: { from, to }, undone: false, undoable: true, ...o });
+  /** A chat on "Software Principles" whose turns are scripted: each is the answer text plus the rename (if any) it makes. */
+  async function chat(turns: { text: string; rename?: Row; first?: string }[]) {
+    await boot("#/chat");
+    const srv = { title: "Software Principles", log: [] as Row[] };
+    env.routes.set("GET /api/initiative/IA", () => ({ json: { initiative: { id: "IA", title: srv.title, owner: "anna", status: "open", done: 0, total: 0, created_at: "2026-02-02T00:00:00Z", goal: "g" }, tasks: [], through: { total: 0, items: [] }, direct: { total: 0, items: [] } } }));
+    env.routes.set("GET /api/initiative/IA/suggest", () => ({ json: { model: true, suggestions: [] } }));
+    env.routes.set("POST /api/chat/sessions", () => ({ json: { sessionId: "S1" } }));
+    let n = 0;
+    env.routes.set("POST /api/chat/sessions/S1/messages", () => ({ stream: async (p: (l: unknown) => void) => {
+      const t = turns[n++];
+      p({ type: "source", docId: "IA", title: srv.title, source: "initiative" });
+      if (t.first) p({ type: "message", text: t.first }); // text said before the rename
+      if (t.rename) { srv.log.push(t.rename); srv.title = t.rename.detail.to; p({ type: "change", change: { ...t.rename } }); }
+      p({ type: "message", text: t.text }); p({ type: "done" });
+    } }));
+    await go("#/initiative/IA");
+    (qa("button").find((b) => b.textContent === "Ask about this") as HTMLElement).click();
+    await env.tick(60);
+    for (let i = 0; i < turns.length; i++) {
+      const input = q(".jv-input") as HTMLTextAreaElement;
+      input.value = `q${i}`;
+      input.dispatchEvent(new env.win.KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }) as unknown as Event);
+      await env.tick(80);
+    }
+    const cid = JSON.parse(localStorage.getItem("jv.chat")!).conversationId as string;
+    env.routes.set(`POST /api/chat/conversations/${cid}/changes/undo`, () => ({ json: {} }));
+    const undo = (id: string) => {
+      env.routes.set(`POST /api/chat/conversations/${cid}/changes/${id}/undo`, () => {
+        srv.log = srv.log.map((r) => (r.id === id ? { ...r, undone: true } : r));
+        const r = srv.log.find((x) => x.id === id)!;
+        srv.title = r.detail.from;
+        return { json: { change: r, changes: srv.log } };
+      });
+      q(`[data-undo="${id}"]`).click();
+      return env.tick(80);
+    };
+    return { undo };
+  }
+  const mentions = () => qa(".jv-answer a").map((a) => a.textContent);
+  const saved = () => (JSON.parse(localStorage.getItem("jv.chat")!) as { messages: { role: string; text: string }[] }).messages.filter((m) => m.role === "assistant").map((m) => m.text);
+  const R1 = row("ch1", "Software Principles", "Mjukvaruprinciper");
+
+  test("an earlier answer's mention of the old name reads the new one; the renaming answer keeps its own words", async () => {
+    await chat([{ text: `See ${link("Software Principles")}.` }, { text: `Renamed ${link("Software Principles")}.`, rename: R1 }]);
+    expect(saved()).toEqual([`See ${link("Mjukvaruprinciper")}.`, `Renamed ${link("Software Principles")}.`]);
+    expect(mentions()).toEqual(["Mjukvaruprinciper", "Software Principles"]);
+  });
+  test("the renaming answer (text said before the rename) and a later answer keep their words, through the rename and its Undo", async () => {
+    const c = await chat([{ text: "", first: `Before ${link("Software Principles")}. `, rename: R1 }, { text: `Later ${link("Mjukvaruprinciper")}.` }]);
+    expect(saved()).toEqual([`Before ${link("Software Principles")}. `, `Later ${link("Mjukvaruprinciper")}.`]);
+    await c.undo("ch1");
+    expect(saved()).toEqual([`Before ${link("Software Principles")}. `, `Later ${link("Mjukvaruprinciper")}.`]);
+  });
+  test("a new title containing ] leaves the mentions alone", async () => {
+    await chat([{ text: `See ${link("Software Principles")}.` }, { text: "Renamed.", rename: row("ch1", "Software Principles", "Principles [v2]") }]);
+    expect(saved()[0]).toBe(`See ${link("Software Principles")}.`);
+  });
+  test("the match ignores capitals and spaces; own-words mentions, other initiatives and plain text stay", async () => {
+    await chat([{ text: `${link(" software principles ")}, ${link("the principles initiative")}, ${link("Software Principles", "IB")}, Software Principles` }, { text: "Renamed.", rename: R1 }]);
+    expect(saved()[0]).toBe(`${link("Mjukvaruprinciper")}, ${link("the principles initiative")}, ${link("Software Principles", "IB")}, Software Principles`);
+  });
+  test("Undo puts the old name back in those mentions", async () => {
+    const c = await chat([{ text: `See ${link("Software Principles")}.` }, { text: "Renamed.", rename: R1 }]);
+    expect(saved()[0]).toBe(`See ${link("Mjukvaruprinciper")}.`);
+    await c.undo("ch1");
+    expect(saved()[0]).toBe(`See ${link("Software Principles")}.`);
+    expect(mentions()).toEqual(["Software Principles"]);
+  });
+  test("two renames then one Undo: the mentions read the first rename's name", async () => {
+    const c = await chat([{ text: `See ${link("Software Principles")}.` }, { text: "One.", rename: R1 }, { text: "Two.", rename: row("ch2", "Mjukvaruprinciper", "Principer") }]);
+    expect(saved()[0]).toBe(`See ${link("Principer")}.`);
+    await c.undo("ch2");
+    expect(saved()[0]).toBe(`See ${link("Mjukvaruprinciper")}.`);
+  });
+  test("a reopened chat shows the current name in the mention and the pill", async () => {
+    await chat([{ text: `See ${link("Software Principles")}.` }, { text: "Renamed.", rename: R1 }]);
+    const stored = localStorage.getItem("jv.chat")!;
+    env.restore();
+    await boot("#/chat", { chat: stored });
+    expect(mentions()[0]).toBe("Mjukvaruprinciper");
+    expect(qa(".jv-chips a")[0].textContent).toBe("Mjukvaruprinciper");
   });
 });
