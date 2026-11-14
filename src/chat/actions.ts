@@ -45,7 +45,7 @@ export interface ActionContext {
   attachments: Record<string, string>;
   /** The items whose ids the agent saw in this turn's context; an id it picks among several of one kind sharing a title is refused once (jv-6c1). */
   seen?: { docId: string; title: string; source: string }[];
-  /** Titles ("source:title", lower case) the user was asked about in an earlier turn of this chat session: the agent's pick among them stands for the rest of the session. */
+  /** Titles ("source:title", lower case) the user was asked about in an earlier turn of this chat session: the agent's pick among them by id stands for the rest of the session (`pickFromContext`); the title path reads `answering` instead. */
   asked?: ReadonlySet<string>;
   /** Titles ("source:title", lower case) the user was asked about in the turn just before this one: this turn answers them, so the agent passing such a title again is refused with ids rather than asked twice. A title asked about in any earlier turn is asked again when named (jv-n51). */
   answering?: ReadonlySet<string>;
