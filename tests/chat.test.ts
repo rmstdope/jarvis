@@ -706,7 +706,7 @@ describe("the agent acts (jv-oya.4)", () => {
     const { CHAT_RULES } = await import("../src/chat/sessions.ts");
     expect(CHAT_RULES).toContain("pass its id, never the title again");
   });
-  test("asked once for a title, a later ambiguous title is refused with ids for the agent to pick from (jv-bt4)", async () => {
+  test("in the turn right after the user was asked about a title, the same title is refused with ids for the agent to pick from (jv-bt4, jv-n51)", async () => {
     const a = await addTask(t.dir, { title: "Review", author: "me" });
     const b = await addTask(t.dir, { title: "review", author: "me" });
     const sid = await open("conv-bt4u");
@@ -715,6 +715,24 @@ describe("the agent acts (jv-oya.4)", () => {
     const c = evs.find((e) => e.type === "change").change;
     expect(c.ask).toBeUndefined();
     for (const id of [a.id, b.id]) expect(c.error).toContain(`[${id}]`);
+  });
+  test("a later request naming a title asked about and answered earlier in the chat is asked about again, never refused with ids (jv-n51)", async () => {
+    const m1 = await ingest(t.dir, { source: "meeting", title: "Weekly sync", body: "agenda one", author: "me" });
+    const m2 = await ingest(t.dir, { source: "meeting", title: "Weekly sync", body: "agenda two", author: "me" });
+    const p1 = await ingest(t.dir, { source: "meeting", title: "Planning", body: "plan one", author: "me" });
+    await ingest(t.dir, { source: "meeting", title: "Planning", body: "plan two", author: "me" });
+    const notes = await ingest(t.dir, { source: "note", title: "Vendor call notes", body: "notes", author: "me" });
+    const sid = await open("conv-n51");
+    const post = async (message: string) => (await ndjson(await call("POST", `/api/chat/sessions/${sid}/messages`, { message }))).find((e) => e.type === "change").change;
+    // The bead's sequence: one shared title asked and answered, then another, so the turn before the request asked about a different title.
+    expect((await post('Link Vendor call notes to Weekly sync. ACT jarvis_link {"src":"Vendor call notes","dst":"Weekly sync"}')).ask).toBeDefined();
+    expect((await post(`the Weekly sync from agenda one ACT jarvis_link {"src":"${notes.id}","dst":"${m1.id}"}`)).ok).toBe(true); // the answer: the agent passes the id
+    expect((await post('Link Vendor call notes to Planning. ACT jarvis_link {"src":"Vendor call notes","dst":"Planning"}')).ask).toBeDefined();
+    expect((await post(`the Planning from plan one ACT jarvis_link {"src":"${notes.id}","dst":"${p1.id}"}`)).ok).toBe(true);
+    const c = await post('Create a task "Send the vendor the minutes" and link it to Weekly sync. ACT jarvis_create_task {"title":"Send the vendor the minutes","link":["Weekly sync"]}');
+    expect(c.error).toBeUndefined();
+    expect(c.ask?.options.map((o: { id: string }) => o.id).sort()).toEqual([m1.id, m2.id].sort());
+    expect(JSON.stringify(c)).not.toContain(`[${m1.id}]`);
   });
   test("the agent is told to write the action and let the system ask, never to ask in text itself (jv-bt4)", async () => {
     const { CHAT_RULES } = await import("../src/chat/sessions.ts");

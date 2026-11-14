@@ -45,8 +45,10 @@ export interface ActionContext {
   attachments: Record<string, string>;
   /** The items whose ids the agent saw in this turn's context; an id it picks among several of one kind sharing a title is refused once (jv-6c1). */
   seen?: { docId: string; title: string; source: string }[];
-  /** Titles ("source:title", lower case) the user was asked about in an earlier turn of this chat session: the agent's pick among them stands for the rest of the session. */
+  /** Titles ("source:title", lower case) the user was asked about in an earlier turn of this chat session: the agent's pick among them by id stands for the rest of the session (`pickFromContext`); the title path reads `answering` instead. */
   asked?: ReadonlySet<string>;
+  /** Titles ("source:title", lower case) the user was asked about in the turn just before this one: this turn answers them, so the agent passing such a title again is refused with ids rather than asked twice. A title asked about in any earlier turn is asked again when named (jv-n51). */
+  answering?: ReadonlySet<string>;
   /** Where a refusal records the title it asked about, for `asked` from the next turn on. */
   asking?: Set<string>;
   /** The tool being run, recorded on the question it may raise. */
@@ -86,7 +88,7 @@ const titleForms = (ref: string): string[] => {
  * item of `source` (any source when omitted) whose title matches it, ignoring the case of ASCII
  * letters (SQLite NOCASE). A title is tried as given first, then as a person says it with "the" and
  * a kind word around it ("the Weekly sync meeting" finds "Weekly sync"), so a title that itself ends
- * in a kind word still wins. The kind word also picks the one item of that kind when several share the title (jv-ldo). Several matches of one kind make the user be asked which (`AmbiguousPick`, jv-bt4), once per title; after that, or across kinds, they are refused listing each id so the agent can choose. The agent sees
+ * in a kind word still wins. The kind word also picks the one item of that kind when several share the title (jv-ldo). Several matches of one kind make the user be asked which (`AmbiguousPick`, jv-bt4); in the turn that answers that question, or across kinds, they are refused listing each id so the agent can choose. The agent sees
  * ids only for what retrieval put in its context, so it names everything else by title (jv-zyp).
  * No match leaves the reference as it is, for the action to report as not found.
  */
@@ -103,9 +105,10 @@ const resolveRef = (ctx: ActionContext, ref: string, source?: string): string =>
       const narrowed = found.filter((f) => f.source === said);
       if (narrowed.length >= 1) found = narrowed; // one left is the item; several left are asked about as a group
     }
-    // Several of one kind share the title: ask the user which, once per title; otherwise (a mix of kinds, or already asked) the agent picks by id (jv-bt4).
+    // Several of one kind share the title: ask the user which; otherwise (a mix of kinds, or the user is answering that very question this turn) the agent picks by id (jv-bt4).
+    // A title asked about in an older turn is asked again: a new request naming it says nothing about which (jv-n51).
     const kind = found[0]?.source, name = found[0]?.title.toLowerCase();
-    if (found.length > 1 && found.every((f) => f.source === kind) && !ctx.asked?.has(`${kind}:${name}`)) {
+    if (found.length > 1 && found.every((f) => f.source === kind) && !ctx.answering?.has(`${kind}:${name}`)) {
       ctx.asking?.add(`${kind}:${name}`);
       throw askWhich(dataDir, found.map((f) => f.id), found[0].title, kind, ctx);
     }
