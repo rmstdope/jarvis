@@ -99,6 +99,8 @@ export interface ChatSession {
   sources: { docId: string; title: string; source: string }[];
   /** Titles the user has been asked to choose between in this session (jv-6c1); see `ActionContext.asked`. */
   asked: Set<string>;
+  /** Titles the user was asked about in the last turn alone; see `ActionContext.answering` (jv-n51). */
+  askedLast: Set<string>;
 }
 
 /** The configured chat model id (`JARVIS_CHAT_MODEL`, else config `chatModel`); undefined lets Copilot pick its default. */
@@ -200,7 +202,7 @@ export class ChatService {
     const id = ulid();
     const acpSessionId = await agent.newSession(this.dataDir);
     new ChangeLog(this.dataDir, conversationId ?? id); // validates the id
-    const s: ChatSession = { id, conversationId: conversationId ?? id, turn: "", attachments: {}, scope: { type: scope.type, ids }, acpSessionId, createdAt: this.now(), lastActive: this.now(), turns: 0, lastResults: [], busy: false, sources, asked: new Set() };
+    const s: ChatSession = { id, conversationId: conversationId ?? id, turn: "", attachments: {}, scope: { type: scope.type, ids }, acpSessionId, createdAt: this.now(), lastActive: this.now(), turns: 0, lastResults: [], busy: false, sources, asked: new Set(), askedLast: new Set() };
     this.sessions.set(s.id, s);
     return s;
   }
@@ -322,7 +324,7 @@ export class ChatService {
       for (const a of list) {
         chain = chain.then(async () => {
           try {
-            const r = await runTool(new ChangeLog(this.dataDir, s.conversationId), turn, a.tool, resolveRefs(a.args, aliases), { dataDir: this.dataDir, attachments, seen, asked: s.asked, asking, about: s.scope.type === "initiative" ? s.scope.ids[0] : undefined });
+            const r = await runTool(new ChangeLog(this.dataDir, s.conversationId), turn, a.tool, resolveRefs(a.args, aliases), { dataDir: this.dataDir, attachments, seen, asked: s.asked, answering: s.askedLast, asking, about: s.scope.type === "initiative" ? s.scope.ids[0] : undefined });
             results.push(r.text);
             if (r.asked) asks.push(r.question ?? r.text);
             else if (r.change && !r.change.ok) failed.push(r.text);
@@ -409,6 +411,7 @@ export class ChatService {
       if (files.length) rmSync(join(this.dataDir, ".index", "chat", "uploads", turn), { recursive: true, force: true }); // captured files were copied into the content repo
       s.lastResults = results;
       for (const k of asking) s.asked.add(k);
+      s.askedLast = asking;
       s.attachments = {};
       s.lastActive = this.now();
       this.updateHandlers.delete(s.acpSessionId);
