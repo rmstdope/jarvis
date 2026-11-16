@@ -468,6 +468,14 @@ describe("the agent acts (jv-oya.4)", () => {
     expect(said.match(/I'll check that next\./g)).toHaveLength(1);
     expect(evs.at(-1)!.type).toBe("done");
   });
+  test("the nudge may speak but never act (jv-61t)", async () => {
+    const sid = await open("conv64");
+    const evs = await ndjson(await call("POST", `/api/chat/sessions/${sid}/messages`, { message: "SNEAKY PROMISE check Thomann" }));
+    expect(evs.filter((e) => e.type === "change")).toHaveLength(0);
+    const said = evs.filter((e) => e.type === "message").map((e) => e.text).join("");
+    expect(said).toContain("Premium setup: Shure SLX-D dual wireless");
+    expect(said).not.toContain("jarvis-action");
+  });
   test("an answer that says what it will do and then acts is not nudged (jv-61t)", async () => {
     const sid = await open("conv63");
     const evs = await ndjson(await call("POST", `/api/chat/sessions/${sid}/messages`, { message: 'PROMISE ACT jarvis_create_task {"title":"Ring Thomann"}' }));
@@ -791,8 +799,14 @@ describe("an answer ending on a promise (jv-61t)", () => {
     expect(endsOnPromise("I'll check the listings. Here they are: SLX-D at 9 990 kr.")).toBe(false);
     expect(endsOnPromise("Shall I add these as tasks? I'll file them once you say so?")).toBe(false);
     expect(endsOnPromise("That is the whole list. Let me know if you want more.")).toBe(false);
+    expect(endsOnPromise("Here is the breakdown: SLX-D 9 990 kr. If you'd like, I'll add these as tasks.")).toBe(false);
+    expect(endsOnPromise("Here is the list. Say the word and I'll file them as tasks.")).toBe(false);
+    expect(endsOnPromise("Here is the list. Once you pick one, I'll link it to Q4 planning.")).toBe(false);
+    expect(endsOnPromise("Here is the list. When you want, I can add them, and I'll link each to Q4 planning.")).toBe(false);
+    expect(endsOnPromise("Done. Let me be clear: these prices are from memory.")).toBe(false);
     expect(endsOnPromise("")).toBe(false);
     expect(CHAT_RULES).toContain("never end on what you will check, look up or do next");
+    expect(CHAT_RULES).toContain("you cannot browse the web or use any tools besides the action blocks above");
   });
 });
 
