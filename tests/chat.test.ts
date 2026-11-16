@@ -453,6 +453,28 @@ describe("the agent acts (jv-oya.4)", () => {
     expect(said).toContain(`Seed [${id}]`);
     expect(said).not.toContain("Some of your actions failed"); // a turn without failures sends no extra prompt
   });
+  test("an answer that ends on a promise of work gets the result in the same answer (jv-61t)", async () => {
+    const sid = await open("conv61");
+    const evs = await ndjson(await call("POST", `/api/chat/sessions/${sid}/messages`, { message: "PROMISE Give me a breakdown with a Thomann link for each item." }));
+    const said = evs.filter((e) => e.type === "message").map((e) => e.text).join("");
+    expect(said).toContain("I'm checking current Swedish Thomann listings");
+    expect(said).toContain("Premium setup: Shure SLX-D dual wireless"); // no "continue" needed
+    expect(evs.at(-1)).toMatchObject({ type: "done", stopReason: "end_turn" });
+  });
+  test("an agent that keeps promising is nudged once, never in a loop (jv-61t)", async () => {
+    const sid = await open("conv62");
+    const evs = await ndjson(await call("POST", `/api/chat/sessions/${sid}/messages`, { message: "STUBBORN PROMISE check Thomann" }));
+    const said = evs.filter((e) => e.type === "message").map((e) => e.text).join("");
+    expect(said.match(/I'll check that next\./g)).toHaveLength(1);
+    expect(evs.at(-1)!.type).toBe("done");
+  });
+  test("an answer that says what it will do and then acts is not nudged (jv-61t)", async () => {
+    const sid = await open("conv63");
+    const evs = await ndjson(await call("POST", `/api/chat/sessions/${sid}/messages`, { message: 'PROMISE ACT jarvis_create_task {"title":"Ring Thomann"}' }));
+    const said = evs.filter((e) => e.type === "message").map((e) => e.text).join("");
+    expect(said).toBe("I'll add it.\n");
+    expect(evs.filter((e) => e.type === "change").map((e) => e.change.kind)).toEqual(["task.create"]);
+  });
   test("an action naming an unknown tool is dropped without a row", async () => {
     const sid = await open("conv9");
     const evs = await ndjson(await call("POST", `/api/chat/sessions/${sid}/messages`, { message: 'ACT jarvis_format_disk {} ACT jarvis_capture_note {"text":"kept","title":"Kept"}' }));
@@ -755,6 +777,22 @@ describe("the agent acts (jv-oya.4)", () => {
     const created = readDocFile(t.dir, changes[2].items[0].id)!;
     expect(created.frontmatter.task!.initiative).toBe(ini.id);
     expect(readFileSync(join(t.dir, "edges", `${created.frontmatter.id}.jsonl`), "utf8")).toContain(spec.id);
+  });
+});
+
+describe("an answer ending on a promise (jv-61t)", () => {
+  test("the bead's answers read as promises; questions, results and 'let me know' do not", async () => {
+    const { endsOnPromise, CHAT_RULES } = await import("../src/chat/sessions.ts");
+    expect(endsOnPromise("I'll check Thomann Sweden's current listings and verify the Shure mic controls and the signal path for a premium TV-based karaoke setup.")).toBe(true);
+    expect(endsOnPromise("Yes—I'm checking current Swedish Thomann listings and whether the Shure wireless set has the on/off switches you want.")).toBe(true);
+    expect(endsOnPromise("Good idea.\n\nLet me look that up.")).toBe(true);
+    expect(endsOnPromise("I\u2019ll pull the prices next.")).toBe(true);
+    expect(endsOnPromise("Premium setup: use Shure's digital dual-mic system, a mixer for separate vocal/music.")).toBe(false);
+    expect(endsOnPromise("I'll check the listings. Here they are: SLX-D at 9 990 kr.")).toBe(false);
+    expect(endsOnPromise("Shall I add these as tasks? I'll file them once you say so?")).toBe(false);
+    expect(endsOnPromise("That is the whole list. Let me know if you want more.")).toBe(false);
+    expect(endsOnPromise("")).toBe(false);
+    expect(CHAT_RULES).toContain("never end on what you will check, look up or do next");
   });
 });
 
