@@ -64,7 +64,7 @@ export const CHAT_RULES = `You can act on the knowledge base by writing action b
 Later blocks of the same answer may pass "$t1" wherever an id is needed (for example link or initiative). Ids of existing items are in square brackets in the context; for an existing item whose id you do not have, pass its exact title instead. ${ASK_RULE} Once the user has chosen, pass its id, never the title again. Actions (a key ending in ? is optional; write it without the ?):
 ${ACTION_REFERENCE}
 
-When the user asks for a change, write its block straight away without asking first; every change can be undone. Write one block per change. After the blocks run you are told what happened; if something failed, say so plainly. The blocks are removed from what the person reads and a card in your answer, where the first block ran, shows what was done or failed, so do not claim a result and do not repeat the block's content. Word what you write before an action as what you are about to do ("I'll link Weekly sync to Q4 planning."), never as already happening or done ("I'm linking…", "Linked…"); explain any failure after the results, in a sentence or two. Never publish or approve anything: a briefing or presentation you make is a draft, and you say so. Capture an attached file only when the user asks. To open a document for the user in a tab beside the chat, write <<open:ID>> with its id in your answer.
+When the user asks for a change, write its block straight away without asking first; every change can be undone. Write one block per change. After the blocks run you are told what happened; if something failed, say so plainly. The blocks are removed from what the person reads and a card in your answer, where the first block ran, shows what was done or failed, so do not claim a result and do not repeat the block's content. Word what you write before an action as what you are about to do ("I'll link Weekly sync to Q4 planning."), never as already happening or done ("I'm linking…", "Linked…"); explain any failure after the results, in a sentence or two. Never publish or approve anything: a briefing or presentation you make is a draft, and you say so. Give the whole result in this answer: you cannot browse the web or use any tools besides the action blocks above, so never end on what you will check, look up or do next; answer from what you know and the knowledge base, and say plainly what you could not check. Capture an attached file only when the user asks. To open a document for the user in a tab beside the chat, write <<open:ID>> with its id in your answer.
 
 Every time you name an initiative in an answer, write it as a link [Title](jarvis://initiative/ID): the title exactly as it is stored, the id from the context or from a result. This holds for the initiative the chat is about and for any other you name, and for each repeat in the same answer, not only the first. Any other wording stays outside the link ("As the initiative [Software Principles](jarvis://initiative/ID) puts it…", never "[the principles initiative](…)"). If you do not know an initiative's id, write its name as plain words. This is for initiatives only, not notes, tasks or briefings.
 
@@ -79,6 +79,26 @@ function scopeRule(type: ChatScope["type"], id: string): string {
   if (type !== "initiative") return answer;
   return `"It", "this" and "the initiative" mean this initiative. When the user asks to change its title, goal or owner, write jarvis_edit_initiative with initiative "${id}" and only the fields to change; never jarvis_create_initiative unless they ask for a new, separate initiative. Otherwise answer from its content; say when it does not cover the question.`;
 }
+
+/** Matches a statement of intent: "I'll check…", "I'm checking…", "Let me look…" (not "let me know", "let me be clear"). */
+const PROMISE = /\b(i(?:'|\u2019)ll|i will|i(?:'|\u2019)m going to|i am going to|let me(?! know| be)|i(?:'|\u2019)m (?:now )?(?:checking|looking|searching|verifying|pulling|gathering|fetching|researching|compiling|putting together|working on)|i am (?:now )?(?:checking|looking|searching|verifying|pulling|gathering|fetching|researching|compiling|putting together|working on))\b/i;
+/**
+ * An offer waiting on the user, not a promise: a sentence that opens on its condition ("If you'd
+ * like, I'll…", "Once you pick one, I'll…"), or one that asks leave ("say the word", "want me to").
+ * A condition after the promise ("I'll look into it when you have a moment.") stays a promise.
+ */
+const OFFER = /^(?:if|once|when|after|should) you\b|\b(?:say the word|want me to|would you like)\b/i;
+/**
+ * Whether an answer ends on a promise of work instead of its result (jv-61t): its last sentence
+ * states what the agent will do or is doing, and is neither a question nor an offer to the user.
+ */
+export function endsOnPromise(text: string): boolean {
+  const sentences = text.trim().split(/(?<=[.!?…])\s+|\n+/).map((x) => x.trim()).filter(Boolean);
+  const last = sentences.at(-1) ?? "";
+  return !last.endsWith("?") && !OFFER.test(last) && PROMISE.test(last);
+}
+/** The one nudge sent when an answer that made no change ends on a promise (jv-61t); its reply may speak but never act. */
+export const FINISH_NUDGE = "You ended your answer on what you would do instead of doing it, and the user is waiting. Do it now and give the full result in this answer. You cannot browse the web or use any tools besides action blocks, and none run in this reply: answer from what you know and what the knowledge base gave you, say plainly what you could not check, and do not end on what you will do next. If what you promised was a change, say plainly that it has not been made and ask whether to make it.";
 
 export interface ChatSession {
   id: string;
@@ -320,8 +340,11 @@ export class ChatService {
     let seen: ChatSession["sources"] = [];
     const asking = new Set<string>(); // a refusal this turn counts from the next one, once the user has been asked
     /** Run the agent's actions in order, each recorded and pushed as a `change` event. */
+    let acted = false; // an answer that wrote an action block is never nudged to finish (jv-61t)
+    let said = ""; // the text the person reads of this answer
     const act = (list: { tool: string; args: Record<string, unknown>; as?: string }[]) => {
       for (const a of list) {
+        acted = true;
         chain = chain.then(async () => {
           try {
             const r = await runTool(new ChangeLog(this.dataDir, s.conversationId), turn, a.tool, resolveRefs(a.args, aliases), { dataDir: this.dataDir, attachments, seen, asked: s.asked, answering: s.askedLast, asking, about: s.scope.type === "initiative" ? s.scope.ids[0] : undefined });
@@ -337,7 +360,7 @@ export class ChatService {
         });
       }
     };
-    let textOnly = false; // the follow-up about failures may speak but never act
+    let textOnly = false; // the follow-ups (the finish nudge, failures, asks) may speak but never act
     const feed = (chunk: string) => {
       route(actions.push(chunk));
     };
@@ -354,11 +377,11 @@ export class ChatService {
     const finishText = () => {
       route(actions.end());
       const rest = filter.end();
-      if (rest) emit({ type: "message", text: rest });
+      if (rest) { said += rest; emit({ type: "message", text: rest }); }
     };
     const opened = new Set<string>();
     const pushText = (r: { text: string; opens: string[] }) => {
-      if (r.text) emit({ type: "message", text: r.text });
+      if (r.text) { said += r.text; emit({ type: "message", text: r.text }); }
       for (const id of r.opens) {
         if (opened.has(id)) continue;
         const doc = this.resolveDoc(id);
@@ -386,6 +409,13 @@ export class ChatService {
       const done = agent.prompt(s.acpSessionId, prompt).then(async (r) => {
         finishText();
         await chain;
+        if (!acted && r?.stopReason !== "cancelled" && endsOnPromise(said)) { // the result, not a promise of it, in this same answer (jv-61t)
+          textOnly = true; // a nudge must never turn an offer into a change the user did not ask for
+          push({ type: "message", text: "\n\n" });
+          r = (await agent.prompt(s.acpSessionId, FINISH_NUDGE).catch(() => null)) ?? r;
+          finishText();
+          await chain;
+        }
         if ((failed.length || asks.length) && r?.stopReason !== "cancelled") { // the agent says so in its answer: one more prompt, with what failed and what the user must choose
           textOnly = true;
           push({ type: "message", text: "\n\n" });

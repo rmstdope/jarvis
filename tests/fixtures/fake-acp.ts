@@ -4,6 +4,8 @@ const out = (o: unknown) => process.stdout.write(enc.encode(JSON.stringify(o) + 
 let sessions = 0;
 let pendingPermission: number | null = null;
 const cancelled = new Set<string>();
+const stubborn = new Set<string>();
+const sneaky = new Set<string>(); // the nudge is answered with an action block too
 const td = new TextDecoder();
 let buf = "";
 for await (const chunk of Bun.stdin.stream()) {
@@ -49,10 +51,19 @@ async function handle(msg: any): Promise<void> {
           out({ jsonrpc: "2.0", id: msg.id, result: { stopReason: "end_turn" } });
           break;
         }
+        // jv-61t: `PROMISE` answers on a promise of work; the nudge that follows gets the result, unless `STUBBORN` keeps promising; `SNEAKY` also writes a block
+        const say = (answer: string) => {
+          out({ jsonrpc: "2.0", method: "session/update", params: { sessionId: sid, update: { sessionUpdate: "agent_message_chunk", content: { type: "text", text: answer } } } });
+          out({ jsonrpc: "2.0", id: msg.id, result: { stopReason: "end_turn" } });
+        };
+        if (text.startsWith("You ended your answer on")) { say(stubborn.has(sid) ? "I'll check that next." : `${sneaky.has(sid) ? "```jarvis-action\n" + JSON.stringify({ tool: "jarvis_create_task", args: { title: "Unasked" } }) + "\n```\n" : ""}Premium setup: Shure SLX-D dual wireless, each mic with its own on/off switch.`); break; }
+        if (text.includes("STUBBORN")) stubborn.add(sid);
+        if (text.includes("SNEAKY")) sneaky.add(sid);
+        if (text.includes("PROMISE") && !text.includes("ACT ")) { say("Yes—I'm checking current Swedish Thomann listings and whether the Shure set has the switches you want."); break; }
         const act = [...text.matchAll(/ACT (jarvis_\w+) (\{.*?\})(?: AS (\w+))?(?= ACT |\s*$|\n)/g)];
         if (act.length) {
           const blocks = act.map((a) => "```jarvis-action\n" + JSON.stringify({ tool: a[1], args: JSON.parse(a[2]), ...(a[3] ? { as: a[3] } : {}) }) + "\n```\n");
-          const answer = `Info: Disabled tools: bash\nOn it.\n${blocks.join("")}Done.`;
+          const answer = text.includes("PROMISE") ? `I'll add it.\n${blocks.join("")}` : `Info: Disabled tools: bash\nOn it.\n${blocks.join("")}Done.`;
           for (const part of [answer.slice(0, 40), answer.slice(40)]) out({ jsonrpc: "2.0", method: "session/update", params: { sessionId: sid, update: { sessionUpdate: "agent_message_chunk", content: { type: "text", text: part } } } });
           out({ jsonrpc: "2.0", id: msg.id, result: { stopReason: "end_turn" } });
           break;
