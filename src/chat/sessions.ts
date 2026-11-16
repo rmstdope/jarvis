@@ -82,8 +82,12 @@ function scopeRule(type: ChatScope["type"], id: string): string {
 
 /** Matches a statement of intent: "I'll check…", "I'm checking…", "Let me look…" (not "let me know", "let me be clear"). */
 const PROMISE = /\b(i(?:'|\u2019)ll|i will|i(?:'|\u2019)m going to|i am going to|let me(?! know| be)|i(?:'|\u2019)m (?:now )?(?:checking|looking|searching|verifying|pulling|gathering|fetching|researching|compiling|putting together|working on)|i am (?:now )?(?:checking|looking|searching|verifying|pulling|gathering|fetching|researching|compiling|putting together|working on))\b/i;
-/** An offer waiting on the user ("If you'd like, I'll…", "Once you pick one, I'll…"): not a promise. */
-const OFFER = /\b(if you|once you|when you|after you|say the word|want me to|would you like|should you)\b/i;
+/**
+ * An offer waiting on the user, not a promise: a sentence that opens on its condition ("If you'd
+ * like, I'll…", "Once you pick one, I'll…"), or one that asks leave ("say the word", "want me to").
+ * A condition after the promise ("I'll look into it when you have a moment.") stays a promise.
+ */
+const OFFER = /^(?:if|once|when|after|should) you\b|\b(?:say the word|want me to|would you like)\b/i;
 /**
  * Whether an answer ends on a promise of work instead of its result (jv-61t): its last sentence
  * states what the agent will do or is doing, and is neither a question nor an offer to the user.
@@ -94,7 +98,7 @@ export function endsOnPromise(text: string): boolean {
   return !last.endsWith("?") && !OFFER.test(last) && PROMISE.test(last);
 }
 /** The one nudge sent when an answer that made no change ends on a promise (jv-61t); its reply may speak but never act. */
-export const FINISH_NUDGE = "You ended your answer on what you would do instead of doing it, and the user is waiting. Do it now and give the full result in this answer. You cannot browse the web or use any tools besides action blocks, and none run in this reply: answer from what you know and what the knowledge base gave you, say plainly what you could not check, and do not end on what you will do next.";
+export const FINISH_NUDGE = "You ended your answer on what you would do instead of doing it, and the user is waiting. Do it now and give the full result in this answer. You cannot browse the web or use any tools besides action blocks, and none run in this reply: answer from what you know and what the knowledge base gave you, say plainly what you could not check, and do not end on what you will do next. If what you promised was a change, say plainly that it has not been made and ask whether to make it.";
 
 export interface ChatSession {
   id: string;

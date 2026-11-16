@@ -790,7 +790,7 @@ describe("the agent acts (jv-oya.4)", () => {
 
 describe("an answer ending on a promise (jv-61t)", () => {
   test("the bead's answers read as promises; questions, results and 'let me know' do not", async () => {
-    const { endsOnPromise, CHAT_RULES } = await import("../src/chat/sessions.ts");
+    const { endsOnPromise, CHAT_RULES, FINISH_NUDGE } = await import("../src/chat/sessions.ts");
     expect(endsOnPromise("I'll check Thomann Sweden's current listings and verify the Shure mic controls and the signal path for a premium TV-based karaoke setup.")).toBe(true);
     expect(endsOnPromise("Yes—I'm checking current Swedish Thomann listings and whether the Shure wireless set has the on/off switches you want.")).toBe(true);
     expect(endsOnPromise("Good idea.\n\nLet me look that up.")).toBe(true);
@@ -804,9 +804,14 @@ describe("an answer ending on a promise (jv-61t)", () => {
     expect(endsOnPromise("Here is the list. Once you pick one, I'll link it to Q4 planning.")).toBe(false);
     expect(endsOnPromise("Here is the list. When you want, I can add them, and I'll link each to Q4 planning.")).toBe(false);
     expect(endsOnPromise("Done. Let me be clear: these prices are from memory.")).toBe(false);
+    expect(endsOnPromise("Here is what I know. Let me check whether prices changed if you need exact numbers.")).toBe(true);
+    expect(endsOnPromise("I'll look into it when you have a moment.")).toBe(true);
+    expect(endsOnPromise("I'll check whether that works for you once you are back.")).toBe(true);
+    expect(endsOnPromise("Here is the list. Want me to file them? I'd say yes, and I'll link them if so.")).toBe(true); // only the last sentence counts
     expect(endsOnPromise("")).toBe(false);
     expect(CHAT_RULES).toContain("never end on what you will check, look up or do next");
     expect(CHAT_RULES).toContain("you cannot browse the web or use any tools besides the action blocks above");
+    expect(FINISH_NUDGE).toContain("If what you promised was a change, say plainly that it has not been made and ask whether to make it.");
   });
 });
 
