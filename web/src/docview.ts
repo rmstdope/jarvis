@@ -8,6 +8,7 @@ import type { DocRef } from "./tabs.ts";
 import { kindLabel, speakerTurns } from "./transcript.ts";
 import { entryLine, fmtDate, h } from "./ui.ts";
 import { presentControl } from "./presentations.ts";
+import { looksLikeLog, setTextSidePref, textSidePref, type TextSide } from "./literal.ts";
 import { initiativeLabel, progress, tagPills } from "./pages/common.ts";
 import { onInitiativeProgress } from "./initiativeBus.ts";
 import { renderMarkdown } from "../../src/briefings/markdown.ts";
@@ -29,6 +30,8 @@ export interface DocCtx {
   loaded(title: string, kind: string): void;
   /** True inside the macOS app window (deck links open in place). */
   inApp?: () => boolean;
+  /** How long the Copy button reads Copied / Couldn't copy, in ms (2000 by default). */
+  copiedMs?: number;
 }
 /** A rendered tab body; `ready` settles when the document has loaded (or failed to). */
 export interface DocView { el: HTMLElement; ready: Promise<void>; }
@@ -92,19 +95,39 @@ async function itemPage(id: string, ctx: DocCtx): Promise<Page> {
   const kind = kindLabel(item.source);
   const meta = item.metadata ?? {};
   const askBtn = h("button", { onClick: () => ctx.askAbout({ type: "item", ids: [item.id] }, item.title) }, "Ask about this");
-  const head = header(kind, item.title, [askBtn]);
   const filename = typeof meta.filename === "string" ? meta.filename : undefined;
   let summary: HTMLElement | null = null;
   if (item.source === "meeting") {
     const link = edges.find((e) => e.direction === "in" && e.createdBy === "briefing");
     if (link) { try { const b = await api.briefing(link.otherId); summary = h("section", { class: "jv-dsum brief", html: renderBriefingHtml(b.tree as BriefingNode[]) }); } catch { /* no summary */ } }
   }
-  let text: HTMLElement;
-  if (!item.body.trim()) text = h("p", { class: "muted" }, "Nothing written here yet.");
-  else if (item.source === "meeting") {
-    const turns = speakerTurns(item.body);
-    text = h("div", { class: "jv-transcript" }, ...turns.map((t) => h("div", { class: "jv-turn" }, t.speaker ? h("div", { class: "jv-who" }, t.speaker) : null, h("p", {}, t.text))));
-  } else text = h("div", { class: "body-md jv-text", html: renderMarkdown(item.body, { breaks: !MACHINE_WRAPPED.has(item.source) }) });
+  const formatted = (): HTMLElement => item.source === "meeting"
+    ? h("div", { class: "jv-transcript" }, ...speakerTurns(item.body).map((t) => h("div", { class: "jv-turn" }, t.speaker ? h("div", { class: "jv-who" }, t.speaker) : null, h("p", {}, t.text))))
+    : h("div", { class: "body-md jv-text", html: renderMarkdown(item.body, { breaks: !MACHINE_WRAPPED.has(item.source) }) });
+  const text = h("div", {});
+  let sw: HTMLElement | null = null;
+  if (!item.body.trim()) text.append(h("p", { class: "muted" }, "Nothing written here yet."));
+  else if (item.source === "meeting") text.append(formatted());
+  else {
+    let side: TextSide = textSidePref(item.id) ?? (looksLikeLog(item.body) ? "literal" : "formatted");
+    const sides: [TextSide, string][] = [["formatted", "Formatted"], ["literal", "As written"]];
+    const btns = sides.map(([s, label]) => h("button", { type: "button", onClick: () => { side = s; setTextSidePref(item.id, s); draw(); btns[s === "literal" ? 1 : 0]!.focus(); } }, label));
+    let reset: ReturnType<typeof setTimeout> | undefined;
+    const copy = h("button", { type: "button", class: "jv-copy", onClick: () => {
+      void Promise.resolve().then(() => navigator.clipboard.writeText(item.body)).then(() => "Copied", () => "Couldn't copy").then((label) => {
+        copy.textContent = label;
+        clearTimeout(reset);
+        reset = setTimeout(() => { copy.textContent = "Copy"; }, ctx.copiedMs ?? 2000);
+      });
+    } }, "Copy");
+    const draw = () => {
+      btns.forEach((b, i) => b.setAttribute("aria-pressed", String(sides[i]![0] === side)));
+      text.replaceChildren(side === "literal" ? h("div", { class: "jv-lit" }, copy, h("pre", { class: "jv-literal" }, item.body)) : formatted());
+    };
+    draw();
+    sw = h("span", { class: "jv-seg", role: "group", "aria-label": "Show text" }, ...btns);
+  }
+  const head = header(kind, item.title, [sw, askBtn]);
   const el = h("div", {}, initiativeLine(initiative), head.el, h("div", { class: "jv-dbody" },
     h("div", { class: "muted small jv-meta" }, entryLine(item.source, item.author, fmtDate(item.created_at))),
     item.source === "pdf" ? h("p", { class: "jv-pdfnote small" }, `Text taken from ${filename ?? item.title} — the original layout and images aren't kept.`, item.source_url && /^https?:\/\//i.test(item.source_url) ? [" ", h("a", { href: safeHref(item.source_url), target: "_blank", rel: "noopener" }, "Open the original ↗")] : null) : null,

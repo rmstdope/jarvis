@@ -43,6 +43,80 @@ describe("note-like tabs", () => {
       expect(el.querySelector(".jv-text p")!.innerHTML).toBe("so we decided to ship it on friday");
     }
   });
+  test("a pasted trace opens As written, exactly as stored, with the switch before Ask about this (jv-nln)", async () => {
+    const body = "Checkout fails\njava.lang.IllegalStateException: cart is empty\n    at com.shop.Cart.checkout(Cart.java:88)\n    at com.shop.Api.post(Api.java:41)\n        ... 12 more\n- retry 1 failed\n# not a heading";
+    serve(item({ source: "web", body }));
+    const el = await open({ type: "item", id: "n1" });
+    expect(el.querySelector("pre.jv-literal")!.textContent).toBe(body);
+    expect(el.querySelector(".jv-text a, .jv-literal a, .jv-literal li, .jv-literal h1")).toBeNull();
+    const btns = [...el.querySelectorAll(".jv-dhead button")].map((b) => b.textContent);
+    expect(btns).toEqual(["Formatted", "As written", "Ask about this"]);
+    const pressed = [...el.querySelectorAll(".jv-seg button")].map((b) => b.getAttribute("aria-pressed"));
+    expect(pressed).toEqual(["false", "true"]);
+  });
+  test("a Markdown note opens Formatted; pressing As written shows its marks and keeps focus (jv-nln)", async () => {
+    serve(item({ body: "## Plan\n- one\n- **two**" }));
+    const el = await open({ type: "item", id: "n1" });
+    expect(el.querySelector(".jv-text h2")).not.toBeNull();
+    const lit = [...el.querySelectorAll(".jv-seg button")][1] as HTMLElement;
+    lit.click();
+    expect(el.querySelector("pre.jv-literal")!.textContent).toBe("## Plan\n- one\n- **two**");
+    expect(el.querySelector(".jv-text")).toBeNull();
+    expect(lit.getAttribute("aria-pressed")).toBe("true");
+    expect(document.activeElement).toBe(lit);
+  });
+  test("the pressed side is remembered per item and wins over the guess (jv-nln)", async () => {
+    serve(item({ body: "## Plan\n- one" }));
+    let el = await open({ type: "item", id: "n1" });
+    ([...el.querySelectorAll(".jv-seg button")][1] as HTMLElement).click();
+    expect(localStorage.getItem("jv.text.n1")).toBe("literal");
+    document.body.innerHTML = "";
+    el = await open({ type: "item", id: "n1" });
+    expect(el.querySelector("pre.jv-literal")).not.toBeNull();
+    ([...el.querySelectorAll(".jv-seg button")][0] as HTMLElement).click();
+    document.body.innerHTML = "";
+    serve(item({ body: "a\n    at x.Y(F.java:1)\n    at x.Z(F.java:2)\n    at x.W(F.java:3)" }));
+    el = await open({ type: "item", id: "n1" });
+    expect(el.querySelector("pre.jv-literal")).toBeNull();
+  });
+  test("YouTube and PDF items get the switch, and blocked storage does not break it (jv-nln)", async () => {
+    for (const source of ["youtube", "pdf"]) {
+      serve(item({ source, body: "so we decided\nto ship" }));
+      const el = await open({ type: "item", id: "n1" });
+      expect(el.querySelectorAll(".jv-seg button").length).toBe(2);
+      document.body.innerHTML = "";
+    }
+    serve(item());
+    Object.defineProperty(globalThis, "localStorage", { configurable: true, get() { throw new Error("blocked"); } });
+    const el = await open({ type: "item", id: "n1" });
+    ([...el.querySelectorAll(".jv-seg button")][1] as HTMLElement).click();
+    expect(el.querySelector("pre.jv-literal")).not.toBeNull();
+  });
+  test("an empty item and a meeting transcript get no switch and no Copy (jv-nln)", async () => {
+    serve(item({ body: "" }));
+    let el = await open({ type: "item", id: "n1" });
+    expect(el.querySelector(".jv-seg, .jv-copy")).toBeNull();
+    document.body.innerHTML = "";
+    serve(item({ source: "meeting", body: "Ann: hi\n\nBo: hello" }));
+    el = await open({ type: "item", id: "n1" });
+    expect(el.querySelector(".jv-seg, .jv-copy")).toBeNull();
+  });
+  test("Copy copies the body exactly, reads Copied then Copy; a refusal reads Couldn't copy (jv-nln)", async () => {
+    const body = "a\n    at x.Y(F.java:1)\n    at x.Z(F.java:2)";
+    serve(item({ body }));
+    const copied: string[] = [];
+    let fail = false;
+    Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText: async (t: string) => { if (fail) throw new Error("no"); copied.push(t); } } });
+    const el = await open({ type: "item", id: "n1" }, ctx({ copiedMs: 20 } as never));
+    const btn = el.querySelector(".jv-copy") as HTMLElement;
+    expect(btn.textContent).toBe("Copy");
+    btn.click(); await new Promise((r) => setTimeout(r, 5));
+    expect(copied).toEqual([body]); expect(btn.textContent).toBe("Copied");
+    await new Promise((r) => setTimeout(r, 40)); expect(btn.textContent).toBe("Copy");
+    fail = true; btn.click(); await new Promise((r) => setTimeout(r, 5));
+    expect(btn.textContent).toBe("Couldn't copy");
+    await new Promise((r) => setTimeout(r, 40)); expect(btn.textContent).toBe("Copy");
+  });
   test("empty body and no links", async () => {
     serve(item({ body: "" }));
     const el = await open({ type: "item", id: "n1" });
