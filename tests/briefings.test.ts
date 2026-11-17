@@ -113,6 +113,11 @@ describe("markdown", () => {
     expect(renderMarkdown("**bold\nacross** end", { breaks: true })).toBe("<p><strong>bold<br>across</strong> end</p>");
     expect(renderMarkdown("see [the\nspec](https://x.test)", { breaks: true })).toContain("<a ");
     expect(renderMarkdown("see [the\nspec](https://x.test)", { breaks: true })).toContain("the<br>spec</a>");
+    expect(renderMarkdown("first line\n*second* line", { breaks: true })).toBe("<p>first line<br><em>second</em> line</p>");
+    expect(renderMarkdown("a *word*\nnext", { breaks: true })).toBe("<p>a <em>word</em><br>next</p>");
+    expect(renderMarkdown("_x_\n_y_", { breaks: true })).toBe("<p><em>x</em><br><em>y</em></p>");
+    expect(renderMarkdown("[x](https://a.test/p\nq)", { breaks: true })).not.toContain("href");
+    expect(renderMarkdown("![a\nb](https://a.test/i.png)", { breaks: true })).not.toContain("<img");
   });
 
   test("a jarvis:// link that is not an initiative reads as its plain words, never a dead link (jv-ba9)", () => {

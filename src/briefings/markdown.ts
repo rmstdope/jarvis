@@ -26,7 +26,7 @@ export function renderInline(s: string, o: MdOptions = {}): string {
     return `\u0000${codes.length - 1}\u0000`;
   });
   t = escapeHtml(t);
-  t = t.replace(/!\[([^\]]*)\]\(([^)\s]+)\)/g, (_, alt, src) => `<img alt="${alt}" src="${safeUrl(src)}">`);
+  t = t.replace(/!\[([^\]\n]*)\]\(([^)\s]+)\)/g, (_, alt, src) => `<img alt="${alt}" src="${safeUrl(src)}">`);
   t = t.replace(/\[\[([0-9A-Z]{26})\]\]/g, (_, id) => `<a class="cite" href="${o.citationHref ? o.citationHref(id) : `#/item/${id}`}">[${id.slice(0, 8)}…]</a>`);
   t = t.replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, (_, text, href) => {
     const init = href.match(/^jarvis:\/\/initiative\/([0-9A-Za-z_-]+)$/); // an initiative mention opens its tab in this browser tab (jv-77m)
@@ -147,8 +147,8 @@ function renderBlocks(blocks: Block[], o: MdOptions): string {
           return `<h${b.level}${id ? ` id="${id}"` : ""}>${renderInline(b.text, o)}</h${b.level}>`;
         }
         case "p":
-          // A placeholder renderInline leaves alone keeps bold and links that run across a break intact.
-          return `<p>${o.breaks ? renderInline(b.lines.join("\u0001"), o).replaceAll("\u0001", "<br>") : renderInline(b.lines.join(" "), o)}</p>`;
+          // Rendered as one string so bold and link text may run across a break; "\n" reads as whitespace to emphasis and never matches an href or alt.
+          return `<p>${o.breaks ? renderInline(b.lines.join("\n"), o).replaceAll("\n", "<br>") : renderInline(b.lines.join(" "), o)}</p>`;
         case "code":
           return `<pre><code${b.lang ? ` class="language-${escapeHtml(b.lang)}"` : ""}>${escapeHtml(b.body)}</code></pre>`;
         case "quote":
