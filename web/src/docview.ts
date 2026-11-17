@@ -14,6 +14,9 @@ import { renderMarkdown } from "../../src/briefings/markdown.ts";
 import { renderBriefingHtml } from "../../src/briefings/render.ts";
 import type { Node as BriefingNode } from "../../src/briefings/parser.ts";
 
+/** Sources whose bodies are wrapped by a machine (caption fragments, PDF text), so a single newline is not the author's line break (jv-g0z). */
+const MACHINE_WRAPPED = new Set(["youtube", "pdf"]);
+
 /** What a document view needs from the app around it. */
 export interface DocCtx {
   chat: Chat;
@@ -101,7 +104,7 @@ async function itemPage(id: string, ctx: DocCtx): Promise<Page> {
   else if (item.source === "meeting") {
     const turns = speakerTurns(item.body);
     text = h("div", { class: "jv-transcript" }, ...turns.map((t) => h("div", { class: "jv-turn" }, t.speaker ? h("div", { class: "jv-who" }, t.speaker) : null, h("p", {}, t.text))));
-  } else text = h("div", { class: "body-md jv-text", html: renderMarkdown(item.body) });
+  } else text = h("div", { class: "body-md jv-text", html: renderMarkdown(item.body, { breaks: !MACHINE_WRAPPED.has(item.source) }) });
   const el = h("div", {}, initiativeLine(initiative), head.el, h("div", { class: "jv-dbody" },
     h("div", { class: "muted small jv-meta" }, entryLine(item.source, item.author, fmtDate(item.created_at))),
     item.source === "pdf" ? h("p", { class: "jv-pdfnote small" }, `Text taken from ${filename ?? item.title} — the original layout and images aren't kept.`, item.source_url && /^https?:\/\//i.test(item.source_url) ? [" ", h("a", { href: safeHref(item.source_url), target: "_blank", rel: "noopener" }, "Open the original ↗")] : null) : null,
