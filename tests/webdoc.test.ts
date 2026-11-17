@@ -79,6 +79,19 @@ describe("note-like tabs", () => {
     el = await open({ type: "item", id: "n1" });
     expect(el.querySelector("pre.jv-literal")).toBeNull();
   });
+  test("YouTube and PDF items get the switch, and blocked storage does not break it (jv-nln)", async () => {
+    for (const source of ["youtube", "pdf"]) {
+      serve(item({ source, body: "so we decided\nto ship" }));
+      const el = await open({ type: "item", id: "n1" });
+      expect(el.querySelectorAll(".jv-seg button").length).toBe(2);
+      document.body.innerHTML = "";
+    }
+    serve(item());
+    Object.defineProperty(globalThis, "localStorage", { configurable: true, get() { throw new Error("blocked"); } });
+    const el = await open({ type: "item", id: "n1" });
+    ([...el.querySelectorAll(".jv-seg button")][1] as HTMLElement).click();
+    expect(el.querySelector("pre.jv-literal")).not.toBeNull();
+  });
   test("an empty item and a meeting transcript get no switch and no Copy (jv-nln)", async () => {
     serve(item({ body: "" }));
     let el = await open({ type: "item", id: "n1" });

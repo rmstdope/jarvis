@@ -311,5 +311,4 @@ html, body { height:100%; } #app { height:100%; }
 .jv-lit { position:relative; }
 .jv-literal { margin:0; font:13px/1.55 ui-monospace,SFMono-Regular,Menlo,monospace; background:var(--side); border:1px solid var(--border); border-radius:var(--radius); padding:12px 14px; white-space:pre-wrap; overflow-wrap:anywhere; overflow-x:hidden; }
 .jv-lit .jv-copy { position:absolute; right:8px; top:8px; font:12px var(--sans); padding:2px 8px; }
-.jv-phone .jv-dhead .jv-seg { margin-left:0; }
-.jv-phone .jv-dhead .jv-dtitle { max-width:100%; flex:1 1 calc(100% - 90px); } /* the switch and Ask about this wrap together under the title */
+.jv-phone .jv-dhead:has(.jv-seg) .jv-dtitle { max-width:100%; flex:1 1 calc(100% - 90px); } /* the switch and Ask about this wrap together under the title */

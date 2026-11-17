@@ -112,10 +112,12 @@ async function itemPage(id: string, ctx: DocCtx): Promise<Page> {
     let side: TextSide = textSidePref(item.id) ?? (looksLikeLog(item.body) ? "literal" : "formatted");
     const sides: [TextSide, string][] = [["formatted", "Formatted"], ["literal", "As written"]];
     const btns = sides.map(([s, label]) => h("button", { type: "button", onClick: () => { side = s; setTextSidePref(item.id, s); draw(); btns[s === "literal" ? 1 : 0]!.focus(); } }, label));
+    let reset: ReturnType<typeof setTimeout> | undefined;
     const copy = h("button", { type: "button", class: "jv-copy", onClick: () => {
       void Promise.resolve().then(() => navigator.clipboard.writeText(item.body)).then(() => "Copied", () => "Couldn't copy").then((label) => {
         copy.textContent = label;
-        setTimeout(() => { copy.textContent = "Copy"; }, ctx.copiedMs ?? 2000);
+        clearTimeout(reset);
+        reset = setTimeout(() => { copy.textContent = "Copy"; }, ctx.copiedMs ?? 2000);
       });
     } }, "Copy");
     const draw = () => {

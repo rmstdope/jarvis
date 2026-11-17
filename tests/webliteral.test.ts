@@ -15,6 +15,12 @@ describe("looksLikeLog (jv-nln)", () => {
     expect(looksLikeLog("2026-11-17T14:02:11Z ERROR a\n2026-11-17T14:02:12Z WARN b\n2026-11-17T14:02:13Z INFO c")).toBe(true);
     expect(looksLikeLog("ERROR disk full\nWARN retrying\nINFO done")).toBe(true);
   });
+  test("a run of indented lines is a log; so are single-frame Python and Node anonymous frames (jv-nln)", () => {
+    expect(looksLikeLog("config dump\n    host: a\n    port: 1\ndone")).toBe(true);
+    expect(looksLikeLog("Traceback (most recent call last):\n  File \"app.py\", line 12, in <module>\n    main()\nValueError: bad")).toBe(true);
+    expect(looksLikeLog("Error: x\n    at /app/a.js:10:5\n    at /app/b.js:11:6")).toBe(true);
+    expect(looksLikeLog("- a\n    - nested\n    - nested too\n- b")).toBe(false);
+  });
   test("a Markdown note is not", () => {
     expect(looksLikeLog("## Release checklist\n- Tag the build\n- **Announce** in the [channel](https://x.test)\n\n> done")).toBe(false);
   });
