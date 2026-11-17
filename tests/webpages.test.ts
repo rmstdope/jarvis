@@ -292,4 +292,19 @@ describe("Capture", () => {
     await go(env, "#/capture");
     expect(draft()[1].value).toBe("B");
   });
+  test("the text box fills the window's height and scrolls inside itself, not the page (jv-hzh)", async () => {
+    env = await boot("#/capture");
+    const st = document.createElement("style");
+    st.textContent = (await import("node:fs")).readFileSync("web/src/styles.css", "utf8");
+    document.head.append(st);
+    const css = (sel: string) => env.win.getComputedStyle(q(sel) as never);
+    const view = q(".jv-page > .jv-view");
+    expect(view.contains(q(".jv-write"))).toBe(true);
+    const v = env.win.getComputedStyle(view as never);
+    expect([v.display, v.flexDirection, v.height]).toEqual(["flex", "column", "100%"]);
+    const form = css(".jv-write");
+    expect([form.display, form.flexDirection, form.flexGrow, form.minHeight]).toEqual(["flex", "column", "1", "0"]);
+    const body = css(".jv-write textarea");
+    expect([body.flexGrow, body.resize, body.overflowY]).toEqual(["1", "none", "auto"]);
+  });
 });
