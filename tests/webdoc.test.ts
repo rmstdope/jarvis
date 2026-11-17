@@ -29,6 +29,13 @@ describe("note-like tabs", () => {
     [...el.querySelectorAll("button")].find((b) => b.textContent === "Ask about this")!.click();
     expect(c.log).toContain("ask item Pricing");
   });
+  test("a pasted body keeps its single line breaks (jv-g0z)", async () => {
+    serve(item({ source: "web", body: "eggs\nmilk\nbread\n\nERROR 12:01 disk full\nWARN 12:02 retrying" }));
+    const el = await open({ type: "item", id: "n1" });
+    const ps = [...el.querySelectorAll(".jv-text p")];
+    expect(ps.map((p) => p.querySelectorAll("br").length)).toEqual([2, 1]);
+    expect(ps[0]!.innerHTML).toBe("eggs<br>milk<br>bread");
+  });
   test("empty body and no links", async () => {
     serve(item({ body: "" }));
     const el = await open({ type: "item", id: "n1" });

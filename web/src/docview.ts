@@ -101,7 +101,7 @@ async function itemPage(id: string, ctx: DocCtx): Promise<Page> {
   else if (item.source === "meeting") {
     const turns = speakerTurns(item.body);
     text = h("div", { class: "jv-transcript" }, ...turns.map((t) => h("div", { class: "jv-turn" }, t.speaker ? h("div", { class: "jv-who" }, t.speaker) : null, h("p", {}, t.text))));
-  } else text = h("div", { class: "body-md jv-text", html: renderMarkdown(item.body) });
+  } else text = h("div", { class: "body-md jv-text", html: renderMarkdown(item.body, { breaks: true }) });
   const el = h("div", {}, initiativeLine(initiative), head.el, h("div", { class: "jv-dbody" },
     h("div", { class: "muted small jv-meta" }, entryLine(item.source, item.author, fmtDate(item.created_at))),
     item.source === "pdf" ? h("p", { class: "jv-pdfnote small" }, `Text taken from ${filename ?? item.title} — the original layout and images aren't kept.`, item.source_url && /^https?:\/\//i.test(item.source_url) ? [" ", h("a", { href: safeHref(item.source_url), target: "_blank", rel: "noopener" }, "Open the original ↗")] : null) : null,

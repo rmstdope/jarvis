@@ -6,6 +6,8 @@
 export interface MdOptions {
   slugFor?: (heading: string) => string | undefined;
   citationHref?: (id: string) => string;
+  /** Render a single newline inside a paragraph as a line break, so pasted lists and logs keep their lines (jv-g0z). */
+  breaks?: boolean;
 }
 
 export function escapeHtml(s: string): string {
@@ -145,7 +147,7 @@ function renderBlocks(blocks: Block[], o: MdOptions): string {
           return `<h${b.level}${id ? ` id="${id}"` : ""}>${renderInline(b.text, o)}</h${b.level}>`;
         }
         case "p":
-          return `<p>${renderInline(b.lines.join(" "), o)}</p>`;
+          return `<p>${o.breaks ? b.lines.map((l) => renderInline(l, o)).join("<br>") : renderInline(b.lines.join(" "), o)}</p>`;
         case "code":
           return `<pre><code${b.lang ? ` class="language-${escapeHtml(b.lang)}"` : ""}>${escapeHtml(b.body)}</code></pre>`;
         case "quote":
