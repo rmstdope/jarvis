@@ -1,0 +1,49 @@
+<!doctype html><meta charset=utf-8><title>jv-nln — Formatted / As written switch</title><style>
+:root{--bg:#faf7f2;--panel:#fffdf9;--side:#f1ece3;--text:#2a2621;--muted:#857b6e;--border:#e6ddcf;--accent:#b4532a;--accent-soft:#f6e6dc;--serif:Charter,Georgia,serif;--sans:ui-sans-serif,system-ui,-apple-system,sans-serif;--mono:ui-monospace,SFMono-Regular,Menlo,monospace}
+*{box-sizing:border-box}body{margin:0;background:#e9e4da;font:15px/1.5 var(--sans);color:var(--text);padding:24px}
+.note{max-width:900px;margin:0 auto 14px;background:#fff8d6;border:1px solid #e8d98a;border-radius:8px;padding:10px 14px;font-size:14px}
+.frame{max-width:900px;margin:0 auto 28px;background:var(--panel);border:1px solid var(--border);border-radius:12px;overflow:hidden;box-shadow:0 4px 18px rgba(0,0,0,.06)}
+.cap{max-width:900px;margin:0 auto 6px;font:600 12px var(--sans);text-transform:uppercase;letter-spacing:.06em;color:#6b6257}
+.dhead{display:flex;align-items:center;gap:10px;padding:12px 24px;border-bottom:1px solid var(--border);flex-wrap:wrap}
+.kind{font-size:11px;text-transform:uppercase;letter-spacing:.07em;color:var(--accent);background:var(--accent-soft);border-radius:5px;padding:2px 6px}
+.dt{font:700 20px var(--serif);flex:1;min-width:0}
+button{border:1px solid var(--border);background:var(--panel);border-radius:10px;padding:5px 12px;font:inherit;font-size:14px;color:var(--text)}
+.dbody{padding:20px 24px 28px;font-family:var(--serif);font-size:16px}
+.meta{font:13px var(--sans);color:var(--muted);margin-bottom:12px}
+.seg{display:inline-flex;border:1px solid var(--border);border-radius:10px;overflow:hidden;font-size:13px}
+.seg span{padding:4px 10px;color:var(--muted)}.seg span.on{background:var(--accent-soft);color:var(--accent);font-weight:600}
+pre.lit{font:13px/1.55 var(--mono);background:var(--side);border:1px solid var(--border);border-radius:10px;padding:12px 14px;white-space:pre-wrap;overflow-wrap:anywhere;margin:0}
+.bad{background:#fdecec;border-radius:4px}
+.phone{max-width:380px}
+.ann{font:12.5px var(--sans);color:#a03b1c;margin:6px 0 0}
+.copy{position:absolute;right:8px;top:8px;font:12px var(--sans);padding:2px 8px}</style>
+<div class=note><b>jv-nln, agreed.</b> Every text item gets a “Formatted / As written” switch. It starts on As written when the text looks like a log or trace, and remembers what you pick for each item in this browser. Long lines wrap. The As written box has a Copy button.</div>
+<div class=cap>1 · a pasted stack trace opens As written (guessed from the text)</div>
+<div class=frame><div class=dhead><span class=kind>Note</span><span class=dt>Checkout crash after deploy</span><span class=seg role=group aria-label="Show text"><span >Formatted</span><span class=on>As written</span></span><button>Ask about this</button></div><div class=dbody><div class=meta>Pasted by Ada · 17 Nov 2026</div><div style="position:relative"><button class=copy>Copy</button><pre class=lit>Checkout fails after the 14:02 deploy
+java.lang.IllegalStateException: cart is empty
+    at com.shop.Cart.checkout(Cart.java:88)
+    at com.shop.Api.post(Api.java:41)
+        ... 12 more
+- retry 1 failed
+# not a heading, just the log prefix</pre></div></div></div>
+<div class=cap>2 · a Markdown note opens Formatted; pressing As written shows its marks</div>
+<div class=frame><div class=dhead><span class=kind>Note</span><span class=dt>Release checklist</span><span class=seg role=group aria-label="Show text"><span class=on>Formatted</span><span >As written</span></span><button>Ask about this</button></div><div class=dbody><h3 style="font-family:var(--sans);margin:0 0 6px">Release checklist</h3><ul style="margin:0"><li>Tag the build</li><li><b>Announce</b> in the channel</li></ul></div></div>
+<div class=frame><div class=dhead><span class=kind>Note</span><span class=dt>Release checklist</span><span class=seg role=group aria-label="Show text"><span >Formatted</span><span class=on>As written</span></span><button>Ask about this</button></div><div class=dbody><div style="position:relative"><button class=copy>Copy</button><pre class=lit>## Release checklist
+- Tag the build
+- **Announce** in the channel</pre></div></div></div>
+<div class=cap>3 · web page, PDF and video transcript get the same switch</div>
+<div class=frame><div class=dhead><span class=kind>Web page</span><span class=dt>How we run incident reviews</span><span class=seg role=group aria-label="Show text"><span >Formatted</span><span class=on>As written</span></span><button>Ask about this</button></div><div class=dbody><div style="position:relative"><button class=copy>Copied</button><pre class=lit>## Before the review
+- Collect the **timeline** from [the incident channel](https://…)</pre></div></div></div>
+<div class=cap>4 · long lines wrap (600px window); the Copy button after a refused copy</div>
+<div class=frame style="max-width:600px"><div class=dhead><span class=kind>Note</span><span class=dt>Checkout crash after deploy</span><span class=seg role=group aria-label="Show text"><span >Formatted</span><span class=on>As written</span></span><button>Ask about this</button></div><div class=dbody><div style="position:relative"><button class=copy>Couldn’t copy</button><pre class=lit>2026-11-17T14:02:11.482Z ERROR [checkout-worker-3] c.s.Cart - checkout rejected for session 7f3a9c2e-41b8-4d0e-9a51-0c2f6e8b1d77: cart is empty (items=0, promo=WINTER25)
+    at com.shop.Cart.checkout(Cart.java:88)</pre></div></div></div>
+<div class=cap>5 · narrow window: the switch and “Ask about this” wrap under the title</div>
+<div class="frame phone"><div class=dhead><span class=kind>Note</span><span class=dt>Checkout crash after deploy</span><div style="flex-basis:100%;display:flex;gap:8px"><span class=seg><span>Formatted</span><span class=on>As written</span></span><button>Ask about this</button></div></div><div class=dbody><div style="position:relative"><button class=copy>Copy</button><pre class=lit>Checkout fails after the 14:02 deploy
+java.lang.IllegalStateException: cart is empty
+    at com.shop.Cart.checkout(Cart.java:88)
+    at com.shop.Api.post(Api.java:41)
+        ... 12 more
+- retry 1 failed
+# not a heading, just the log prefix</pre></div></div></div>
+<div class=cap>6 · no switch: an empty item, and a meeting transcript</div>
+<div class=frame><div class=dhead><span class=kind>Note</span><span class=dt>Untitled thought</span><button>Ask about this</button></div><div class=dbody><p style="color:var(--muted);font-family:var(--sans)">Nothing written here yet.</p></div></div>
