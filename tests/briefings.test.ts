@@ -107,6 +107,14 @@ describe("markdown", () => {
     expect(renderInline("[x](https://x.test)")).toContain('target="_blank"');
   });
 
+  test("breaks: a single newline is a line break, and spans across it still render (jv-g0z)", () => {
+    expect(renderMarkdown("a\nb")).toBe("<p>a b</p>");
+    expect(renderMarkdown("a\nb", { breaks: true })).toBe("<p>a<br>b</p>");
+    expect(renderMarkdown("**bold\nacross** end", { breaks: true })).toBe("<p><strong>bold<br>across</strong> end</p>");
+    expect(renderMarkdown("see [the\nspec](https://x.test)", { breaks: true })).toContain("<a ");
+    expect(renderMarkdown("see [the\nspec](https://x.test)", { breaks: true })).toContain("the<br>spec</a>");
+  });
+
   test("a jarvis:// link that is not an initiative reads as its plain words, never a dead link (jv-ba9)", () => {
     expect(renderInline("as [Principles and the train](jarvis://note/01N9.)")).toBe("as Principles and the train");
     expect(renderInline("[x](jarvis://task/T1)")).toBe("x");

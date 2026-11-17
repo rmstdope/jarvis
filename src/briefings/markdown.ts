@@ -147,7 +147,8 @@ function renderBlocks(blocks: Block[], o: MdOptions): string {
           return `<h${b.level}${id ? ` id="${id}"` : ""}>${renderInline(b.text, o)}</h${b.level}>`;
         }
         case "p":
-          return `<p>${o.breaks ? b.lines.map((l) => renderInline(l, o)).join("<br>") : renderInline(b.lines.join(" "), o)}</p>`;
+          // A placeholder renderInline leaves alone keeps bold and links that run across a break intact.
+          return `<p>${o.breaks ? renderInline(b.lines.join("\u0001"), o).replaceAll("\u0001", "<br>") : renderInline(b.lines.join(" "), o)}</p>`;
         case "code":
           return `<pre><code${b.lang ? ` class="language-${escapeHtml(b.lang)}"` : ""}>${escapeHtml(b.body)}</code></pre>`;
         case "quote":
