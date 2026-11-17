@@ -304,3 +304,12 @@ html, body { height:100%; } #app { height:100%; }
 .jv-ed-opt { padding:6px 11px; cursor:pointer; } .jv-ed-opt.on { background:var(--accent-soft); }
 @media (max-width:639px) { .jv-ed-w-owner { display:block; max-width:none; } }
 .jv-owner.jv-editable::after { content:"✎"; margin-left:3px; font-size:11px; } /* beside the name, taking its own small space so it never covers the text that follows */
+/* jv-nln: the Formatted / As written switch and the literal view of a text item */
+.jv-seg { display:inline-flex; border:1px solid var(--border); border-radius:10px; overflow:hidden; }
+.jv-seg button { border:0; border-radius:0; background:transparent; color:var(--muted); font-size:13px; padding:4px 10px; }
+.jv-seg button[aria-pressed=true] { background:var(--accent-soft); color:var(--accent); font-weight:600; }
+.jv-lit { position:relative; }
+.jv-literal { margin:0; font:13px/1.55 ui-monospace,SFMono-Regular,Menlo,monospace; background:var(--side); border:1px solid var(--border); border-radius:var(--radius); padding:12px 14px; white-space:pre-wrap; overflow-wrap:anywhere; overflow-x:hidden; }
+.jv-lit .jv-copy { position:absolute; right:8px; top:8px; font:12px var(--sans); padding:2px 8px; }
+.jv-phone .jv-dhead .jv-seg { margin-left:0; }
+.jv-phone .jv-dhead .jv-dtitle { max-width:100%; flex:1 1 calc(100% - 90px); } /* the switch and Ask about this wrap together under the title */
