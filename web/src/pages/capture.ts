@@ -39,6 +39,7 @@ export async function viewCapture(ctx: Ctx): Page {
   };
   document.addEventListener("keydown", anywhere);
   paint();
+  ctx.main.classList.add("jv-capture"); // the editor stretches to the window's bottom (jv-hzh)
   ctx.main.append(heading("Capture"), form);
   return () => title.focus();
 }
