@@ -1,0 +1,75 @@
+<!doctype html><meta charset=utf-8><meta name=viewport content="width=device-width,initial-scale=1"><title>jv-7du — Copy on a strip above the As written text</title><style>
+:root{--bg:#faf7f2;--panel:#fffdf9;--side:#f1ece3;--text:#2a2621;--muted:#857b6e;--border:#e6ddcf;--accent:#b4532a;--accent-soft:#f6e6dc;--serif:Charter,Georgia,serif;--sans:ui-sans-serif,system-ui,-apple-system,sans-serif;--mono:ui-monospace,SFMono-Regular,Menlo,monospace}
+*{box-sizing:border-box}body{margin:0;background:#e9e4da;font:15px/1.5 var(--sans);color:var(--text);padding:24px 16px}
+.note{max-width:900px;margin:0 auto 14px;background:#fff8d6;border:1px solid #e8d98a;border-radius:8px;padding:10px 14px;font-size:14px}
+.frame{max-width:900px;margin:0 auto 28px;background:var(--panel);border:1px solid var(--border);border-radius:12px;overflow:hidden;box-shadow:0 4px 18px rgba(0,0,0,.06)}
+.cap{max-width:900px;margin:0 auto 6px;font:600 12px var(--sans);text-transform:uppercase;letter-spacing:.06em;color:#6b6257}
+.dhead{display:flex;align-items:center;gap:10px;padding:12px 24px;border-bottom:1px solid var(--border);flex-wrap:wrap}
+.kind{font-size:11px;text-transform:uppercase;letter-spacing:.07em;color:var(--accent);background:var(--accent-soft);border-radius:5px;padding:2px 6px}
+.dt{font:700 20px var(--serif);flex:1;min-width:0}
+button{border:1px solid var(--border);background:var(--panel);border-radius:10px;padding:5px 12px;font:inherit;font-size:14px;color:var(--text)}
+.dbody{padding:20px 24px 28px}.phone .dbody{padding:16px}.phone .dhead{padding:12px 16px}
+.meta{font:13px var(--sans);color:var(--muted);margin-bottom:12px}
+.seg{display:inline-flex;border:1px solid var(--border);border-radius:10px;overflow:hidden;font-size:13px}
+.seg span{padding:4px 10px;color:var(--muted)}.seg span.on{background:var(--accent-soft);color:var(--accent);font-weight:600}
+pre.lit{font:13px/1.55 var(--mono);background:var(--side);border:1px solid var(--border);border-radius:10px;padding:12px 14px;white-space:pre-wrap;overflow-wrap:anywhere;margin:0}
+.phone{max-width:390px}
+.copy{font:12px var(--sans);padding:2px 8px}
+.boxa{border:1px solid var(--border);border-radius:10px;background:var(--side)}.boxa pre.lit{border:0;border-radius:0 0 10px 10px}.strip{display:flex;align-items:center;justify-content:flex-end;padding:5px 8px;border-bottom:1px solid var(--border);background:var(--side);border-radius:10px 10px 0 0;position:sticky;top:0;z-index:1}.scroll{height:300px;overflow:auto;border:1px dashed #bbb;border-radius:8px;padding:12px;background:var(--panel)}
+</style>
+<div class=note><b>jv-7du, agreed.</b> The As written box’s Copy button moves onto a thin strip across the top of the box, right-aligned, with nothing on its left. The text starts below the strip, so the button never covers a character. On a long text the strip stays in view at the top of the window until the box ends. Everything else from jv-nln is unchanged.</div>
+<div class=cap>1 · desktop: a first line that reaches the corner is fully visible</div><div class=frame><div class=dhead><span class=kind>Note</span><span class=dt>Checkout crash after deploy</span><span class=seg><span>Formatted</span><span class=on>As written</span></span><button>Ask about this</button></div><div class=dbody><div class=meta>Pasted by Ada · 17 Nov 2026</div><div class=boxa><div class=strip><button class=copy>Copy</button></div><pre class=lit>Exception in thread "main" java.lang.IllegalStateException: Unhandled checkout state
+    at com.shop.Cart.checkout(Cart.java:88)
+    at com.shop.Api.post(Api.java:41)
+        ... 12 more</pre></div></div></div>
+<div class=cap>2 · 390 px window: “Unhandled” is fully visible</div><div class='frame phone'><div class=dhead><span class=kind>Note</span><span class=dt>Checkout crash after deploy</span><div style='flex-basis:100%;display:flex;gap:8px'><span class=seg><span>Formatted</span><span class=on>As written</span></span><button>Ask about this</button></div></div><div class=dbody><div class=boxa><div class=strip><button class=copy>Copy</button></div><pre class=lit>Exception in thread "main" java.lang.IllegalStateException: Unhandled checkout state
+    at com.shop.Cart.checkout(Cart.java:88)
+    at com.shop.Api.post(Api.java:41)
+        ... 12 more</pre></div></div></div>
+<div class=cap>3 · after pressing: Copied / Couldn’t copy for 2 seconds, then Copy</div><div class='frame' style='max-width:600px'><div class=dbody><div class=boxa><div class=strip><button class=copy>Copied</button></div><pre class=lit>2026-11-17T14:02:11.482Z ERROR [checkout-worker-3] c.s.Cart - checkout rejected for session 7f3a9c2e-41b8-4d0e: cart is empty
+    at com.shop.Cart.checkout(Cart.java:88)</pre></div><div style='height:14px'></div><div class=boxa><div class=strip><button class=copy>Couldn’t copy</button></div><pre class=lit>2026-11-17T14:02:11.482Z ERROR [checkout-worker-3] c.s.Cart - checkout rejected for session 7f3a9c2e-41b8-4d0e: cart is empty
+    at com.shop.Cart.checkout(Cart.java:88)</pre></div></div></div>
+<div class=cap>4 · a very long trace — scroll inside the dashed area: the strip stays in view until the box ends</div><div class='frame' style='max-width:600px'><div class=dbody><div class=scroll><div class=boxa><div class=strip><button class=copy>Copy</button></div><pre class=lit>Exception in thread "main" java.lang.IllegalStateException: Unhandled checkout state
+    at com.shop.Cart.checkout(Cart.java:88)
+    at com.shop.Api.post(Api.java:41)
+        ... 12 more
+    at com.shop.Layer1.call(Layer1.java:7)
+    at com.shop.Layer2.call(Layer2.java:14)
+    at com.shop.Layer3.call(Layer3.java:21)
+    at com.shop.Layer4.call(Layer4.java:28)
+    at com.shop.Layer5.call(Layer5.java:35)
+    at com.shop.Layer6.call(Layer6.java:42)
+    at com.shop.Layer7.call(Layer7.java:49)
+    at com.shop.Layer8.call(Layer8.java:56)
+    at com.shop.Layer9.call(Layer9.java:63)
+    at com.shop.Layer10.call(Layer10.java:70)
+    at com.shop.Layer11.call(Layer11.java:77)
+    at com.shop.Layer12.call(Layer12.java:84)
+    at com.shop.Layer13.call(Layer13.java:91)
+    at com.shop.Layer14.call(Layer14.java:98)
+    at com.shop.Layer15.call(Layer15.java:105)
+    at com.shop.Layer16.call(Layer16.java:112)
+    at com.shop.Layer17.call(Layer17.java:119)
+    at com.shop.Layer18.call(Layer18.java:126)
+    at com.shop.Layer19.call(Layer19.java:133)
+    at com.shop.Layer20.call(Layer20.java:140)
+    at com.shop.Layer21.call(Layer21.java:147)
+    at com.shop.Layer22.call(Layer22.java:154)
+    at com.shop.Layer23.call(Layer23.java:161)
+    at com.shop.Layer24.call(Layer24.java:168)
+    at com.shop.Layer25.call(Layer25.java:175)
+    at com.shop.Layer26.call(Layer26.java:182)
+    at com.shop.Layer27.call(Layer27.java:189)
+    at com.shop.Layer28.call(Layer28.java:196)
+    at com.shop.Layer29.call(Layer29.java:203)
+    at com.shop.Layer30.call(Layer30.java:210)
+    at com.shop.Layer31.call(Layer31.java:217)
+    at com.shop.Layer32.call(Layer32.java:224)
+    at com.shop.Layer33.call(Layer33.java:231)
+    at com.shop.Layer34.call(Layer34.java:238)
+    at com.shop.Layer35.call(Layer35.java:245)
+    at com.shop.Layer36.call(Layer36.java:252)
+    at com.shop.Layer37.call(Layer37.java:259)
+    at com.shop.Layer38.call(Layer38.java:266)
+    at com.shop.Layer39.call(Layer39.java:273)
+    at com.shop.Layer40.call(Layer40.java:280)</pre></div><p class=meta style='margin-top:12px'>…the rest of the item continues below; the strip leaves with the box.</p></div></div></div>
