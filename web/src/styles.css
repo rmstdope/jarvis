@@ -308,7 +308,8 @@ html, body { height:100%; } #app { height:100%; }
 .jv-seg { display:inline-flex; border:1px solid var(--border); border-radius:10px; overflow:hidden; }
 .jv-seg button { border:0; border-radius:0; background:transparent; color:var(--muted); font-size:13px; padding:4px 10px; }
 .jv-seg button[aria-pressed=true] { background:var(--accent-soft); color:var(--accent); font-weight:600; }
-.jv-lit { position:relative; }
-.jv-literal { margin:0; font:13px/1.55 ui-monospace,SFMono-Regular,Menlo,monospace; background:var(--side); border:1px solid var(--border); border-radius:var(--radius); padding:12px 14px; white-space:pre-wrap; overflow-wrap:anywhere; overflow-x:hidden; }
-.jv-lit .jv-copy { position:absolute; right:8px; top:8px; font:12px var(--sans); padding:2px 8px; }
+.jv-lit { background:var(--side); border:1px solid var(--border); border-radius:var(--radius); } /* no overflow:hidden: it would break the sticky strip */
+.jv-litbar { position:sticky; top:0; z-index:1; display:flex; justify-content:flex-end; padding:4px 8px; background:var(--side); border-bottom:1px solid var(--border); border-radius:var(--radius) var(--radius) 0 0; } /* jv-7du: Copy lives in a strip above the text, never over it */
+.jv-literal { margin:0; font:13px/1.55 ui-monospace,SFMono-Regular,Menlo,monospace; padding:12px 14px; white-space:pre-wrap; overflow-wrap:anywhere; overflow-x:hidden; }
+.jv-lit .jv-copy { font:12px var(--sans); padding:2px 8px; }
 .jv-phone .jv-dhead:has(.jv-seg) .jv-dtitle { max-width:100%; flex:1 1 calc(100% - 90px); } /* the switch and Ask about this wrap together under the title */

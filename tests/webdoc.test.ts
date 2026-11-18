@@ -101,6 +101,20 @@ describe("note-like tabs", () => {
     el = await open({ type: "item", id: "n1" });
     expect(el.querySelector(".jv-seg, .jv-copy")).toBeNull();
   });
+  test("Copy sits in a strip before the text, never over it; Formatted has no strip (jv-7du)", async () => {
+    serve(item({ body: "a\n    at x.Y(F.java:1)\n    at x.Z(F.java:2)" }));
+    const el = await open({ type: "item", id: "n1" });
+    const bar = el.querySelector(".jv-litbar") as HTMLElement;
+    expect(bar.textContent).toBe("Copy");
+    expect(bar.querySelector(".jv-copy")).not.toBeNull();
+    expect(bar.nextElementSibling).toBe(el.querySelector("pre.jv-literal"));
+    expect(el.querySelector("pre.jv-literal .jv-copy")).toBeNull();
+    ([...el.querySelectorAll(".jv-seg button")][0] as HTMLElement).click();
+    expect(el.querySelector(".jv-litbar")).toBeNull();
+    const css = await Bun.file(new URL("../web/src/styles.css", import.meta.url)).text();
+    expect(css).toMatch(/\.jv-litbar\s*\{[^}]*position:sticky/);
+    expect(css).not.toMatch(/\.jv-lit \.jv-copy\s*\{[^}]*position:absolute/);
+  });
   test("Copy copies the body exactly, reads Copied then Copy; a refusal reads Couldn't copy (jv-nln)", async () => {
     const body = "a\n    at x.Y(F.java:1)\n    at x.Z(F.java:2)";
     serve(item({ body }));
