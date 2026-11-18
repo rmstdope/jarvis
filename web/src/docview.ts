@@ -122,7 +122,7 @@ async function itemPage(id: string, ctx: DocCtx): Promise<Page> {
     } }, "Copy");
     const draw = () => {
       btns.forEach((b, i) => b.setAttribute("aria-pressed", String(sides[i]![0] === side)));
-      text.replaceChildren(side === "literal" ? h("div", { class: "jv-lit" }, copy, h("pre", { class: "jv-literal" }, item.body)) : formatted());
+      text.replaceChildren(side === "literal" ? h("div", { class: "jv-lit" }, h("div", { class: "jv-litbar" }, copy), h("pre", { class: "jv-literal" }, item.body)) : formatted());
     };
     draw();
     sw = h("span", { class: "jv-seg", role: "group", "aria-label": "Show text" }, ...btns);
